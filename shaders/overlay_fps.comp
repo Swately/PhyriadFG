@@ -1,5 +1,5 @@
 #version 450
-// apps/minimal_fg/shaders/overlay_fps.comp
+// overlay_fps.comp
 //
 // LSFG-style live FPS overlay for the PhyriadFG minimal core. Draws two integers --
 // the INPUT fps (captured frames/s) and the OUTPUT fps (presented frames/s) -- as

@@ -1,6 +1,6 @@
-// apps/render_assistant/shaders/mv_smooth.comp
-// STAGE-35-R2: temporal motion-vector EMA — damps per-tile MV quantization jitter
-// across consecutive frame pairs (the "tile shimmer while walking" the operator saw).
+// shaders/mv_smooth.comp
+// Temporal motion-vector EMA — damps per-tile MV quantization jitter (tile shimmer while panning)
+// across consecutive frame pairs.
 //
 // In-place on the OpticalFlowPipeline level-0 MV image (RG16F, width/8 × height/8),
 // aliased app-side via its public motion_image() handle (created STORAGE|SAMPLED|
@@ -20,13 +20,12 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(set = 0, binding = 0, rg16f) uniform image2D u_mv;     // OFP MV (in: new, out: smoothed)
 layout(set = 0, binding = 1, rg16f) uniform image2D u_prev;   // app-owned (in: last smoothed, out: this)
-// 35-R2b (supervisor review): SPAN NORMALIZATION. Pairs can span >1 source frame
-// (skips happen; R1 paces for it) — their raw MV is span× larger for the SAME true
-// velocity. EMA-mixing raw MVs across different spans corrupts the magnitude exactly
-// in the moments R1 fixes (and the 6px cut won't catch it: a 4px/frame motion in a
-// span-2 pair gives |Δ|=4 < 6 → smeared). So: smooth in VELOCITY space (mv/span);
-// u_prev stores NORMALIZED per-source-frame MVs; the output is rescaled by this
-// pair's span for the warp (which expects the full pair displacement).
+// SPAN NORMALIZATION: pairs can span >1 source frame (skips happen) — their raw MV is
+// span× larger for the SAME true velocity. EMA-mixing raw MVs across different spans
+// corrupts the magnitude (and the 6px cut won't catch it: a 4px/frame motion in a span-2
+// pair gives |Δ|=4 < 6 → smeared). So smooth in VELOCITY space (mv/span); u_prev stores
+// NORMALIZED per-source-frame MVs; the output is rescaled by this pair's span for the warp
+// (which expects the full pair displacement).
 layout(push_constant) uniform PC { float alpha; float cut; uint w; uint h; float span; } pc;
 
 void main() {

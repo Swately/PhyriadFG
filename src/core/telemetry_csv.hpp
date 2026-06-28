@@ -1,20 +1,17 @@
-// telemetry_csv.hpp — STAGE-100: comprehensive per-frame telemetry CSV export for PhyriadFG.
+// telemetry_csv.hpp — comprehensive per-frame telemetry CSV export for PhyriadFG.
 //
-// Build contract: docs/planning/FG_TELEMETRY_PRIOR_ART.md (SOTA-grounded, FDP-conform).
-// Emits TWO files (mirroring PresentMon's pmcap, F12): a RAW per-present CSV and a
-// companion `-stats.csv` with the derived frame-pacing metrics. Three column groups:
-//   (A) PresentMon CONSOLE-frontend names verbatim (F1/F2) for the subset we genuinely
-//       compute; the columns we CANNOT compute from external capture (display scan-out,
-//       input-to-photon, InstrumentedLatency) are emitted EMPTY (NA) — never a proxy (F5/F15).
-//   (B) architecture-native columns no external tool can see (F13) — the value-add.
-//   (C) per-device system telemetry under PresentMon names + `_<dev>` suffix (F7/F8),
-//       from NVML (the two NVIDIA GPUs). iGPU/CPU telemetry = NA in this phase (honest gap).
+// Emits TWO files: a RAW per-present CSV and a companion `-stats.csv` with the derived
+// frame-pacing metrics. Three column groups:
+//   (A) PresentMon console-frontend names verbatim for the subset we genuinely compute; the
+//       columns we CANNOT compute from external capture (display scan-out, input-to-photon,
+//       InstrumentedLatency) are emitted EMPTY (NA) — never a proxy.
+//   (B) architecture-native columns no external tool can see — the value-add.
+//   (C) per-device system telemetry under PresentMon names + `_<dev>` suffix, from NVML
+//       (the two NVIDIA GPUs). iGPU/CPU telemetry = NA (honest gap).
 //
-// Real-time isolation (F9 + Phyriad efficiency mandate): the present loop ONLY appends a
-// POD row to a lock-free SPSC ring (no NVML, no I/O). A dedicated LOW-PRIORITY drain thread
-// samples telemetry at ~40 Hz, writes rows, and computes the stats file at stop().
-//
-// Made with my soul - Swately <3  (signature lives at the END of the file per §9)
+// Real-time isolation (Phyriad efficiency mandate): the present loop ONLY appends a POD row to a
+// lock-free SPSC ring (no NVML, no I/O). A dedicated LOW-PRIORITY drain thread samples telemetry
+// at ~40 Hz, writes rows, and computes the stats file at stop().
 #pragma once
 #include <windows.h>
 #include <atomic>
@@ -35,16 +32,16 @@ struct CsvRow {
     long long qpc_present = 0;     // QueryPerformanceCounter at present (master clock)
     int       frame_type  = 0;     // 0 = Synthesized, 1 = Repeated (a freeze re-show)
     int       frz         = 0;     // 1 if this present was a freeze (real lap-freeze)
-    int       fdrop       = 0;     // STAGE-105: 1 if this present was a --fdrop exact-duplicate discriminator drop (distinct from frz)
+    int       fdrop       = 0;     // 1 if this present was a --fdrop exact-duplicate discriminator drop (distinct from frz)
     int       cap_slots   = -1;    // active capture-ring depth this tick
     int       route_device = 0;    // 0=4090 1=1080Ti 2=iGPU 3=CPU (primary synthesis device)
     double    ms_in_present_api = -1.0;
-    // W4 (TB-C9 fluidity PACING axis): the DISPLAY-FLIP interval (ms) for the own-window flip swapchain,
-    //   computed by the present site from IDXGISwapChain::GetFrameStatistics (SyncQPCTime delta across
-    //   presents where PresentCount advanced). This is the SOTA's binding pacing time — the display-flip
-    //   instant, NOT the present-CALL time (MsBetweenPresents, which --pace-hard directly controls).
-    //   <0 sentinel → NA (composed/non-own-window path or a GetFrameStatistics soft-fail), so the
-    //   fluidity scorer (scripts/fg_testbench_fluidity.py) falls back to the MsBetweenPresents proxy (flagged).
+    // The DISPLAY-FLIP interval (ms) for the own-window flip swapchain, computed by the present site
+    //   from IDXGISwapChain::GetFrameStatistics (SyncQPCTime delta across presents where PresentCount
+    //   advanced). This is the binding pacing time — the display-flip instant, NOT the present-CALL
+    //   time (MsBetweenPresents, which --pace-hard directly controls). <0 sentinel → NA (composed/
+    //   non-own-window path or a GetFrameStatistics soft-fail), so the fluidity scorer
+    //   (scripts/fg_testbench_fluidity.py) falls back to the MsBetweenPresents proxy (flagged).
     double    ms_between_display_change = -1.0;
     double    warp_ms     = -1.0;  // 4090 synthesis time (also written to MsGPUTime, approx)
     double    iter_ms     = -1.0;
@@ -57,16 +54,16 @@ struct CsvRow {
     double    output_fps  = -1.0;  // presented rate incl. synthesized
     double    cons_per_s  = -1.0;
     double    uniq_per_s  = -1.0;
-    // ── TB-C9 (FLUIDITY / motion-placement axis): the per-present temporal-placement signal ──
+    // ── the per-present temporal-placement signal (disp_phase, disp_src) ──
     // disp_phase = the FINAL presented intra-pair interpolation phase t_use ∈ [0,1] (the position
     //   the warp synthesised WITHIN the selected source pair this tick; the displayed phase).
     // disp_src   = the displayed CONTENT-SOURCE-TIME in SOURCE-FRAME units = (pair_c − span) + t_use·span
     //   — i.e. WHICH source moment the presented (interpolated) frame depicts. This is the
-    //   animation-time the field's "Animation Error" metric otherwise lacks for generated frames
-    //   (PresentMon/GamersNexus: it cannot score generated frames because they carry no engine
-    //   animation timestamp); the DETERMINISTIC TB-C1 source supplies it analytically, so this is
-    //   a valid ground-truth for GENERATED frames too. The fluidity analyser differences disp_src
-    //   against the display interval to get the placement error (see scripts/fg_testbench_fluidity.py).
+    //   animation-time an "Animation Error" metric otherwise lacks for generated frames (a generated
+    //   frame carries no engine animation timestamp); a deterministic synthetic source supplies it
+    //   analytically, so this is a valid ground-truth for GENERATED frames too. The fluidity analyser
+    //   differences disp_src against the display interval to get the placement error (see
+    //   scripts/fg_testbench_fluidity.py).
     // Both stay at the <0 sentinel (→ NA) unless the present site populates them (only on the --csv path).
     double    disp_phase  = -1.0;  // displayed interpolation phase t_use ∈ [0,1]
     double    disp_src    = -1.0;  // displayed content-source-time (source-frame units)
@@ -107,12 +104,12 @@ private:
 
     // ── session accumulation for the stats file (drain thread only) ─────────────
     std::vector<double>   ft_;              // MsBetweenPresents per present
-    std::vector<double>   slice_ms_;        // STAGE-104: per-tick FG 4090 slice (warp+present wall, r.warp_ms>0)
+    std::vector<double>   slice_ms_;        // per-tick FG 4090 slice (warp+present wall, r.warp_ms>0)
     double                src_fps_sum_ = 0.0; uint64_t src_fps_n_ = 0;
-    uint64_t              n_present_ = 0, n_freeze_ = 0, n_fdrop_ = 0;   // STAGE-105: n_fdrop_ = exact-dup discriminator drops (distinct from freezes)
+    uint64_t              n_present_ = 0, n_freeze_ = 0, n_fdrop_ = 0;   // n_fdrop_ = exact-dup discriminator drops (distinct from freezes)
     long long             qpc_first_ = 0, qpc_last_ = 0;
 
-    // ── STAGE-103 WATCHDOG: present-thread stall/freeze/hang detection (drain-thread-side) ──
+    // ── WATCHDOG: present-thread stall/freeze/hang detection (drain-thread-side) ──
     // The present thread is the CSV PRODUCER, so a present-thread hang can never be logged by
     // the present thread itself — a resumed hang shows only as one buried huge-frametime row, a
     // TERMINAL hang shows as nothing (the gap until exit). The drain thread runs INDEPENDENTLY,
@@ -152,7 +149,7 @@ private:
     double now_ms() const { LARGE_INTEGER q; QueryPerformanceCounter(&q); return (double)(q.QuadPart - qpc0_) / qfreq_ * 1000.0; }
 };
 
-// ── derived-metric helpers (FG_TELEMETRY_PRIOR_ART §4; CapFrameX formulas, F10/F11) ──
+// ── derived-metric helpers (CapFrameX formulas) ──
 namespace tele_detail {
     // 1% low INTEGRAL (the recommended default): sort desc, accumulate frametimes until the
     // cumulative sum reaches frac*total_time, report 1000/boundary_frametime.
@@ -215,7 +212,7 @@ inline bool TelemetryCsv::start(const std::string& path, const std::string& app,
     if (!fp_) { std::printf("[ra] --csv: cannot open '%s' for writing\n", path_.c_str()); return false; }
     ring_.resize(CAP);                 // heap-allocate the SPSC ring before the producer can run
     ft_.reserve(1u << 18);
-    slice_ms_.reserve(1u << 18);       // STAGE-104: FG 4090-slice accumulator (mirrors ft_)
+    slice_ms_.reserve(1u << 18);       // FG 4090-slice accumulator (mirrors ft_)
     active_.store(true);
     drain_ = std::thread([this]{ this->drain_loop(); });
     std::printf("[ra] --csv: telemetry export armed -> %s (+ %s); drain thread up\n", path_.c_str(), stats_path_.c_str());
@@ -260,16 +257,16 @@ inline void TelemetryCsv::nvml_init() {
 inline void TelemetryCsv::nvml_sample(void* dev, Tele& t) {
     if (!dev) { t = Tele{}; return; }
     NvmlUtil u{}; if (nvUtil_ && nvUtil_(dev, &u) == 0) { t.util = (double)u.gpu; }
-    unsigned int p = 0; if (nvPow_ && nvPow_(dev, &p) == 0) t.power_w = (double)p / 1000.0;          // mW -> W (F8)
+    unsigned int p = 0; if (nvPow_ && nvPow_(dev, &p) == 0) t.power_w = (double)p / 1000.0;          // mW -> W
     unsigned int c = 0; if (nvClk_ && nvClk_(dev, 0 /*NVML_CLOCK_GRAPHICS*/, &c) == 0) t.clk_mhz = (double)c;
     unsigned int m = 0; if (nvClk_ && nvClk_(dev, 2 /*NVML_CLOCK_MEM*/, &m) == 0) t.memclk_mhz = (double)m;
     unsigned int tm = 0; if (nvTemp_ && nvTemp_(dev, 0 /*NVML_TEMPERATURE_GPU*/, &tm) == 0) t.temp_c = (double)tm;
-    NvmlMem mem{}; if (nvMem_ && nvMem_(dev, &mem) == 0) t.vram_mib = (double)mem.used / 1048576.0;  // bytes -> MiB (F8)
+    NvmlMem mem{}; if (nvMem_ && nvMem_(dev, &mem) == 0) t.vram_mib = (double)mem.used / 1048576.0;  // bytes -> MiB
 }
 
 inline void TelemetryCsv::write_header() {
-    // Group A (PresentMon console names, F1/F2/F5) | Group B (architecture-native, F13) |
-    // Group C (PresentMon telemetry names + _<dev> suffix, F7/F8). NA columns kept for schema fidelity.
+    // Group A (PresentMon console names) | Group B (architecture-native) |
+    // Group C (PresentMon telemetry names + _<dev> suffix). NA columns kept for schema fidelity.
     std::fprintf(fp_,
         "Application,ProcessID,FrameType,CPUStartTime,MsBetweenPresents,MsInPresentAPI,"
         "MsUntilDisplayed,MsBetweenDisplayChange,DisplayedTime,MsRenderPresentLatency,"
@@ -279,8 +276,8 @@ inline void TelemetryCsv::write_header() {
         "GPUUtilization_4090,GPUPower_4090,GPUTemperature_4090,GPUFrequency_4090,GPUMemoryFrequency_4090,GPUMemorySizeUsed_4090,"
         "GPUUtilization_1080Ti,GPUPower_1080Ti,GPUTemperature_1080Ti,GPUFrequency_1080Ti,GPUMemoryFrequency_1080Ti,GPUMemorySizeUsed_1080Ti,"
         "GPUUtilization_iGPU,CPUUtilization,"
-        "phyriadfg_disp_phase,phyriadfg_disp_src_frames\n");   // TB-C9 fluidity axis (appended; positions of all prior columns unchanged)
-    // a one-line schema note so a consumer knows the vocabulary (console-style, F2)
+        "phyriadfg_disp_phase,phyriadfg_disp_src_frames\n");   // fluidity axis (appended; positions of all prior columns unchanged)
+    // a one-line schema note so a consumer knows the vocabulary (console-style)
     std::fprintf(fp_, "# schema=PhyriadFG/STAGE-100+TB-C9; frametime=MsBetweenPresents(console-style); FrameType: Synthesized|Repeated; NA cells are empty; per-device GPU* suffixed; iGPU/CPU telemetry NA this phase; phyriadfg_disp_phase=intra-pair t_use[0,1], phyriadfg_disp_src_frames=content-source-time(source-frame units, the Animation-Error analogue)\n");
 }
 
@@ -292,13 +289,13 @@ inline void TelemetryCsv::write_row(const CsvRow& r, long long& prev_qpc, bool& 
     // Group A
     std::fprintf(fp_, "%s,%u,%s,%.4f", app_.c_str(), pid_, ft, cpu_start_ms);
     D(fp_, mbp); D(fp_, r.ms_in_present_api);
-    // MsUntilDisplayed = NA (external capture). W4: MsBetweenDisplayChange = the own-window DISPLAY-FLIP
+    // MsUntilDisplayed = NA (external capture). MsBetweenDisplayChange = the own-window DISPLAY-FLIP
     // interval (GetFrameStatistics SyncQPCTime delta) when the present site populated it; else NA (composed/
     // non-own-window or a GetFrameStatistics soft-fail → the scorer falls back to MsBetweenPresents, flagged).
     // DisplayedTime, MsRenderPresentLatency = NA (external capture). NA path writes the SAME 4 empty fields
     // as the prior ",,,," → byte-identical when ms_between_display_change stays at its <0 sentinel.
     std::fprintf(fp_, ",");                    // MsUntilDisplayed = NA
-    D(fp_, r.ms_between_display_change);        // MsBetweenDisplayChange (W4; NA when <0)
+    D(fp_, r.ms_between_display_change);        // MsBetweenDisplayChange (NA when <0)
     std::fprintf(fp_, ",,");                   // DisplayedTime, MsRenderPresentLatency = NA
     D(fp_, r.warp_ms);                         // MsGPUTime ~= 4090 synth (approx; documented)
     std::fprintf(fp_, ",,");                    // InstrumentedLatency,MsClickToPhotonLatency = NA
@@ -314,18 +311,18 @@ inline void TelemetryCsv::write_row(const CsvRow& r, long long& prev_qpc, bool& 
     // Group C (telemetry snapshot, forward-filled)
     D(fp_, teleA_.util); D(fp_, teleA_.power_w); D(fp_, teleA_.temp_c); D(fp_, teleA_.clk_mhz); D(fp_, teleA_.memclk_mhz); D(fp_, teleA_.vram_mib);
     D(fp_, teleB_.util); D(fp_, teleB_.power_w); D(fp_, teleB_.temp_c); D(fp_, teleB_.clk_mhz); D(fp_, teleB_.memclk_mhz); D(fp_, teleB_.vram_mib);
-    std::fprintf(fp_, ",,");                    // GPUUtilization_iGPU, CPUUtilization = NA this phase
-    // ── TB-C9 (FLUIDITY): the displayed intra-pair phase + the content-source-time this present
-    //    depicts. <0 sentinel → NA (the D helper), so a row from a path that didn't populate them
-    //    (e.g. a not-yet-instrumented push site) stays honest rather than logging a fake 0.
+    std::fprintf(fp_, ",,");                    // GPUUtilization_iGPU, CPUUtilization = NA
+    // ── the displayed intra-pair phase + the content-source-time this present depicts. <0 sentinel
+    //    → NA (the D helper), so a row from a path that didn't populate them stays honest rather
+    //    than logging a fake 0.
     D(fp_, r.disp_phase); D(fp_, r.disp_src);
     std::fprintf(fp_, "\n");
     // accumulate for stats
     if (mbp > 0) ft_.push_back(mbp);
-    if (r.warp_ms > 0) slice_ms_.push_back(r.warp_ms);   // STAGE-104: per-tick FG 4090 slice (drops ≈0 → correctly lowers the make-space occupancy)
+    if (r.warp_ms > 0) slice_ms_.push_back(r.warp_ms);   // per-tick FG 4090 slice (drops ≈0 → correctly lowers the make-space occupancy)
     if (r.source_fps > 0) { src_fps_sum_ += r.source_fps; ++src_fps_n_; }
     if (r.frz) ++n_freeze_;
-    if (r.fdrop) ++n_fdrop_;   // STAGE-105: count discriminator drops distinctly
+    if (r.fdrop) ++n_fdrop_;   // count discriminator drops distinctly
     ++n_present_;
     if (qpc_first_ == 0) qpc_first_ = r.qpc_present;
     qpc_last_ = r.qpc_present;
@@ -339,19 +336,19 @@ inline void TelemetryCsv::drain_loop() {
     write_header();
     long long prev_qpc = 0; bool have_prev = false;
     double last_sample = -1e9;
-    // STAGE-103 watchdog state (drain-local): when did the present thread last push a row?
+    // watchdog state (drain-local): when did the present thread last push a row?
     uint64_t last_w = 0; double last_w_change_ms = now_ms();
     bool in_stall = false; double stall_start_ms = 0.0, last_ongoing_ms = 0.0;
-    double last_flush_ms = -1e9;   // STAGE-103: periodic fflush so a HARD crash leaves the pre-crash tail on disk
+    double last_flush_ms = -1e9;   // periodic fflush so a HARD crash leaves the pre-crash tail on disk
     for (;;) {
         const bool stopping = stop_.load();
         const double t = now_ms();
-        if (t - last_sample >= 25.0) {   // ~40 Hz telemetry (F9: NVML off the hot path)
+        if (t - last_sample >= 25.0) {   // ~40 Hz telemetry (NVML off the hot path)
             nvml_sample(nvA_, teleA_); nvml_sample(nvB_, teleB_);
             last_sample = t;
         }
         uint64_t w  = w_idx_.load();
-        // ── STAGE-103 WATCHDOG: detect present-thread stalls (freeze / sync-fence block / hang) ──
+        // ── WATCHDOG: detect present-thread stalls (freeze / sync-fence block / hang) ──
         // w_idx advances once per present tick; if it stops the present is stalled. Markers are
         // flushed to disk IMMEDIATELY so a force-kill mid-hang still leaves the evidence + the WHY.
         // Gated on (w>0 || last_w>0) so the pre-first-present startup is never a false stall; and
@@ -382,13 +379,13 @@ inline void TelemetryCsv::drain_loop() {
         uint64_t rd = r_idx_.load();
         while (rd < w) { write_row(ring_[rd & MASK], prev_qpc, have_prev); ++rd; }
         r_idx_.store(rd);
-        // STAGE-103: bound the lost-tail on a HARD crash — flush at ~4 Hz so the last ≤250 ms of
-        // rows (the pre-crash GPU state) are on disk even if the process dies with no clean stop().
+        // bound the lost-tail on a HARD crash — flush at ~4 Hz so the last ≤250 ms of rows (the
+        // pre-crash GPU state) are on disk even if the process dies with no clean stop().
         if (fp_ && t - last_flush_ms > 250.0) { std::fflush(fp_); last_flush_ms = t; }
         if (stopping && rd == w_idx_.load()) break;
         Sleep(2);
     }
-    // STAGE-103: if we broke out while still stalled (stop() arrived during a hang), record it.
+    // if we broke out while still stalled (stop() arrived during a hang), record it.
     if (in_stall) { const double dur = now_ms() - stall_start_ms; if (dur > max_stall_ms_) max_stall_ms_ = dur; total_stall_ms_ += dur; ++stall_count_; }
     if (fp_) { std::fflush(fp_); std::fclose(fp_); fp_ = nullptr; }
     write_stats();
@@ -436,12 +433,12 @@ inline void TelemetryCsv::write_stats() {
     std::fprintf(sf, "stutter_time_pct,%s,time fraction in stutter frames\n", F(st.time_pct).c_str());
     std::fprintf(sf, "adaptive_stdev_ms,%s,std of frametime residuals vs moving average\n", F(st.adaptive_stdev).c_str());
     std::fprintf(sf, "present_fps_inst_avg,%s,mean output_fps column\n", F(present_fps).c_str());
-    // ── STAGE-104: the FG per-tick 4090 slice + occupancy (the make-space cap input, FG_SATURATION_PRIOR_ART §4) ──
+    // ── the FG per-tick 4090 slice + occupancy (the make-space cap input) ──
     // slice = the present-thread warp+present wall per output tick (r.warp_ms). occupancy = the fraction of
     // wall-time the FG holds the 4090 at the achieved output rate = present_fps * mean_slice. THIS is the
     // honest, measured number for "make space": the game must be capped to leave the 4090 at least this free
     // (plus margin) so the FG keeps its slice. We deliberately DON'T emit a single cap_fps — that needs the
-    // game's own per-frame GPU cost (unobservable from external capture, §4 open-q4); occupancy is what we know.
+    // game's own per-frame GPU cost (unobservable from external capture); occupancy is what we know.
     double slice_avg=-1, slice_sum=0; for(double s:slice_ms_) slice_sum+=s;
     if(!slice_ms_.empty()) slice_avg=slice_sum/(double)slice_ms_.size();
     const double slice_p99 = percentile_ft(slice_ms_, 99);

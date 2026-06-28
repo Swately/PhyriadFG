@@ -1,6 +1,6 @@
-// apps/render_assistant/shaders/upscale_lanczos.comp
+// upscale_lanczos.comp
 // Separable Lanczos-2 (a=2) upscale (any res → 2×). 4×4 support, 16 explicit taps
-// per output pixel. Same shader as stage4_enhance (STAGE-4 upper-bound upscaler).
+// per output pixel.
 // Bindings: set=0 b0=sampler2D src ; b1=rgba8 storage dst.
 #version 450
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;

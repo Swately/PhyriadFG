@@ -1,34 +1,28 @@
-// apps/render_assistant/shaders/gme_reduce.comp
-// IDEA-1 (gme-gpu): the GLOBAL-MOTION normal-equation REDUCE pass, run ON DEVICE B (the 1080 Ti)
-// where the MV/SAD optical-flow output already lives. This is the GPU port of the per-block
-// accumulation loop in main.cpp gme_fit_affine (the fp64 math at main.cpp:1206-1229), in PLAIN
-// fp32 — the precision gate is GREEN (gme_fit_bench: model rel-diff 5e-05, dis-mask flips ≤5/32400,
-// dis% identical; use fp32, no Kahan).
+// shaders/gme_reduce.comp
+// Global-motion normal-equation REDUCE pass, run on the optical-flow GPU (1080 Ti) where the MV/SAD
+// field already lives, in fp32 (precision adequate, no Kahan needed).
 //
-// The CPU fit reduces 12 accumulators over the mv-grid for ONE IRLS iteration:
+// Reduces 12 accumulators over the mv-grid for ONE IRLS iteration:
 //   Sw,Swx,Swy,Swxx,Swxy,Swyy            (the shared 3×3 design matrix, symmetric)
 //   bx0,bx1,bx2                          (the x-model RHS:  Σw·u, Σw·u·gx, Σw·u·gy)
 //   by0,by1,by2                          (the y-model RHS:  Σw·v, Σw·v·gx, Σw·v·gy)
-// where gx,gy are GRID texel indices (the EXACT convention main.cpp:1153-1156 uses — the model is
-// fitted over integer grid indices), u,v are the decoded MV at that block (pixel units), and the
-// weight w is:
-//   iter 0  : OLS, w = 1                                       (the seed; matches CPU iter 0)
-//   iter ≥1 : Geman-McClure reweight on the PRIOR model (in/u_model):
+// where gx,gy are GRID texel indices (the model is fitted over integer grid indices), u,v are the
+// decoded MV at that block (pixel units), and the weight w is:
+//   iter 0  : OLS, w = 1                                       (the seed)
+//   iter ≥1 : Geman-McClure reweight on the prior model (binding 2):
 //             rx = u − (a + b·gx + c·gy); ry = v − (d + e·gx + f·gy);
-//             r = sqrt(rx²+ry²); rr = r/2; w = 1/(1 + rr²)     (main.cpp:1218-1224)
+//             r = sqrt(rx²+ry²); rr = r/2; w = 1/(1 + rr²)
 //
-// TEMPLATE: STAGE-76 mass reduction — wap_warp.comp:541 shared accumulator + :1535 reduce. Here we
-// avoid float SSBO atomics (NOT guaranteed on Pascal) by dispatching EXACTLY ONE workgroup and
-// grid-striding the whole block grid: every thread accumulates 12 private fp32 partials over its
+// Float SSBO atomics are not guaranteed on Pascal, so this dispatches EXACTLY ONE workgroup and
+// grid-strides the whole block grid: every thread accumulates 12 private fp32 partials over its
 // stride, then a shared-memory tree reduction folds the workgroup down to thread 0, which writes the
 // 12 floats ONCE into the device-local accumulator SSBO. Deterministic, single SSBO write, no atomic,
-// no extension — the 3 IRLS reduce+solve passes chain in ONE command buffer / ONE submit on B.
+// no extension — the IRLS reduce+solve passes chain in one command buffer / one submit.
 //
-// COORDINATE CONVENTION (must match the CPU + the warp EXACTLY): the MV texture is RG16F at the OFP
-// grid (mvw×mvh); we read it via imageLoad at integer texel (gx,gy) — the same lattice the CPU
-// gme_fit_affine reads (g_gme_uv[idx]) and the warp samples at texel centres. step sub-samples the
-// grid every step-th block in BOTH axes (the CPU sub2 path: step=2); the reduce honours it so the
-// model is identical to the sub2 CPU fit.
+// COORDINATE CONVENTION (must match the warp EXACTLY): the MV texture is RG16F at the OFP grid
+// (mvw×mvh); read via imageLoad at integer texel (gx,gy) — the same lattice the warp samples at texel
+// centres. step sub-samples the grid every step-th block in BOTH axes; the reduce honours it so the
+// model matches the sub-sampled fit.
 #version 450
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
@@ -48,7 +42,7 @@ layout(set = 0, binding = 2) readonly buffer Model { float m[6]; } model;
 layout(push_constant) uniform PC {
     uint mvw;    // grid width  (blocks)
     uint mvh;    // grid height (blocks)
-    uint step;   // sub-sample stride (1 = full, 2 = CPU sub2)
+    uint step;   // sub-sample stride (1 = full, 2 = half)
     uint iter;   // 0 = OLS (w=1); ≥1 = Geman-McClure reweight on the prior model
 } pc;
 
@@ -63,7 +57,7 @@ void main() {
     float Sw=0.0, Swx=0.0, Swy=0.0, Swxx=0.0, Swxy=0.0, Swyy=0.0;
     float bx0=0.0, bx1=0.0, bx2=0.0, by0=0.0, by1=0.0, by2=0.0;
 
-    // Sub-sampled block count along each axis (the CPU loop runs gx,gy += step over [0,mvw)×[0,mvh)).
+    // Sub-sampled block count along each axis (gx,gy step over [0,mvw)×[0,mvh)).
     const uint nx = (pc.mvw + pc.step - 1u) / pc.step;   // # sampled columns
     const uint ny = (pc.mvh + pc.step - 1u) / pc.step;   // # sampled rows
     const uint ntot = nx * ny;                            // total sampled blocks
@@ -76,8 +70,8 @@ void main() {
     for (uint si = lid; si < ntot; si += gl_WorkGroupSize.x) {
         const uint sx = si % nx;
         const uint sy = si / nx;
-        const uint gx = sx * pc.step;     // real grid index (the CPU gx)
-        const uint gy = sy * pc.step;     // real grid index (the CPU gy)
+        const uint gx = sx * pc.step;     // real grid index
+        const uint gy = sy * pc.step;     // real grid index
         const vec2 mv = imageLoad(u_mv, ivec2(int(gx), int(gy))).xy;
         const float u = mv.x;             // mv_x (px)
         const float v = mv.y;             // mv_y (px)

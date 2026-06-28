@@ -1,13 +1,11 @@
-// PhyriadFG core/globals layer (STEP 3 — PURE RELOCATION from src/core/main.cpp; no logic change).
-// The single definitions of the process-wide quit/device-lost/util/overlay state + vk_live + the
-// console Ctrl handler (declared in core/globals.hpp). `static`/`static inline` dropped → external
-// linkage so main.cpp + core/vk_util.cpp share one definition; behaviour byte-identical.
+// PhyriadFG core/globals layer: the single definitions of the process-wide quit/device-lost/util/overlay
+// state + vk_live + the console Ctrl handler (declared in core/globals.hpp).
 #include "core/globals.hpp"
 #include <cstdio>   // std::printf (vk_live one-shot message)
 
 volatile bool g_quit=false;
 std::atomic<int> g_gpu_a_util{-1};
-std::atomic<int> g_gov_floor{0};   // STAGE-104 control-word: P-published util→tier floor, F-read (advisory)
+std::atomic<int> g_gov_floor{0};   // control-word: P-published util→tier floor, F-read (advisory)
 std::atomic<uint32_t> g_ov_in{0}, g_ov_out{0};
 std::atomic<bool> g_device_lost{false};
 

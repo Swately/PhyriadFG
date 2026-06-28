@@ -1,28 +1,28 @@
-// apps/render_assistant/shaders/gme_dissidence.comp
-// IDEA-1 (gme-gpu): the per-block DISSIDENCE pass, run ON DEVICE B. GPU port of the dissidence-mask
-// loop in main.cpp gme_fit_affine (main.cpp:1249-1273), in PLAIN fp32 (precision gate GREEN — see
-// gme_reduce.comp header). Runs ONCE after the 3 IRLS reduce+solve passes, against the FINAL model.
+// shaders/gme_dissidence.comp
+// Per-block dissidence pass, run on the optical-flow GPU (1080 Ti) in fp32. Runs once after the
+// IRLS reduce+solve passes, against the final affine global-motion model, and marks blocks whose
+// local motion dissents from that model.
 //
-// For every block (gx,gy) over the FULL grid (the mask ALWAYS covers all blocks — the CPU sub2 only
-// sub-samples the FIT, not the mask):
+// For every block (gx,gy) over the FULL grid (the mask always covers all blocks; sub-sampling
+// applies only to the fit, not the mask):
 //   rx = u − (a + b·gx + c·gy); ry = v − (d + e·gx + f·gy);
 //   r  = sqrt(rx²+ry²);
-//   q  = round(16·r) clamped to 255                                 (main.cpp:1259)
-//   THE CHANGE GATE (STAGE-70, main.cpp:1260-1270): a block whose content did not change cannot be
-//   dissident — if use_gate AND q>0 AND sad_zero < kChangeGateSadZ → q = 0. sad_zero is the .G channel
-//   of the SAD field (RG16F: R=sad_best, G=sad_zero). kChangeGateSadZ = 0.5 (main.cpp:1169).
+//   q  = round(16·r) clamped to 255
+//   Change gate: a block whose content did not change cannot be dissident — if use_gate AND q>0
+//   AND sad_zero < change_gate_sz → q = 0. sad_zero is the .G channel of the SAD field
+//   (RG16F: R=sad_best, G=sad_zero); change_gate_sz defaults to 0.5.
 //
-// OUTPUT FORMAT — a PACKED-BYTE SSBO, not an image. The dissidence mask is mvw×mvh BYTES (R8). We do
-// NOT use an R8 storage image because R8_UNORM is not a mandatory storage-image format (portability —
-// verify-before-claim: we cannot assume the 1080 Ti exposes it). Instead the byte goes into a uint[]
-// SSBO, 4 blocks per uint, via atomicOr into a buffer the host PRE-CLEARS to 0 each pass (vkCmdFillBuffer
-// before this dispatch). atomicOr is core GLSL (no extension); each uint covers 4 distinct blocks so the
-// OR composes their bytes race-free given the 0 init. The SSBO is the host-imported hostDIS bridge
-// (imported on B as STORAGE) — so B writes the mask straight into the host-coherent buffer F reads after
-// the fence and A uploads into wapDISA. No copy-out, no device-local mask image.
+// OUTPUT FORMAT — a packed-byte SSBO, not an image. The dissidence mask is mvw×mvh bytes (R8),
+// stored in a uint[] SSBO (4 blocks per uint) rather than an R8 storage image, because R8_UNORM
+// is not a mandatory storage-image format (portability — cannot assume every GPU exposes it). The
+// byte is written via atomicOr into a buffer the host pre-clears to 0 each pass (vkCmdFillBuffer
+// before this dispatch). atomicOr is core GLSL (no extension); each uint covers 4 distinct blocks
+// so the OR composes their bytes race-free given the 0 init. The SSBO is the host-imported,
+// host-coherent dissidence bridge (imported as STORAGE) — the optical-flow GPU writes the mask
+// straight into it, with no copy-out and no device-local mask image.
 //
-// COORDINATE CONVENTION: identical to gme_reduce.comp — integer grid texels, model fitted/evaluated
-// over grid indices (gx,gy). 2D dispatch (mvw/8 × mvh/8 workgroups of 8×8), one invocation per block.
+// COORDINATE CONVENTION: integer grid texels, model fitted/evaluated over grid indices (gx,gy).
+// 2D dispatch (mvw/8 × mvh/8 workgroups of 8×8), one invocation per block.
 #version 450
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -34,8 +34,8 @@ layout(set = 0, binding = 3) readonly buffer Model { float m[6]; } model;
 layout(push_constant) uniform PC {
     uint  mvw;
     uint  mvh;
-    uint  use_gate;        // 1 = apply the STAGE-70 change gate (cfg.change_gate); 0 = no gate
-    float change_gate_sz;  // kChangeGateSadZ (0.5) — pushed so the constant lives in one place (the host)
+    uint  use_gate;        // 1 = apply the change gate (cfg.change_gate); 0 = no gate
+    float change_gate_sz;  // change-gate sad_zero threshold (default 0.5), pushed from the host
 } pc;
 
 void main() {
@@ -49,7 +49,7 @@ void main() {
     const float rx = u - (a + b*gx + c*gy);
     const float ry = v - (d + e*gx + f*gy);
     const float r  = sqrt(rx*rx + ry*ry);
-    int q = int(16.0*r + 0.5);                  // round(16·r), matches the CPU (int)(16.0*r+0.5)
+    int q = int(16.0*r + 0.5);                  // round(16·r)
     if (q > 255) q = 255;
     if (pc.use_gate != 0u && q > 0) {
         const float sz = imageLoad(u_sad, p).y;  // .G = sad_zero

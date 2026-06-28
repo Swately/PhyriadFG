@@ -1,9 +1,9 @@
-// apps/render_assistant/shaders/hdr_convert.comp
-// Capture-format → RGBA8 convert + optional downscale (one 4090 compute pass).
+// hdr_convert.comp
+// Capture-format → RGBA8 convert + optional downscale (one compute pass).
 // Routes: RGBA8/BGRA8 passthrough; R16G16B16A16_FLOAT (HDR scRGB) → tone-map;
 // R10G10B10A2 (10bpc SDR) → passthrough (sampler unpacks to float automatically).
 // Shader runs at OUTPUT resolution; input is sampled at UV coords → implicit
-// bilinear downscale if source > dest. Same shader as stage7b_multimon.
+// bilinear downscale if source > dest.
 //
 // Bindings: set=0 b0=sampler2D src ; b1=rgba8 storage dst.
 // Push: is_hdr (uint 0/1), exposure (float, nominal 1.0).

@@ -1,17 +1,16 @@
-// apps/render_assistant/shaders/gme_solve.comp
-// IDEA-1 (gme-gpu): the 3×3 CRAMER SOLVE of the global-motion normal equations, run ON DEVICE B in a
-// SINGLE invocation. GPU port of main.cpp gme_fit_affine's solve block (main.cpp:1233-1245), in PLAIN
-// fp32 (the precision gate is GREEN — see gme_reduce.comp header).
+// shaders/gme_solve.comp
+// 3×3 Cramer solve of the global-motion normal equations, run on the optical-flow GPU (1080 Ti) in a
+// single invocation, in fp32.
 //
 // The reduce pass (gme_reduce.comp) wrote the 12 accumulators into the Accum SSBO. This pass solves
-// the SHARED symmetric 3×3 M for BOTH the x-model and the y-model by Cramer's rule (the CPU's solve3
-// lambda, applied to bx* then by*), and writes the 6 params {a,b,c,d,e,f} into the Model SSBO.
+// the shared symmetric 3×3 M for both the x-model and the y-model by Cramer's rule, and writes the 6
+// params {a,b,c,d,e,f} into the Model SSBO.
 //
 //   M = [[Sw, Swx, Swy], [Swx, Swxx, Swxy], [Swy, Swxy, Swyy]]
 //   det = Sw·(Swxx·Swyy − Swxy²) − Swx·(Swx·Swyy − Swxy·Swy) + Swy·(Swx·Swxy − Swxx·Swy)
-//   |det| < 1e-9 → singular: leave the model UNCHANGED (the CPU's `break` keeps the prior a..f). On
-//   iter 0 the prior model SSBO is the zero-init / last-pair value; the host treats a singular iter-0
-//   fit the same way the CPU does (the dissidence pass below runs on whatever model survives).
+//   |det| < 1e-9 → singular: leave the model UNCHANGED (keeps the prior a..f). On iter 0 the prior
+//   model SSBO is the zero-init / last-pair value; a singular iter-0 fit leaves whatever model the
+//   dissidence pass then runs on.
 //
 // Run as ONE workgroup of 1 (dispatch 1,1,1); only invocation 0 does anything. Chains directly after
 // gme_reduce.comp in the SAME command buffer with a buffer barrier (Accum: shader-write → shader-read).
@@ -31,9 +30,9 @@ void main() {
     const float det = Sw*(Swxx*Swyy - Swxy*Swxy)
                     - Swx*(Swx*Swyy - Swxy*Swy)
                     + Swy*(Swx*Swxy - Swxx*Swy);
-    if (abs(det) < 1e-9) return;                 // singular → keep the prior model (CPU `break`)
+    if (abs(det) < 1e-9) return;                 // singular → keep the prior model
     const float invdet = 1.0 / det;
-    // Cofactor solve for a generic RHS (r0,r1,r2) → the three params (the CPU solve3 lambda, verbatim).
+    // Cofactor solve for a generic RHS (r0,r1,r2) → the three params.
     const float bx0=acc.bx0, bx1=acc.bx1, bx2=acc.bx2;
     const float by0=acc.by0, by1=acc.by1, by2=acc.by2;
     // x-model → a,b,c

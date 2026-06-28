@@ -1,6 +1,5 @@
-// PhyriadFG core/vk_util layer (STEP 3 — PURE RELOCATION from src/core/main.cpp; no logic change).
-// The out-of-line factory + submit helper bodies declared in core/vk_util.hpp. `static` dropped →
-// external linkage so main.cpp links to them; behaviour byte-identical (verbatim relocation).
+// PhyriadFG core/vk_util layer: the out-of-line factory + submit helper bodies declared in
+// core/vk_util.hpp.
 #include "core/vk_util.hpp"
 #include "core/globals.hpp"   // vk_live (the submit helpers report device-loss through it)
 
@@ -40,11 +39,11 @@ bool hbuf_import(VDev& d,void* ptr,VkDeviceSize bytes,HBuf& out,
     const uint32_t mt=pick_mem(d.mp,hp.memoryTypeBits,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT); if(mt==UINT32_MAX) return false;
     VkExternalMemoryBufferCreateInfo ext{}; ext.sType=VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO; ext.handleTypes=VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
     VkBufferCreateInfo bci{}; bci.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; bci.pNext=&ext; bci.size=bytes; bci.usage=usage;
-    // STAGE-37a supervisor fix: a buffer WRITTEN by C's convert on q2 (family qfam2) and READ
-    // by P on q (family qfam) under EXCLUSIVE sharing needs a queue-family ownership transfer
-    // the pipeline doesn't perform — formal UB even where drivers tolerate it. CONCURRENT
-    // across both families removes the requirement; applied only to the buffers that cross
-    // (hR_g/hRP_g) and only when this device picked the split-family mode.
+    // A buffer WRITTEN by C's convert on q2 (family qfam2) and READ by P on q (family qfam) under
+    // EXCLUSIVE sharing needs a queue-family ownership transfer the pipeline doesn't perform — formal
+    // UB even where drivers tolerate it. CONCURRENT across both families removes the requirement;
+    // applied only to the buffers that cross (hR_g/hRP_g) and only when this device picked the
+    // split-family mode.
     const uint32_t qfis[2]={d.qfam,d.qfam2};
     if(q2_shared&&d.qfam2!=UINT32_MAX&&d.qfam2!=d.qfam){
         bci.sharingMode=VK_SHARING_MODE_CONCURRENT; bci.queueFamilyIndexCount=2; bci.pQueueFamilyIndices=qfis; }

@@ -1,21 +1,18 @@
-// apps/render_assistant/shaders/igpu_convert_pack.comp
-// STAGE-26c-1/26c-3: iGPU fused convert(BGRA8/RGBA8→RGB8) + pack into SSBO layout.
-// Source: bench/stage26a_igpu_convert — same logic, app context.
+// igpu_convert_pack.comp
+// iGPU fused convert (BGRA8/RGBA8 -> RGB8) + pack into SSBO layout.
 //
-// Reads raw BGRA8/RGBA8 capture from sysRAM SSBO (Astage, host-bounced by DD/WGC),
+// Reads raw BGRA8/RGBA8 capture from a sysRAM SSBO (host-bounced by DD/WGC capture),
 // writes two outputs — both in sysRAM, zero PCIe crossings:
-//   binding=1  packed RGB8 (hostRP) — 3 uint32s per 4-px group, for B ingest (~25% less bytes).
-//   binding=2  RGBA8 unpacked (hostR) — 1 uint32 per pixel, for A present + no-upscale path.
-//
-// STAGE-26c-1: binding=1 only.
-// STAGE-26c-3: binding=2 added; pc.px added for bounds-check on the last group's tail pixels.
+//   binding=1  packed RGB8 — 3 uint32s per 4-px group, for the optical-flow ingest (~25% fewer bytes).
+//   binding=2  RGBA8 unpacked — 1 uint32 per pixel, for present + the no-upscale path.
+// pc.px bounds-checks the last group's tail pixels.
 //
 // is_bgra=1 (WGC/DD B8G8R8A8_UNORM): bits[23:16]=R, [15:8]=G, [7:0]=B.
 // is_bgra=0 (R8G8B8A8_UNORM): bits[7:0]=R, [15:8]=G, [23:16]=B.
 //
-// STAGE-34-3: is_hdr=1 (DD on an HDR desktop → R16G16B16A16_FLOAT scRGB, 8 bytes/px =
-// 2 uint32/px): unpack the FP16 pair, tone-map (clamp·exposure → sRGB OETF) to 8-bit RGB.
-// Same math as the A-path hdr_convert.comp. Source stride doubles (s[i*2+0],s[i*2+1]).
+// is_hdr=1 (DD on an HDR desktop -> R16G16B16A16_FLOAT scRGB, 8 bytes/px = 2 uint32/px):
+// unpack the FP16 pair, tone-map (clamp*exposure -> sRGB OETF) to 8-bit RGB. Same math as
+// the A-path hdr_convert.comp. Source stride doubles (s[i*2+0],s[i*2+1]).
 //
 // Pack layout (4 px -> 3 uint32s, compatible with unpack_packed.comp):
 //   d[g*3+0] = r0|(g0<<8)|(b0<<16)|(r1<<24)
@@ -38,7 +35,7 @@ vec3 srgb_oetf(vec3 c) {
     return mix(b, a, vec3(lo));
 }
 
-// STAGE-34-3: one FP16 scRGB pixel (2 uint32) → tone-mapped 8-bit RGB (0..255).
+// one FP16 scRGB pixel (2 uint32) -> tone-mapped 8-bit RGB (0..255).
 uvec3 hdr_px(uint i, float expo) {
     vec2 rg = unpackHalf2x16(s[i*2u+0u]);   // R,G
     vec2 ba = unpackHalf2x16(s[i*2u+1u]);   // B,A

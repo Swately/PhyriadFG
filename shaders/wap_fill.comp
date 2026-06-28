@@ -1,29 +1,27 @@
-// apps/render_assistant/shaders/wap_fill.comp
-// STAGE-A-FILL (P1): the 4090 gap-aware refine pass — P1 form = the iGPU-field VISUALIZER, PHASE-ADVECTED.
-// Runs in-place on wapOutA between the warp dispatch and the present blit (the SAME A.q submit, no host
-// bounce, sub-frame compute latency — refine-not-cascade, NEVER a look-ahead frame).
+// wap_fill.comp
+// The 4090 gap-aware refine pass — the iGPU-field contour visualizer, phase-advected. Runs in-place
+// on the warp output between the warp dispatch and the present blit (the same 4090 graphics-queue
+// submit, no host bounce, sub-frame compute latency — a refine pass, never a look-ahead frame).
 //
-// The iGPU contour field (STAGE-G1, in wapFIELDA) is the Sobel of the REAL cur frame (phase=1). The present
-// pixel p is the WARPED frame at phase t — the warp samples cur at p + (1-t)*mv. So the contour for present-p
-// lives in the field at p + (1-t)*mv. We ADVECT the field lookup there (using the warp's own MV + phase), so
-// the contour lands ON the warped object instead of LEADING it by (1-t)*motion. That lead is the exact
-// misalignment that made the matte mark the object's leading band as figure -> doubling -> the crossfade
-// (operator's 2026-06-15 finding). Aligning the field is the foundation P2's real directional deghost needs.
+// The iGPU contour field is the Sobel of the REAL cur frame (phase=1). The present pixel p is the
+// WARPED frame at phase t — the warp samples cur at p + (1-t)*mv. So the contour for present-p lives
+// in the field at p + (1-t)*mv. We ADVECT the field lookup there (using the warp's own MV + phase), so
+// the contour lands ON the warped object instead of LEADING it by (1-t)*motion.
 //
-// Per-pixel (each invocation touches ONLY its own warp pixel => race-free in-place). fill_strength==0 OR
-// interior => byte-identical (the off-proof). Default-OFF behind --afill.
+// Per-pixel (each invocation touches ONLY its own warp pixel => race-free in-place). fill_strength==0
+// OR interior => byte-identical. Default OFF behind --afill.
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(binding = 0, rgba8) uniform image2D           u_warp;   // wapOutA, read-write in place
-layout(binding = 1, r32ui) uniform readonly uimage2D u_field;  // wapFIELDA: dist | occ<<8 (STAGE-G1, on cur)
+layout(binding = 1, r32ui) uniform readonly uimage2D u_field;  // contour field: dist | occ<<8 (Sobel of cur)
 layout(binding = 2)        uniform sampler2D          u_mv;     // wapMVA rg16f: A->B (prev->cur) MV, pixels
 layout(push_constant) uniform PC {
     uint  w;
     uint  h;
-    float fill_strength;   // 0 = byte-identical; >0 = tint visibility (adaptive in P3)
+    float fill_strength;   // 0 = byte-identical; >0 = tint visibility
     float edge_norm;       // contour-distance normalizer (~1/edge_thr), maps dist -> [0,1]
     float t;               // present phase in [0,1] (the warp's own t) — for field advection
-    float mv_gate;         // GATE STILL-PIXELS (idea del operador): |mv|(px) al que el tinte se desvanece a 0 (0 = sin gate)
+    float mv_gate;         // gate still-pixels: |mv| (px) at which the tint fades to 0 (0 = no gate)
 } pc;
 
 void main() {
@@ -37,19 +35,19 @@ void main() {
                            ivec2(0), ivec2(int(pc.w) - 1, int(pc.h) - 1));
 
     const uint  fld  = imageLoad(u_field, fp).r;
-    const float dist = float(fld & 0xffu);                       // STAGE-G1 contour strength 0..255
-    const uint  occ  = (fld >> 8u) & 0xffu;                       // 0 = interior, 1 = edge-band (P0 stub)
+    const float dist = float(fld & 0xffu);                       // contour strength 0..255
+    const uint  occ  = (fld >> 8u) & 0xffu;                       // 0 = interior, 1 = edge-band
 
     const float band = (occ != 0u) ? clamp(dist * pc.edge_norm, 0.0, 1.0) : 0.0;
     float wgt        = pc.fill_strength * band;
-    // GATE STILL-PIXELS (idea del operador): el motion-blur del juego borra los bordes de las zonas
-    // RÁPIDAS (gradiente bajo el umbral). Desvanecemos el tinte con |mv| para que el contorno PERSISTA
-    // en zonas QUIETAS (borde nítido) y se vaya donde el propio movimiento ya lo difuminó. mv_gate<=0 = sin gate.
+    // gate still-pixels: the game's motion blur erases edges in FAST regions (gradient below the
+    // threshold). Fade the tint by |mv| so the contour PERSISTS in STILL regions (sharp edge) and
+    // disappears where motion already blurred it. mv_gate<=0 = no gate.
     if (pc.mv_gate > 0.0) wgt *= clamp(1.0 - length(mv) / pc.mv_gate, 0.0, 1.0);
-    if (wgt < 1e-3) return;                                       // off-proof: nothing to do => byte-identical
+    if (wgt < 1e-3) return;                                       // nothing to do => byte-identical
 
     const vec4 c    = imageLoad(u_warp, p);
-    const vec4 tint = vec4(0.0, 1.0, 0.0, 1.0);                   // P1 debug overlay: green contour
+    const vec4 tint = vec4(0.0, 1.0, 0.0, 1.0);                   // debug overlay: green contour
     imageStore(u_warp, p, mix(c, tint, wgt));
 }
 // Made with my soul - Swately <3

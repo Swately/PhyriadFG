@@ -1,13 +1,12 @@
-// PhyriadFG instrument layer (STEP 4b — PURE RELOCATION from src/core/main.cpp; no logic
-// change). Bodies of the dump helpers declared in instrument/instrument.hpp. Both were file-
-// static in main.cpp; they get external linkage here (main calls them).
+// PhyriadFG instrument layer. Bodies of the diagnostic frame-dump helpers declared in
+// instrument/instrument.hpp.
 #include "instrument/instrument.hpp"
 #include <cstdio>     // std::fopen / std::fwrite / std::fclose
 #include <cstring>    // std::memcpy (dump_bmp header build)
 #include <vector>     // std::vector<uint8_t> row (dump_bmp)
 
-// STAGE-39b: diagnostic frame dump — 32bpp top-down BMP from an RGBA host buffer.
-// frames/ is gitignored; written synchronously in P (pacing is irrelevant in dump runs).
+// Diagnostic frame dump — 32bpp top-down BMP from an RGBA host buffer. Written synchronously in P
+// (pacing is irrelevant in dump runs).
 void dump_bmp(const char* path,const uint8_t* rgba,uint32_t w,uint32_t h){
     FILE* f=std::fopen(path,"wb"); if(!f) return;
     const uint32_t img=w*h*4u, fsz=54u+img, off=54u, ihsz=40u;
@@ -24,11 +23,11 @@ void dump_bmp(const char* path,const uint8_t* rgba,uint32_t w,uint32_t h){
         std::fwrite(row.data(),1,row.size(),f); }
     std::fclose(f);
 }
-// §11.4 layer 1 (--qdump): raw RGBA8 dump — W*H*4 bytes, row-major, NO header. The source host buffer
-// holds the warp images' bytes in RGBA8 order (wapPrevA/wapCurA/wapOutA are all VK_FORMAT_R8G8B8A8_UNORM,
-// created at main.cpp:2624/2625/2629), so this writes them VERBATIM — NO channel swap. This is the inverse
-// decision from dump_bmp above, which swaps R↔B (row[0]=s[2]) because the .bmp format stores BGRA; the
-// fg_quality_scorer's read_file expects RGBA8 (stage11/main.cpp:59-68), so the .rgba must NOT be swapped.
+// --qdump: raw RGBA8 dump — W*H*4 bytes, row-major, NO header. The source host buffer holds the warp
+// images' bytes in RGBA8 order (wapPrevA/wapCurA/wapOutA are VK_FORMAT_R8G8B8A8_UNORM), so this writes
+// them verbatim — NO channel swap. This is the inverse of dump_bmp above, which swaps R↔B (row[0]=s[2])
+// because the .bmp format stores BGRA; the fg_quality_scorer's read_file expects RGBA8, so the .rgba
+// must NOT be swapped.
 void dump_rgba(const char* path,const uint8_t* rgba,uint32_t w,uint32_t h){
     FILE* f=std::fopen(path,"wb"); if(!f) return;
     std::fwrite(rgba,1,(size_t)w*h*4u,f);

@@ -1,42 +1,35 @@
 #pragma once
-// PhyriadFG flow layer (STEP 4a of the layered separation — PURE RELOCATION from
-// src/core/main.cpp; no logic change). The FLOW factories/structs: the CPU IRLS affine
-// global-motion fit (gme_fit_affine), the VK_NV_optical_flow provider (NvofaProvider +
-// create/alloc/write_set/destroy + the nvofa_run TEMPLATE), the temporal-MV EMA pipe
-// (MvSmoothPipe), the gme-gpu affine fit on device B (GmePipe + gme_record), and the MV
-// vector-median consensus (MedianPipe). The struct defs + the nvofa_run template live here;
-// the non-template factory bodies live in flow.cpp. Factories take the SPIR-V as a
-// std::vector<uint32_t>& (main.cpp builds the vectors from the *_spv.hpp constants), so this
-// layer pulls NO shader headers.
+// PhyriadFG flow layer. The FLOW factories/structs: the CPU IRLS affine global-motion fit
+// (gme_fit_affine), the VK_NV_optical_flow provider (NvofaProvider + create/alloc/write_set/destroy
+// + the nvofa_run TEMPLATE), the temporal-MV EMA pipe (MvSmoothPipe), the gme-gpu affine fit on
+// device B (GmePipe + gme_record), and the MV vector-median consensus (MedianPipe). The struct defs
+// + the nvofa_run template live here; the non-template factory bodies live in flow.cpp. Factories
+// take the SPIR-V as a std::vector<uint32_t>& (main.cpp builds the vectors from the *_spv.hpp
+// constants), so this layer pulls no shader headers.
 #include "core/device.hpp"        // VDev (every factory takes VDev&)
 #include "core/vk_util.hpp"        // Img/HBuf + img_barrier (nvofa_run template) + dbuf/hbuf helpers
 #include "core/globals.hpp"        // vk_live (used inside the nvofa_run template body)
 #include <vulkan/vulkan.h>
 #include <cstdint>
 #include <vector>
-#include "core/fg_context.hpp"     // STEP 5.3: FgContext (run_flow's shared main()-locals as refs)
+#include "core/fg_context.hpp"     // FgContext (run_flow's shared main()-locals as refs)
 
-// kGenRing (F->P interp generation-ring depth) relocated from main.cpp (STEP 4a): GmePipe's
-// dset[kGenRing][2] + gme_create's dis_fwd/dis_bwd[kGenRing] need it at the declaration site.
-// STAGE-39c: F→P interp GENERATION ring depth. Was 2, which assumed P's presentation
-// window = 1 source period — but R1 paces a span-S set over S×T while F (capture-paced)
-// builds a set per period: at span≥2, F wrapped the ring and OVERWROTE the generation P
-// was still presenting (duck-tracker forensics: presented buffers 4-6 of a span-3 set
-// held the NEXT-NEXT set's early phases — checksum-exact). Depth 3 covers the common
-// overload spans; the F-side guard on P's active set covers the rest.
+// kGenRing — F→P interp GENERATION ring depth. GmePipe's dset[kGenRing][2] + gme_create's
+// dis_fwd/dis_bwd[kGenRing] need it at the declaration site. Depth must exceed 1 because P paces a
+// span-S set over S×T while F (capture-paced) builds a set per period: at span≥2 a depth-2 ring lets
+// F wrap and overwrite the generation P is still presenting. Depth 3 covers the common overload
+// spans; the F-side guard on P's active set covers the rest.
 static constexpr int kGenRing=3;
 
-// STAGE-61: the object-holon constants. Fixed at v1 (the marker prints them verbatim — see the
-// FG-print object_buf). kObjSlots = the temporal-identity table width (16 tracked objects max,
-// the kickoff's k:16). kObjMinMass = a cluster is ignored below 6 member blocks (min:6, kills
-// noise specks). kObjInhMin = the inheritance arms only on objects whose |mv_obj| ≥ 2px (inh:2px
-// — the moving-silhouette precondition). kObjStaticMax = a member block is "near-static" (the
-// cancellation signature) when its own |mv| ≤ 1px. kObjMatchRadius = the centroid-match gate in
-// BLOCK units (~6 blocks). kObjMaxMiss = a slot retires after 4 consecutive unmatched pairs.
-// kObjPersistShield = the HUD shield: persist[] ≥ 128 exempts a block from the repair (shield:per
-// — long static history wins over membership; a long degenerate phase fades the repair after ~8
-// pairs at +16/pair, the documented trade that protects every real HUD). kObjMvEma = the slot
-// mv smoothing (0.5) for advection stability.
+// The object-holon constants. kObjSlots = the temporal-identity table width (16 tracked objects max).
+// kObjMinMass = a cluster is ignored below 6 member blocks (kills noise specks). kObjInhMin = the
+// inheritance arms only on objects whose |mv_obj| ≥ 2px (the moving-silhouette precondition).
+// kObjStaticMax = a member block is "near-static" (the cancellation signature) when its own |mv| ≤ 1px.
+// kObjMatchRadius = the centroid-match gate in BLOCK units (~6 blocks). kObjMaxMiss = a slot retires
+// after 4 consecutive unmatched pairs. kObjPersistShield = the HUD shield: persist[] ≥ 128 exempts a
+// block from the repair (long static history wins over membership; a long degenerate phase fades the
+// repair after ~8 pairs at +16/pair, the trade that protects every real HUD). kObjMvEma = the slot mv
+// smoothing (0.5) for advection stability.
 static constexpr int   kObjSlots        = 16;
 static constexpr int   kObjMinMass      = 6;
 static constexpr float kObjInhMin       = 2.0f;   // px — object must move this fast to arm inheritance
@@ -45,37 +38,33 @@ static constexpr float kObjMatchRadius  = 6.0f;   // block units — centroid ma
 static constexpr int   kObjMaxMiss      = 4;      // retire a slot after this many misses
 static constexpr int   kObjPersistShield= 128;    // persist[] ≥ this exempts a block (the HUD shield)
 static constexpr float kObjMvEma        = 0.5f;   // slot mv EMA weight
-// STAGE-65: the stigmergy-expiration constants (the operator's principle: derived memories EXPIRE on
-// CONTRADICTION instead of decaying through it — EMA for noise, expiration for contradiction; the same
-// asymmetry STAGE-57's inertia already uses, generalized to the content-decision EMAs).
+// The stigmergy-expiration constants: derived memories EXPIRE on CONTRADICTION instead of decaying
+// through it — EMA for noise, expiration for contradiction (the same asymmetry the inertia mask uses,
+// generalized to the content-decision EMAs).
 static constexpr float  kObjMvExpirePx  = 4.0f;   // slot-MV innovation (px) beyond which the memory expires
 static constexpr double kMassErrExpire  = 1.0;    // mass-feedback |err−ema| innovation that expires the EMA
-// STAGE-66: the scene-holon's silhouette-memory constant. The persistent CUR-anchored silhouette
-// prior (a byte array in the SAME 16·r quantization the dissidence masks use) is the holon's belief;
-// the STAGE-65 expiration rule is its belief-update protocol (built before the memory it protects).
-// kPriorDecay = the UNCONDITIONAL per-pair decay floor an UNCONFIRMED memory suffers: prior ·= 0.55
-// each pair (STAGE-67: was 0.75), so a silhouette that stops being refreshed dies in ~⌈log_0.55(thr/255)⌉
-// ≈ 3 pairs at the matte cutoff (0.55³ ≈ 0.166; a mid-byte ~128 falls under a thr=0.25 cutoff (64) inside
-// ~2 pairs). STAGE-67 shortens the unconfirmed-memory WAKE tail (~5→~3 pairs): the STAGE-67 matte fix
-// makes the remembered wake HARMLESS for the OBJECT layer anyway (the traveling silhouette no longer
-// paints object into the swept band), so this only trims the crescent-evidence tail. The armed-rim
-// confirmation path is UNAFFECTED — a moving rim re-confirms its memory each pair via the max(fresh,·).
-// The decay is the floor; the expiration rule (fresh-low AND |mv|>kObjStaticMax ⇒ instant 0) is the kill.
-static constexpr double kPriorDecay     = 0.55;   // STAGE-66/67: unconfirmed silhouette-prior per-pair decay
+// The scene-holon's silhouette-memory constant. The persistent CUR-anchored silhouette prior (a byte
+// array in the SAME 16·r quantization the dissidence masks use) is the holon's belief; the expiration
+// rule above is its belief-update protocol. kPriorDecay = the UNCONDITIONAL per-pair decay floor an
+// UNCONFIRMED memory suffers: prior ·= 0.55 each pair, so a silhouette that stops being refreshed dies
+// in ~⌈log_0.55(thr/255)⌉ ≈ 3 pairs at the matte cutoff (0.55³ ≈ 0.166; a mid-byte ~128 falls under a
+// thr=0.25 cutoff (64) inside ~2 pairs). The armed-rim confirmation path is UNAFFECTED — a moving rim
+// re-confirms its memory each pair via the max(fresh,·). The decay is the floor; the expiration rule
+// (fresh-low AND |mv|>kObjStaticMax ⇒ instant 0) is the kill.
+static constexpr double kPriorDecay     = 0.55;   // unconfirmed silhouette-prior per-pair decay
 
-// STAGE-63: the contour shape-field constants. The closed contour casts a distance + feature
-// transform inward over the FILLED silhouette (chamfer integer weights 3 orthogonal / 4 diagonal,
-// 2-pass bbox-bounded), so every interior block knows its distance to the rim AND its nearest rim
-// block (whose MEASURED MV is the contour's instrument). kChamfOrtho/kChamfDiag = the chamfer step
-// weights (3-4 chamfer ≈ Euclidean to ~2%). kObjShapeDepthMin = the depth gate: only blocks at
-// chamfer dist ≥ this (≥1 block off the rim, since the nearest orthogonal step is 3) get repaired —
-// the rim band is the operator's stable contour and is NEVER rewritten. kChamfWMax = the
-// inheritance blend normalizer (3·4=12): w = clamp(dist/kChamfWMax, 0, 1) grades the mix from the
-// nearest rim sector (near the contour, rotation/scaling correct) to the slot mean (deep interior,
-// the stable EMA). kObjRimSpreadMin = the generalized arming threshold: a scaling/rotating object
-// can have mean mv ≈ 0 yet a live rim field, so arm iff |mv_obj_slot| ≥ kObjInhMin OR the rim MV
-// spread ≥ this. kObjRimSpreadSamples = the cap on rim blocks scanned for that spread (32 — the
-// pairwise scan is O(n²) so it is bounded; the rim is stride-subsampled when larger).
+// The contour shape-field constants. The closed contour casts a distance + feature transform inward
+// over the FILLED silhouette (chamfer integer weights 3 orthogonal / 4 diagonal, 2-pass bbox-bounded),
+// so every interior block knows its distance to the rim AND its nearest rim block (whose MEASURED MV is
+// the contour's instrument). kChamfOrtho/kChamfDiag = the chamfer step weights (3-4 chamfer ≈ Euclidean
+// to ~2%). kObjShapeDepthMin = the depth gate: only blocks at chamfer dist ≥ this (≥1 block off the rim,
+// since the nearest orthogonal step is 3) get repaired — the rim band is the stable contour and is NEVER
+// rewritten. kChamfWMax = the inheritance blend normalizer (3·4=12): w = clamp(dist/kChamfWMax, 0, 1)
+// grades the mix from the nearest rim sector (near the contour, rotation/scaling correct) to the slot
+// mean (deep interior, the stable EMA). kObjRimSpreadMin = the generalized arming threshold: a
+// scaling/rotating object can have mean mv ≈ 0 yet a live rim field, so arm iff |mv_obj_slot| ≥ kObjInhMin
+// OR the rim MV spread ≥ this. kObjRimSpreadSamples = the cap on rim blocks scanned for that spread (32 —
+// the pairwise scan is O(n²) so it is bounded; the rim is stride-subsampled when larger).
 static constexpr int   kChamfOrtho      = 3;      // chamfer orthogonal step weight
 static constexpr int   kChamfDiag       = 4;      // chamfer diagonal step weight
 static constexpr int   kObjShapeDepthMin= 3;      // chamfer dist ≥ this → strictly interior (rim band protected)
@@ -86,21 +75,19 @@ static constexpr int   kObjRimSpreadSamples = 32; // cap on rim blocks scanned f
 double gme_fit_affine(const void* mv_raw, const void* sad_raw, uint32_t mvw, uint32_t mvh,
                       float out6[6], uint8_t* dis_out, bool sub2, int irls_iters=3);
 
-// ── STAGE-115 (--nvofa): the NVIDIA hardware Optical Flow Accelerator FLOW PROVIDER ─────────────────
+// ── --nvofa: the NVIDIA hardware Optical Flow Accelerator FLOW PROVIDER ─────────────────
 // A drop-in replacement for ofp.record_optical_flow that produces the OFP CONTRACT (writes the OFP's OWN
 // motion_image()/sad_field_image() in place), so every downstream consumer (warp/gme/bg-snap/matte/host
-// bridges) reads it UNCHANGED. Only ever constructed + used when --nvofa armed AND device A exposes
-// VK_NV_optical_flow AND single_gpu (FD==A — the OFA is 4090-only; §3.3). The default path never touches it.
+// bridges) reads it UNCHANGED. Only constructed + used when --nvofa armed AND device A exposes
+// VK_NV_optical_flow AND single_gpu (FD==A — the OFA is 4090-only). The default path never touches it.
 //
 // Per pair (run()): (1) downscale-blit the captured pair into the OFA input images (mvw*4 x mvh*4, BGRA8,
 // GENERAL); (2) vkCmdOpticalFlowExecuteNV on the OFA queue (its own family) → S10.5 flow + R8 cost at the
 // mvw x mvh grid; (3) a convert compute pass (FD.q2) lands flow->RG16F MV (WW_flow px), cost->sad_best, and
 // a SEPARATE |A-B| reduction -> sad_zero into the OFP images, leaving them SHADER_READ_ONLY_OPTIMAL (the
-// exact post-record_optical_flow layout). STAGE-115b: the prep/OFA/convert stages chain on the GPU via two
-// BINARY semaphores (semPrep: prep→OFA; semOfa: OFA→convert) so the F-thread issues 3 submits and blocks ONCE
-// (on fConv) instead of three — removing the v1 preflow spike (2 CPU round-trips + inter-submit GPU idle) and
-// letting the OFA(own queue)+convert overlap the warp on A.q. The OFA(~1.1ms 1080p)+converts are far under the
-// 7.5ms classical flow it replaces.
+// exact post-record_optical_flow layout). The prep/OFA/convert stages chain on the GPU via two BINARY
+// semaphores (semPrep: prep→OFA; semOfa: OFA→convert) so the F-thread issues 3 submits and blocks ONCE
+// (on fConv) instead of three, letting the OFA (own queue) + convert overlap the warp on A.q.
 struct NvofaProvider {
     bool ok=false, bidir=false;
     uint32_t mvw=0, mvh=0;       // the MV grid (== OFP motion_width/height)
@@ -120,12 +107,12 @@ struct NvofaProvider {
     VkDescriptorSetLayout dsl=VK_NULL_HANDLE; VkPipelineLayout layout=VK_NULL_HANDLE; VkPipeline pipe=VK_NULL_HANDLE;
     VkDescriptorPool dp=VK_NULL_HANDLE; VkDescriptorSet setF=VK_NULL_HANDLE, setB=VK_NULL_HANDLE;
     VkCommandBuffer cmdPrep=VK_NULL_HANDLE, cmdOfa=VK_NULL_HANDLE, cmdConv=VK_NULL_HANDLE;
-    VkCommandPool pool=VK_NULL_HANDLE;   // STAGE-115 fix: F-thread-private pool for cmdPrep/cmdConv (NOT d.pool = P's present pool — the MultipleThreads-Write race)
+    VkCommandPool pool=VK_NULL_HANDLE;   // F-thread-private pool for cmdPrep/cmdConv (NOT d.pool = P's present pool — avoids the multi-thread command-pool write race)
     VkFence fPrep=VK_NULL_HANDLE, fOfa=VK_NULL_HANDLE, fConv=VK_NULL_HANDLE;
-    // STAGE-115b (semaphore chain): two BINARY semaphores so the 3 data-dependent submits (prep→OFA→convert)
-    // chain on the GPU with ONE CPU fence wait (fConv) instead of three. semPrep: prep(A.q2)→OFA(ofaQueue);
-    // semOfa: OFA(ofaQueue)→convert(A.q2). Reusable each pair: the F-thread blocks on fConv at the end of
-    // nvofa_run, so all 3 prior submits have retired and both semaphores are back unsignaled before the next pair.
+    // Semaphore chain: two BINARY semaphores so the 3 data-dependent submits (prep→OFA→convert) chain on the
+    // GPU with ONE CPU fence wait (fConv) instead of three. semPrep: prep(A.q2)→OFA(ofaQueue); semOfa:
+    // OFA(ofaQueue)→convert(A.q2). Reusable each pair: the F-thread blocks on fConv at the end of nvofa_run,
+    // so all 3 prior submits have retired and both semaphores are back unsignaled before the next pair.
     VkSemaphore semPrep=VK_NULL_HANDLE, semOfa=VK_NULL_HANDLE;
 };
 
@@ -141,14 +128,12 @@ bool nvofa_alloc_cmds(VDev& d,NvofaProvider& n);
 // (ofp.motion_image()/sad_field_image() for fwd; or the SAME for bwd — the caller copies between). use_bwd
 // selects the OFA backward outputs.
 //
-// STAGE-115b (semaphore chain): the three data-dependent stages (prep→OFA→convert) chain on the GPU with a
-// pair of BINARY semaphores so the F-thread issues 3 submits and blocks ONCE (on fConv at the end) instead of
-// three times. (1) cmdPrep → A.q2 (under a_q2_mtx, SUBMIT ONLY), SIGNAL semPrep, no fence. (2) cmdOfa →
-// d.ofaQueue (LOCK-FREE — its own family), WAIT semPrep, SIGNAL semOfa, no CPU wait. (3) cmdConv → A.q2 (under
-// a_q2_mtx, SUBMIT ONLY), WAIT semOfa, FENCE fConv. Then one vkWaitForFences(fConv). The GPU wall-clock stays
-// ~prep+OFA+convert (they ARE serial — convert needs OFA needs prep), but the 2 CPU round-trips + the
-// inter-submit GPU idle (the preflow spike) are gone, and the OFA(own queue)+convert overlap the warp on A.q.
-// Leaves mvOut/sadOut in SHADER_READ_ONLY_OPTIMAL.
+// The three data-dependent stages (prep→OFA→convert) chain on the GPU with a pair of BINARY semaphores so
+// the F-thread issues 3 submits and blocks ONCE (on fConv at the end) instead of three times. (1) cmdPrep →
+// A.q2 (under a_q2_mtx, SUBMIT ONLY), SIGNAL semPrep, no fence. (2) cmdOfa → d.ofaQueue (LOCK-FREE — its own
+// family), WAIT semPrep, SIGNAL semOfa, no CPU wait. (3) cmdConv → A.q2 (under a_q2_mtx, SUBMIT ONLY), WAIT
+// semOfa, FENCE fConv. Then one vkWaitForFences(fConv). The stages ARE serial (convert needs OFA needs prep),
+// but the OFA (own queue) + convert overlap the warp on A.q. Leaves mvOut/sadOut in SHADER_READ_ONLY_OPTIMAL.
 //
 // q2_submit: a caller callable that submits ONE cmd to A.q2 UNDER a_q2_mtx (shared with C's convert) with
 // {waitSem, waitStage, signalSem, fence} — submit only, NO wait under the lock. The OFA-queue submit + the
@@ -217,21 +202,21 @@ void nvofa_run(VDev& d,NvofaProvider& n,VkImage src_a,VkImage src_b,uint32_t src
     (void)mvOutView; (void)sadOutView;
 }
 
-// STAGE-35-R2: temporal MV smoothing pipeline — 2 storage-image bindings (mv in/out, prev in/out),
-// 16-byte push {alpha,cut,w,h}. mv_view is a STORAGE view aliasing OFP's motion_image() (which is
-// created STORAGE|SAMPLED|TRANSFER_SRC — a storage view is legal); prev is an app-owned RG16F image.
+// Temporal MV smoothing pipeline — 2 storage-image bindings (mv in/out, prev in/out), 16-byte push
+// {alpha,cut,w,h}. mv_view is a STORAGE view aliasing OFP's motion_image() (which is created
+// STORAGE|SAMPLED|TRANSFER_SRC — a storage view is legal); prev is an app-owned RG16F image.
 struct MvSmoothPipe { VkDescriptorSetLayout dsl=VK_NULL_HANDLE; VkPipelineLayout layout=VK_NULL_HANDLE; VkPipeline pipe=VK_NULL_HANDLE; VkDescriptorPool pool=VK_NULL_HANDLE; VkDescriptorSet set=VK_NULL_HANDLE; VkImageView mv_store=VK_NULL_HANDLE; };
 bool mvsm_create(VDev& d,VkImage mv_img,VkImageView prev_view,const std::vector<uint32_t>& spv,MvSmoothPipe& p);
 void mvsm_destroy(VDev& d,MvSmoothPipe& p);
 
-// ── IDEA-1 (gme-gpu): the global-motion affine-fit pipeline set, run ON DEVICE B. ──────────────────
+// ── gme-gpu: the global-motion affine-fit pipeline set, run ON DEVICE B. ──────────────────
 // Three chained compute passes (reduce → solve → dissidence) replace the CPU gme_fit_affine. They
 // share two SMALL device-local SSBOs (Accum: 12 floats; Model: 6 floats) and read the OFP MV/SAD as
-// STORAGE views (the OFP images are STORAGE|SAMPLED|TRANSFER_SRC — storage views are legal, the
-// mv_smooth precedent). The dissidence pass writes the R8 mask DIRECTLY into the host-imported hostDIS
-// bridge (imported on B as a STORAGE buffer; packed 4 bytes/uint via atomicOr after a host fill-0) —
-// no device-local mask image, no copy-out: B writes straight into the host-coherent buffer F reads and
-// A uploads. R8_UNORM storage IMAGES are not mandatory (portability) — the packed-uint SSBO avoids that.
+// STORAGE views (the OFP images are STORAGE|SAMPLED|TRANSFER_SRC — storage views are legal). The
+// dissidence pass writes the R8 mask DIRECTLY into the host-imported hostDIS bridge (imported on B as a
+// STORAGE buffer; packed 4 bytes/uint via atomicOr after a host fill-0) — no device-local mask image,
+// no copy-out: B writes straight into the host-coherent buffer F reads and A uploads. R8_UNORM storage
+// IMAGES are not mandatory (portability) — the packed-uint SSBO avoids that.
 //   reduce      set: {0 storage_image MV (rg16f), 1 ssbo Accum, 2 ssbo Model}  push{mvw,mvh,step,iter}
 //   solve       set: {0 ssbo Accum, 1 ssbo Model}                              (no push)
 //   dissidence  set: {0 storage_image MV, 1 storage_image SAD, 2 ssbo DisMask (per gen×anchor),
@@ -262,18 +247,18 @@ void gme_record(VkCommandBuffer cmd,GmePipe& g,VkImage mv_img,VkImage sad_img,
                 int gen,int anchor,VkBuffer dis_buf,VkDeviceSize dis_bytes,
                 VkBuffer model_dst,int irls_iters);
 
-// STAGE-49b/c: MV vector-median / color-guided consensus pipeline (A) — 1 combined-image-sampler
-// (MV field, sampled RO) + 1 RG16F storage out (the scratch) + (STAGE-49c) 1 combined-image-
-// sampler for cur_real (binding 2, the color-membership reference) and a 4-byte push {sim_thresh}.
-// ONE pipeline + TWO descriptor sets: set[0] reads wapMVA, set[1] reads wapMVBA (bidir) — the out
-// view (scratch) and the cur_real view are the SAME for both. The dispatch ping-pongs scratch back
-// into the MV image host-side (copy), so a single scratch + a per-source set is correct and minimal.
-// sim_thresh push = 0 → the blind McGuire median (49b, byte-identical); > 0 → color-weighted
-// consensus (49c). cur_real (binding 2) is bound regardless (a valid image); unread when sim==0.
+// MV vector-median / color-guided consensus pipeline (A) — 1 combined-image-sampler (MV field,
+// sampled RO) + 1 RG16F storage out (the scratch) + 1 combined-image-sampler for cur_real (binding 2,
+// the color-membership reference) and a 4-byte push {sim_thresh}. ONE pipeline + TWO descriptor sets:
+// set[0] reads wapMVA, set[1] reads wapMVBA (bidir) — the out view (scratch) and the cur_real view are
+// the SAME for both. The dispatch ping-pongs scratch back into the MV image host-side (copy), so a
+// single scratch + a per-source set is correct and minimal. sim_thresh push = 0 → the blind McGuire
+// median (byte-identical); > 0 → color-weighted consensus. cur_real (binding 2) is bound regardless
+// (a valid image); unread when sim==0.
 struct MedianPipe { VkSampler samp=VK_NULL_HANDLE; VkDescriptorSetLayout dsl=VK_NULL_HANDLE; VkPipelineLayout layout=VK_NULL_HANDLE; VkPipeline pipe=VK_NULL_HANDLE; VkDescriptorPool pool=VK_NULL_HANDLE; VkDescriptorSet set_mv=VK_NULL_HANDLE; VkDescriptorSet set_mvb=VK_NULL_HANDLE; };
 bool med_create(VDev& d,VkImageView mv_v,VkImageView mvb_v,VkImageView cur_v,VkImageView out_v,bool with_mvb,const std::vector<uint32_t>& spv,MedianPipe& p);
 void med_destroy(VDev& d,MedianPipe& p);
 
-// ── Thread F — run_flow (STEP 5.3: VERBATIM relocation of main()'s thr_f_fn lambda; no logic
-//    change). main() builds FgContext ctx and launches std::thread thr_f(run_flow, std::ref(ctx)).
+// ── Thread F — run_flow. main() builds FgContext ctx and launches
+//    std::thread thr_f(run_flow, std::ref(ctx)).
 void run_flow(FgContext& ctx);

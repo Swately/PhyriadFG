@@ -1,16 +1,12 @@
-// apps/render_assistant/shaders/igpu_field.comp
-// STAGE-G1 (P0): iGPU image-derived contour field producer — the stigmergic substrate
-// pass. Runs as a SECOND dispatch on G.q2 right after igpu_convert_pack, consuming the
-// iGPU's between-source-frame idle. Reads the convert's RGBA8 output (hostR, 1 uint/px,
-// sysRAM SSBO, zero PCIe) and writes a per-pixel field (hostFIELD, 1 uint/px):
-//   byte 0 = contour_dist  : luma-gradient (Sobel) magnitude 0..255 — the image-edge response.
-//   byte 1 = occ_class     : P0 stub — 1 = edge-band (mag >= edge_thr), 0 = interior.
-// P0 scope: a single-pass per-pixel edge field, trivially reproducible by a CPU reference
-// (the --igpu-field-verify gate, D-13). The richer occ/disocclusion classification + the
-// inward chamfer distance (mirroring main.cpp kChamfOrtho/kChamfDiag, the STAGE-63 analogue)
-// are later P0.x refinements; this is the minimal correct producer.
+// igpu_field.comp
+// iGPU image-derived contour field producer. Runs as a second dispatch right after
+// igpu_convert_pack, using the iGPU's between-frame idle. Reads the convert pass's RGBA8
+// output (host RGBA8 SSBO in sysRAM, zero PCIe) and writes a per-pixel field (1 uint/px):
+//   byte 0 = contour_dist : luma-gradient (Sobel) magnitude 0..255 — the image-edge response.
+//   byte 1 = occ_class    : 1 = edge-band (mag >= edge_thr), 0 = interior.
+// A single-pass per-pixel edge field, reproducible by a CPU reference (--igpu-field-verify).
 //
-// Default-OFF behind --igpu-field; when off this shader is never dispatched (byte-identical).
+// Default OFF behind --igpu-field; when off this shader is never dispatched (byte-identical).
 // SSBO/std430 + 1D dispatch mirror igpu_convert_pack.comp (the iGPU operates on host buffers,
 // not images).
 #version 450
@@ -49,7 +45,7 @@ void main() {
     const float mag = sqrt(gx * gx + gy * gy) * 0.25;   // Sobel range ~[0,1020] -> ~[0,255]
 
     const uint dist = uint(clamp(mag, 0.0, 255.0));
-    const uint occ  = (dist >= edge_thr) ? 1u : 0u;     // P0 stub: edge-band vs interior
+    const uint occ  = (dist >= edge_thr) ? 1u : 0u;     // edge-band vs interior
     f[i] = dist | (occ << 8u);
 }
 // Made with my soul - Swately <3

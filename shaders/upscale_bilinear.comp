@@ -1,4 +1,4 @@
-// apps/render_assistant/shaders/upscale_bilinear.comp
+// upscale_bilinear.comp
 // Bilinear upscale (any res → 2×). One invocation per OUTPUT pixel.
 // Bindings: set=0 b0=sampler2D src ; b1=rgba8 storage dst.
 #version 450

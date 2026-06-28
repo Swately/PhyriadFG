@@ -1,80 +1,70 @@
-// apps/render_assistant/shaders/mv_median.comp
-// STAGE-49b: 3x3 component-wise vector-median filter on an uploaded MV field.
+// shaders/mv_median.comp
+// 3x3 component-wise vector-median filter on the MV field.
 //
-// The flat-content blind spot (operator photo, 2026-06-12, the synthetic ball): a wrong
-// block MV that lands BOTH warp samples on identical flat content (yellow-yellow / bg-bg)
-// passes the d_ab photometric check with ~0, and the backward matcher fails identically on
-// the same flat content so the fwd<->bwd round-trip "closes" too — so neither the commit
-// trigger nor the bidir classifier can see the error. The artifacts are ISOLATED bad
-// vectors at the moving rim (block holes inside the object, detached block stamps outside).
-// Dossier F2 predicted it verbatim ("SAD fails at low local variation"); the production cure
-// is FIELD-LEVEL consensus (F9 vector-median): a stray vector that disagrees with its 8
-// neighbours is replaced by the neighbourhood median — content-independent, no photometry.
+// Why it exists: a wrong block MV that lands BOTH warp samples on identical flat content passes
+// the photometric check with ~0 error, and the backward matcher fails identically on the same
+// flat content so the forward/backward round-trip "closes" too — neither the commit trigger nor
+// the bidirectional classifier can see the error. The artifacts are isolated bad vectors at a
+// moving rim (block holes inside the object, detached block stamps outside). The cure is
+// FIELD-LEVEL consensus: a stray vector that disagrees with its 8 neighbours is replaced by the
+// neighbourhood median — content-independent, no photometry.
 //
 // Mechanism: per MV-grid texel, take the 3x3 neighbourhood and emit the per-component median
 // (the .x median of the 9 .x values, the .y median of the 9 .y values). This is the standard
-// cheap "vector-median approximation" (component-wise marginal median), not a true L1 vector
-// median — it is the form every production MCFI postfilter uses (Guo&Lu 2016, F9) because it
-// is separable and a single sorting network does it. Edge texels clamp (CLAMP_TO_EDGE sampler).
+// cheap component-wise vector-median approximation (marginal median), not a true L1 vector
+// median — the form production MCFI postfilters use, because it is separable and a single
+// sorting network does it. Edge texels clamp (CLAMP_TO_EDGE sampler).
 //
-// Median-of-9 algorithm: the canonical 19-compare-exchange network (the McGuire GPU median
-// net, "A Fast, Small-Radius GPU Median Filter"). It needs ONLY min/max — no full sort, no
-// shared memory, no branches — and lands the 5th-of-9 order statistic in slot p4 after 19
-// compare-exchanges. Each s2(a,b) is a vec2 min/max SWAP, so it processes the .x and .y
-// components at once: the .x median and the .y median fall out together (the component-wise
-// marginal median). VERIFIED (offline, 700k random/duplicate/float cases, 0 mismatches vs a
-// brute-force sort). Cost: 9 texture taps + 19 vec2 min/max per texel — negligible at
-// mvw*mvh (~32k texels at 1080p / 8).
+// Median-of-9 algorithm: the canonical 19-compare-exchange network (the McGuire GPU median net,
+// "A Fast, Small-Radius GPU Median Filter"). It needs ONLY min/max — no full sort, no shared
+// memory, no branches — and lands the 5th-of-9 order statistic in slot p4 after 19 compare-
+// exchanges. Each s2(a,b) is a vec2 min/max swap, so it processes the .x and .y components at
+// once: the .x median and the .y median fall out together. Cost: 9 texture taps + 19 vec2
+// min/max per texel.
 //
-// ── STAGE-49c: color-WEIGHTED consensus (push-selected, sim_thresh > 0.0) ─────────────────
-//   The blind 3x3 median (above) kills ISOLATED stray vectors, but COORDINATED rim errors
-//   survive: when several rim blocks are wrong TOGETHER (they agree on the wrong vector),
-//   neighbourhood consensus cannot fix peers that agree. The operator's contour-membership
-//   principle (2026-06-12 A/B): pixels belong to objects by COLOR-SIBLING relation; the
-//   contour is where that relation breaks; motion should be assigned by MEMBERSHIP, not by
-//   photometric measurement — which sidesteps the aperture problem (measuring an MV on flat
-//   yellow is impossible; INHERITING the yellow object's MV is trivial). Dossier backing:
-//   F1 halo fix = "a pixel disagreeing with its MV-consistent neighbour group gets that
-//   group's average" — exactly local intensity-membership segmentation; F4 = MV clustering +
-//   boundary-only refinement; the named production family is edge-aware/cross-bilateral MV
-//   filtering.
+// ── Color-weighted consensus (sim_thresh > 0.0, default OFF) ──────────────────────────────
+//   The blind 3x3 median kills ISOLATED stray vectors, but COORDINATED rim errors survive:
+//   when several rim blocks are wrong together (they agree on the wrong vector), neighbourhood
+//   consensus cannot fix peers that agree. This path assigns motion by colour MEMBERSHIP rather
+//   than by photometric measurement, which sidesteps the aperture problem (measuring an MV on
+//   flat colour is impossible; inheriting the object's MV is trivial). It is a cross-bilateral
+//   filter on the MV field, the weight being colour membership in cur_real.
 //
-//   Mechanism (cross-bilateral on the MV field, weight = color membership in cur_real):
-//     · c_self = cur_real sampled at THIS block's centre — the full-res uv of the block
-//       centre is (cell + 0.5) / mv_grid_size (the cell index is gl_GlobalInvocationID.xy,
-//       the grid is imageSize(u_mv_out)). One tap.
+//   Mechanism (weight = colour membership in cur_real):
+//     · c_self = cur_real sampled at THIS block's centre — the full-res uv of the block centre
+//       is (cell + 0.5) / mv_grid_size (the cell index is gl_GlobalInvocationID.xy, the grid is
+//       imageSize(u_mv_out)). One tap.
 //     · for each of the 8 neighbours j: c_j = cur_real at neighbour j's block centre (one tap
 //       each). Vote j is INCLUDED iff max-channel |c_self − c_j| ≤ sim_thresh (the same
-//       max-channel color metric the warp's d_ab uses — a color sibling is one whose
+//       max-channel colour metric the warp's d_ab uses — a colour sibling is one whose
 //       dominant-channel difference stays within the band; this is the membership test).
-//     · if FEWER than 3 neighbours are included (excluding self) → there is no color cohort
-//       to form a consensus across the contour → keep THIS block's own MV unchanged (the
-//       blind median would average across the contour, the exact error we are avoiding).
+//     · if FEWER than 3 neighbours are included (excluding self) → there is no colour cohort to
+//       form a consensus across the contour → fall back to the blind median over all 9 (a block
+//       with no cohort cannot vouch for its own vector either).
 //     · else → component-wise median over the INCLUDED votes + self (a variable-count set of
 //       4..9 elements). The fixed 9-element McGuire network cannot take a variable count, so
-//       we use a small insertion median: gather the included .x (and .y) into a local array,
+//       this uses a small insertion median: gather the included .x (and .y) into a local array,
 //       insertion-sort it, take the middle element (lower-median for even counts). At most 9
-//       elements in a compute shader — the insertion sort is a few dozen compare-swaps, the
-//       same order as the McGuire network, and is provably correct (it is a full sort, then
-//       the middle index). This is the form F1/F4 describe: the median of the COLOR-CONSISTENT
-//       neighbour group, not the spatial neighbourhood blindly.
+//       elements — a few dozen compare-swaps, correct by construction (a full sort then the
+//       middle index): the median of the colour-consistent neighbour group, not the spatial
+//       neighbourhood blindly.
 //
-//   sim_thresh == 0.0 (default OFF, = --mv-guided not set) takes the McGuire blind-median path
-//   above, BYTE-IDENTICAL to STAGE-49b. The cur_real sampler (binding 2) is still bound (a
-//   valid image) but UNREAD when off. When --mv-guided is given it REPLACES the blind median
-//   (the host sets sim_thresh > 0 → this branch; the app prints the precedence note).
+//   sim_thresh == 0.0 (default, --mv-guided not set) takes the McGuire blind-median path above,
+//   byte-identical to the blind filter. The cur_real sampler (binding 2) is still bound (a valid
+//   image) but UNREAD when off. When --mv-guided is given it REPLACES the blind median (the host
+//   sets sim_thresh > 0 → this branch).
 //
-// In/out: a SEPARATE scratch image (no in-place — every invocation reads a 3x3 neighbourhood
-// and writes its own texel; the host ping-pongs scratch -> the MV image after this pass).
+// In/out: a SEPARATE scratch image (no in-place — every invocation reads a 3x3 neighbourhood and
+// writes its own texel; the host ping-pongs scratch -> the MV image after this pass).
 #version 450
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(set = 0, binding = 0) uniform sampler2D u_mv_in;            // RG16F MV field (pixel units)
 layout(set = 0, binding = 1, rg16f) uniform writeonly image2D u_mv_out; // RG16F scratch
-layout(set = 0, binding = 2) uniform sampler2D u_cur_real;         // STAGE-49c: cur frame (membership color)
+layout(set = 0, binding = 2) uniform sampler2D u_cur_real;         // cur frame (membership color)
 layout(push_constant) uniform PushConsts {
-    float sim_thresh;   // STAGE-49c: 0 = blind McGuire median (default, byte-identical);
-                        // >0 = color-weighted consensus (max-channel membership band).
+    float sim_thresh;   // 0 = blind McGuire median (default); >0 = color-weighted consensus
+                        // (max-channel membership band).
 } pc;
 
 void main() {
@@ -94,7 +84,7 @@ void main() {
 
     vec2 out_mv;
     if (pc.sim_thresh > 0.0) {
-        // ── STAGE-49c: color-weighted consensus (membership-gated variable-count median) ────
+        // ── color-weighted consensus (membership-gated variable-count median) ────
         // c_self = cur_real at THIS block's centre. The mv-grid cell index IS coord; the
         // full-res uv of the cell centre is (coord + 0.5) / grid_size (the same mapping the
         // warp uses: uv = (out_coord + 0.5)/out_size, evaluated at the block-centre out-pixel).
@@ -120,12 +110,10 @@ void main() {
         }
 
         if (nneigh < 3) {
-            // 49c-fix (operator ball A/B round 3): "keep own MV" here PROTECTED bad rim
-            // vectors — their partial-weight blends downstream showed as a dim-yellow halo
-            // fringe. A block with no color cohort cannot vouch for its own vector either:
-            // fall back to the BLIND median over all 9 (emergency consensus beats
-            // self-protection; the cross-contour averaging it risks is the lesser,
-            // already-measured evil — the round-2 bitten chunks were smaller than the halo).
+            // A block with no color cohort cannot vouch for its own vector, so fall back to the
+            // blind median over all 9 rather than keeping its own MV. Keeping it would protect bad
+            // rim vectors, whose partial-weight blends downstream show as a dim-yellow halo fringe;
+            // emergency consensus is preferred even though it risks cross-contour averaging.
             for (int k = 0; k < 9; ++k) inc[k] = p[k];
             ninc = 9;
         }
@@ -149,7 +137,7 @@ void main() {
             out_mv = vec2(xs[ninc / 2], ys[ninc / 2]);   // lower-median for even counts
         }
     } else {
-        // ── STAGE-49b: blind McGuire 19-op median-of-9 (byte-identical default) ────────────
+        // ── blind McGuire 19-op median-of-9 (default) ────────────
         // s2(a,b) is a vec2 compare-exchange: p[a]<-min, p[b]<-max, applied componentwise so
         // .x and .y are sorted in lockstep. After the net, p[4] holds the per-component median.
         #define S2(a,b) { vec2 lo = min(p[a], p[b]); p[b] = max(p[a], p[b]); p[a] = lo; }

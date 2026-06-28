@@ -1,36 +1,35 @@
-// apps/render_assistant/shaders/nvofa_convert.comp
-// STAGE-115 (--nvofa): the CONVERT pass that lands the NVIDIA hardware Optical Flow Accelerator
-// (VK_NV_optical_flow) output onto the OpticalFlowPipeline CONTRACT so every downstream consumer
-// (the warp, gme_fit_affine, bg-snap, matte, the host MV/SAD bridges) reads it UNCHANGED.
+// nvofa_convert.comp
+// Convert pass for the NVIDIA hardware Optical Flow Accelerator (VK_NV_optical_flow): lands the OFA
+// output onto the OpticalFlowPipeline contract so every downstream consumer (warp, gme_fit_affine,
+// bg-snap, matte, the host MV/SAD bridges) reads it unchanged.
 //
-// It writes the OFP's OWN images in place (motion_image()/sad_field_image(), both RG16F STORAGE),
-// so the path after this dispatch is byte-identical to the classical record_optical_flow() output
-// shape. This shader is only ever recorded when --nvofa armed AND the device exposed VK_NV_optical_flow.
+// Writes the OFP's own images in place (motion_image()/sad_field_image(), both RG16F STORAGE), so the
+// path after this dispatch matches the software flow path's output shape. Recorded only when --nvofa is
+// armed AND the device exposes VK_NV_optical_flow.
 //
-// GRID: the OFA session is created at (mvw*4)x(mvh*4) with a 4x4 output grid, so its flow/cost grid is
-//   EXACTLY mvw x mvh (one texel per OFP MV tile). This convert dispatches over mvw x mvh and reads the
+// GRID: the OFA session runs at (mvw*4)x(mvh*4) with a 4x4 output grid, so its flow/cost grid is
+//   exactly mvw x mvh (one texel per OFP MV tile). This pass dispatches over mvw x mvh and reads the
 //   OFA texel 1:1 (integer imageLoad, no sampling/filtering — the grids coincide).
 //
-// MV decode + units: the OFA flow is R16G16_SFIXED5_NV (S10.5 fixed point). The image is bound here
-//   through a MUTABLE_FORMAT view as rg16i, so imageLoad returns the raw int16 components; raw/32.0 =
-//   pixels in the OFA INPUT's pixel space (the (mvw*4)-wide downscaled pair). The classical OFP, fed the
-//   same downscaled pair (Bflow at WW_flow), writes MV in WW_flow pixel units; so we rescale the OFA MV
-//   by mv_scale = WW_flow/(mvw*4) to land in the SAME WW_flow pixel units the classical path produces
-//   (at flow_div==1, WW_flow==WW, mvw=(WW+7)/8 → mvw*4=960 for WW=1920 → mv_scale=2.0 exactly).
+// MV decode + units: the OFA flow is R16G16_SFIXED5_NV (S10.5 fixed point), bound here through a
+//   MUTABLE_FORMAT view as rg16i, so imageLoad returns the raw int16 components; raw/32.0 = pixels in
+//   the OFA INPUT's pixel space (the (mvw*4)-wide downscaled pair). The software flow path writes MV in
+//   WW_flow pixel units, so we rescale the OFA MV by mv_scale = WW_flow/(mvw*4) to land in the same
+//   WW_flow pixel units (at flow_div==1, WW_flow==WW, mvw=(WW+7)/8 → mvw*4=960 for WW=1920 →
+//   mv_scale=2.0 exactly).
 //
-// sad_best (R of the SAD field): a CALIBRATED remap of the OFA 8-bit cost (R8_UINT, 0..255, higher=worse;
-//   NOT a literal SAD). sad_best = cost * cost_scale. The OFP confidence gate (residual_ceil in [0,192],
-//   sad_zero*(1-improvement_frac)>sad_best) consumes it. cost_scale is a PLACEHOLDER that needs the
-//   operator's eye-calibration (see the push `cost_scale`; default set host-side, documented).
+// sad_best (R of the SAD field): calibrated remap of the OFA 8-bit cost (R8_UINT, 0..255, higher=worse;
+//   not a literal SAD). sad_best = cost * cost_scale. The OFP confidence gate (residual_ceil in [0,192],
+//   sad_zero*(1-improvement_frac)>sad_best) consumes it. cost_scale is a tunable calibration scale (set host-side).
 //
-// sad_zero (G of the SAD field): the OFA gives NOTHING for the in-place residual (the change-gate the
-//   gme/dissidence/stasis logic needs). We synthesize it here with a SEPARATE |A-B| reduction over the
-//   block. The classical sad_zero = SUM over an 8x8 WW_flow-res block of (|dR|+|dG|+|dB|), channels in
-//   [0,1] → range [0,192]. We are at the OFA INPUT resolution (~WW_flow/2), so one input texel covers
-//   ~2x2 WW_flow texels; we sum |A-B| over the BLK x BLK input block under this tile and multiply by
-//   sad_zero_scale to approximate the WW_flow 8x8 SUM magnitude (BLK=mvw*4/mvw=4 input texels/tile;
-//   pixel-count ratio (8*8)/(BLK*BLK)=4 at flow_div==1 → sad_zero_scale≈4.0). This is an APPROXIMATION
-//   of the classical SUM scale (different sampling grid) — flagged for the operator's eye-calibration.
+// sad_zero (G of the SAD field): the OFA provides no in-place residual, which the change-gate
+//   (gme/dissidence/stasis) needs, so it is synthesized here with a separate |A-B| reduction over the
+//   block. The reference sad_zero = SUM over an 8x8 WW_flow-res block of (|dR|+|dG|+|dB|), channels in
+//   [0,1] → range [0,192]. At the OFA INPUT resolution (~WW_flow/2) one input texel covers ~2x2 WW_flow
+//   texels; we sum |A-B| over the BLK x BLK input block under this tile and multiply by sad_zero_scale to
+//   approximate the WW_flow 8x8 SUM magnitude (BLK=mvw*4/mvw=4 input texels/tile; pixel-count ratio
+//   (8*8)/(BLK*BLK)=4 at flow_div==1 → sad_zero_scale≈4.0). Approximation (different sampling grid);
+//   sad_zero_scale is a tunable calibration scale.
 //
 // Bindings:
 //   set=0 binding=0  storage image rg16i  — OFA forward flow (S10.5, mvw x mvh), read raw via mutable view
@@ -49,8 +48,8 @@ layout(set = 0, binding = 4, rg16f) uniform writeonly image2D u_motion_vectors; 
 layout(set = 0, binding = 5, rg16f) uniform writeonly image2D u_sad_field;       // OFP SAD out
 layout(push_constant) uniform PC {
     float mv_scale;        // OFA-input-px -> WW_flow-px (= WW_flow/(mvw*4))
-    float cost_scale;      // OFA cost(0..255) -> sad_best  [eye-calibration]
-    float sad_zero_scale;  // input-block SUM|A-B| -> WW_flow 8x8 SUM magnitude  [eye-calibration]
+    float cost_scale;      // OFA cost(0..255) -> sad_best  (tunable calibration)
+    float sad_zero_scale;  // input-block SUM|A-B| -> WW_flow 8x8 SUM magnitude  (tunable calibration)
     int   blk;             // input texels per MV tile (= (mvw*4)/mvw = 4 at flow_div==1)
     int   mvw;             // MV grid width
     int   mvh;             // MV grid height
@@ -62,18 +61,17 @@ void main() {
 
     // ── MV: OFA forward flow, raw S10.5 -> pixels -> WW_flow px units ──
     const ivec2 raw = imageLoad(u_ofa_flow, t).xy;          // int16 components
-    const vec2  mv  = (vec2(raw) / 32.0) * pc.mv_scale;     // -> WW_flow pixel units (classical contract)
+    const vec2  mv  = (vec2(raw) / 32.0) * pc.mv_scale;     // -> WW_flow pixel units (OFP contract)
     imageStore(u_motion_vectors, t, vec4(mv.x, mv.y, 0.0, 0.0));
 
-    // ── sad_best: calibrated cost remap (PLACEHOLDER scale — operator eye-calibration) ──
+    // ── sad_best: calibrated cost remap (tunable scale) ──
     const float cost     = float(imageLoad(u_ofa_cost, t).x);   // 0..255
     const float sad_best = cost * pc.cost_scale;
 
-    // ── sad_zero: SEPARATE in-place |A-B| reduction over this tile's input block (the §3 catch) ──
+    // ── sad_zero: in-place |A-B| reduction over this tile's input block ──
     // The OFA gives no in-place residual; the change-gate (gme/dissidence/stasis) needs it. Sum
     // (|dR|+|dG|+|dB|) over the BLK x BLK input block under this tile, then rescale toward the
-    // classical WW_flow 8x8 SUM magnitude. Channels are [0,1] (UNORM sample) — same as the classical
-    // texelFetch the hier-match uses. Border-clamp (the sampler is clamp-edge).
+    // WW_flow 8x8 SUM magnitude. Channels are [0,1] (UNORM sample). Border-clamp (the sampler is clamp-edge).
     const ivec2 isz = textureSize(u_frame_a, 0);
     float sz = 0.0;
     const ivec2 base = t * pc.blk;

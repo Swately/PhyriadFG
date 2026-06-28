@@ -1,7 +1,7 @@
-// apps/render_assistant/shaders/unpack_packed.comp
-// STAGE-26c-1: inverse of igpu_convert_pack.comp — reads packed RGB8 SSBO
+// unpack_packed.comp
+// Inverse of igpu_convert_pack.comp — reads packed RGB8 SSBO
 // (3 uint32 per 4-px group) and writes RGBA8 storage image.
-// Used on B (Bframe ingest from packed buffer) and G (real-frame unpack before upscale).
+// Used for Bframe ingest from the packed buffer and real-frame unpack before upscale.
 //
 // Pack layout (from igpu_convert_pack.comp):
 //   d[g*3+0] = r0|(g0<<8)|(b0<<16)|(r1<<24)

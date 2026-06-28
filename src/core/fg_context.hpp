@@ -1,9 +1,7 @@
 #pragma once
 // PhyriadFG - FgContext: the shared cross-thread state of main()'s FG pipeline, expressed as a
-// struct of REFERENCES (and decayed array pointers) to main()'s locals. STEP 5.2 holds what the
-// CAPTURE thread (run_capture, capture/capture.cpp) needs; it grows for F/P in 5.3/5.4. main()
-// binds every reference at the ctx{...} aggregate-init; each thread aliases them back
-// (auto& x = ctx.x) so the relocated body is byte-identical to the old [&] lambda capture.
+// struct of REFERENCES (and decayed array pointers) to main()'s locals. main() binds every reference
+// at the ctx{...} aggregate-init; each thread aliases them back (auto& x = ctx.x).
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
@@ -19,19 +17,19 @@
 #include "warp_blend/warp_blend.hpp"                // FieldPipe
 #include "capture/wgc_ctx.hpp"                      // WgcCtx (MSVC/WGC)
 #include <phyriad/topology/HardwareTopology.hpp>    // phyriad::hw (MMCSS/pin - used by the body)
-#include <phyriad/render/vulkan/OpticalFlowPipeline.hpp>  // STEP 5.3: ofp/ofpA (the F-thread flow pipeline)
+#include <phyriad/render/vulkan/OpticalFlowPipeline.hpp>  // ofp/ofpA (the F-thread flow pipeline)
 
-// STEP 5.3: the FLOW thread's pipeline structs (NvofaProvider/GmePipe/MvSmoothPipe) are DEFINED in
-// flow/flow.hpp, which itself #includes THIS header — so they are forward-declared here (FgContext
-// holds only references to them) to break the include cycle. main() and run_flow see the full
-// definitions via flow/flow.hpp; capture.cpp never names them, so a forward declaration suffices.
+// The FLOW thread's pipeline structs (NvofaProvider/GmePipe/MvSmoothPipe) are DEFINED in flow/flow.hpp,
+// which itself #includes THIS header — so they are forward-declared here (FgContext holds only
+// references to them) to break the include cycle. main() and run_flow see the full definitions via
+// flow/flow.hpp; capture.cpp never names them, so a forward declaration suffices.
 struct NvofaProvider; struct GmePipe; struct MvSmoothPipe; struct MedianPipe;
-// STEP 5.4: the PRESENT thread's upscale pipeline struct (UpPipe) is DEFINED in present/present.hpp,
-// which #includes THIS header BEFORE the struct — so it is forward-declared here (FgContext holds
-// only a reference). main()/run_present see the full definition via present/present.hpp.
+// The PRESENT thread's upscale pipeline struct (UpPipe) is DEFINED in present/present.hpp, which
+// #includes THIS header BEFORE the struct — so it is forward-declared here (FgContext holds only a
+// reference). main()/run_present see the full definition via present/present.hpp.
 struct UpPipe;
 
-// Relocated from main() (STEP 5.2) so run_capture can name it: the per-real-capture slot record.
+// The per-real-capture slot record (named by run_capture).
 struct RealSlot { double t_cap_ms=0.0; };
 
 // --ingest-async (default OFF): the RAW host-buffer ring between the acquire thread (run_capture's
@@ -40,7 +38,7 @@ struct RealSlot { double t_cap_ms=0.0; };
 // 4 = one slot of overwrite margin beyond the at-most-1 slot the drop-to-newest worker holds
 // in-flight. The raw_busy guard is BEST-EFFORT by timing (memcpy ~1-2ms >> the sub-microsecond
 // latch window + the 3-slot margin), NOT hard mutual-exclusion: worst case = a self-correcting
-// torn frame, never a crash (per the adversarial concurrency review of this change).
+// torn frame, never a crash.
 static constexpr int kRawSlots = 4;
 
 struct FgContext {
@@ -66,7 +64,7 @@ struct FgContext {
     ID3D11Texture2D*& dxgi_stage;
     std::atomic<uint64_t>& dd_arr_delta_us;
     std::atomic<uint64_t>& dd_arrived;
-    std::atomic<uint64_t>& dd_lost;   // H1: DDA re-arm events (ACCESS_LOST recoveries)
+    std::atomic<uint64_t>& dd_lost;   // DDA re-arm events (ACCESS_LOST recoveries)
     std::atomic<uint64_t>& dd_present;   // suma de AccumulatedFrames = tasa de presents ENTREGADA (captura real)
     RealSlot* c_slots;
     std::atomic<uint64_t>& total_real;
@@ -99,7 +97,7 @@ struct FgContext {
     // when cfg.ingest_async is false (the worker is never spawned, the async acquire branch is never
     // entered, the raw ring is never allocated → these references/pointers exist but are never touched).
     std::atomic<uint64_t>& raw_seq;      // monotone "newest published raw frame index + 1"; worker reads (raw_seq-1)%kRawSlots
-    std::atomic<uint64_t>& dd_acq;       // TELEMETRY: successful ACQUIREs (serial + async); replaces the unreliable dd_present readout
+    std::atomic<uint64_t>& dd_acq;       // TELEMETRY: successful ACQUIREs (serial + async)
     std::atomic<uint64_t>& dd_uniq;      // CAPTURE-DEDUP: frames ÚNICOS reales (no-duplicados de contenido); el `uniq=` readout = la tasa real del juego
     std::atomic<int>&      raw_busy;     // raw slot the worker is mid-converting (-1 = none); the acquire AVOIDS overwriting it (BEST-EFFORT torn-read guard: worst case = a self-correcting torn frame, not a crash)
     std::condition_variable& raw_cv;     // acquire→worker wakeup (also woken on quit)
@@ -109,11 +107,10 @@ struct FgContext {
     double*                raw_tcap;     // kRawSlots capture timestamps (ms) — carried to c_slots[s].t_cap_ms at publish (freshage parity)
     ID3D11Texture2D*&      dxgi_stage2;  // the 2nd DDA staging texture (readback double-buffer; null when async off)
 
-    // -- FLOW thread (run_flow, STEP 5.3) -- references to main()'s locals; array members decay to
-    //    pointers (the C-thread convention above). Locals SHARED with capture (cfg, c_seq, cap_slots,
-    //    c_slots, c_cv, g_quit_threads, use_igpu_convert, WW, WH, A, single_gpu, a_q2_mtx) are reused
-    //    from the block above and NOT re-listed. run_flow aliases each of these back (auto& x = ctx.x)
-    //    so the relocated F-thread body is byte-identical to the old [&] lambda capture.
+    // -- FLOW thread (run_flow) -- references to main()'s locals; array members decay to pointers (the
+    //    C-thread convention above). Locals SHARED with capture (cfg, c_seq, cap_slots, c_slots, c_cv,
+    //    g_quit_threads, use_igpu_convert, WW, WH, A, single_gpu, a_q2_mtx) are reused from the block
+    //    above and NOT re-listed. run_flow aliases each of these back (auto& x = ctx.x).
     VDev& B;
     VDev& FD;
     bool& pfg_enabled;
@@ -217,12 +214,11 @@ struct FgContext {
     std::atomic<uint64_t>& lt_spin_us;
     std::atomic<uint64_t>& lt_fpub_us;
 
-    // -- PRESENT thread (run_present, STEP 5.4) -- references to main()'s locals; array members
-    //    decay to pointers (the C/F convention above). Locals SHARED with capture/flow (cfg, the
-    //    rings, c_seq/cap_slots/c_slots, the seq atomics f_seq/p_presenting, devices A/G, the F->P
-    //    publish arrays, WW/WH, the stat_* atomics, ...) are reused from the blocks above and NOT
-    //    re-listed. run_present aliases each of these back (auto& x = ctx.x) so the relocated
-    //    P-thread body (incl. its nested lambdas) is byte-identical to the old [&] lambda capture.
+    // -- PRESENT thread (run_present) -- references to main()'s locals; array members decay to
+    //    pointers (the C/F convention above). Locals SHARED with capture/flow (cfg, the rings,
+    //    c_seq/cap_slots/c_slots, the seq atomics f_seq/p_presenting, devices A/G, the F->P publish
+    //    arrays, WW/WH, the stat_* atomics, ...) are reused from the blocks above and NOT re-listed.
+    //    run_present aliases each of these back (auto& x = ctx.x).
     Img& Apresent;
     Img& Gdst;
     Img& Gsrc;
@@ -315,7 +311,7 @@ struct FgContext {
     bool& xfer_on;
     // slot-0 present bridge + the fg-protect demote flag: these names are ALSO re-declared (shadowed)
     // inside nested lambdas of the P body, so they need the OUTER-scope alias (run_present's nested
-    // lambdas shadow them locally, exactly as the original [&] lambda did).
+    // lambdas shadow them locally).
     Img& bridge_img;
     VkDeviceMemory& bridge_mem;
     VkCommandBuffer& cmdBridge;
