@@ -1,0 +1,32 @@
+// apps/render_assistant/shaders/unpack_packed.comp
+// STAGE-26c-1: inverse of igpu_convert_pack.comp — reads packed RGB8 SSBO
+// (3 uint32 per 4-px group) and writes RGBA8 storage image.
+// Used on B (Bframe ingest from packed buffer) and G (real-frame unpack before upscale).
+//
+// Pack layout (from igpu_convert_pack.comp):
+//   d[g*3+0] = r0|(g0<<8)|(b0<<16)|(r1<<24)
+//   d[g*3+1] = g1|(b1<<8)|(r2<<16)|(g2<<24)
+//   d[g*3+2] = b2|(r3<<8)|(g3<<16)|(b3<<24)
+//
+// Each invocation handles one pixel.  Dispatch: (W+7)/8 × (H+7)/8 × 1.
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(std430, binding = 0) readonly buffer Src { uint d[]; };
+layout(rgba8,  binding = 1) uniform writeonly image2D u_out;
+layout(push_constant) uniform PC { uint W; uint H; } pc;
+
+void main() {
+    const uvec2 coord = gl_GlobalInvocationID.xy;
+    if (coord.x >= pc.W || coord.y >= pc.H) return;
+    const uint idx = coord.y * pc.W + coord.x;
+    const uint g   = idx >> 2u;          // idx / 4
+    const uint i   = idx & 3u;           // idx % 4
+    const uint d0  = d[g*3u+0u], d1 = d[g*3u+1u], d2 = d[g*3u+2u];
+    uint r, gv, b;
+    if      (i == 0u) { r = d0 & 0xffu;         gv = (d0 >>  8) & 0xffu; b = (d0 >> 16) & 0xffu; }
+    else if (i == 1u) { r = (d0 >> 24) & 0xffu; gv =  d1 & 0xffu;        b = (d1 >>  8) & 0xffu; }
+    else if (i == 2u) { r = (d1 >> 16) & 0xffu; gv = (d1 >> 24) & 0xffu; b =  d2 & 0xffu;        }
+    else              { r = (d2 >>  8) & 0xffu; gv = (d2 >> 16) & 0xffu; b = (d2 >> 24) & 0xffu; }
+    imageStore(u_out, ivec2(coord), vec4(float(r), float(gv), float(b), 255.0) / 255.0);
+}
+// Made with my soul - Swately <3

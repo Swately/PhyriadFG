@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PhyriadFG — dependencias interactivas</title>
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --ink:#e6edf3; --mut:#8b949e; --line:#30363d; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+              font:14px/1.45 system-ui,Segoe UI,sans-serif; }
+  #wrap { display:flex; height:100vh; }
+  #cy { flex:1; height:100%; }
+  #side { width:330px; background:var(--panel); border-left:1px solid var(--line);
+          padding:14px 16px; overflow:auto; }
+  #bar { position:fixed; top:10px; left:10px; z-index:5; display:flex; gap:6px; flex-wrap:wrap; }
+  button { background:#21262d; color:var(--ink); border:1px solid var(--line); border-radius:6px;
+           padding:6px 10px; cursor:pointer; font-size:13px; }
+  button:hover { background:#30363d; }
+  h1 { font-size:16px; margin:0 0 4px; } h2 { font-size:13px; color:var(--mut); margin:14px 0 6px;
+       text-transform:uppercase; letter-spacing:.04em; }
+  .hint { color:var(--mut); font-size:12.5px; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:10px; margin:2px 4px 2px 0; font-size:12px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; margin:2px 10px 2px 0; font-size:12px; }
+  .sw { width:12px; height:12px; border-radius:3px; display:inline-block; }
+  ul { margin:4px 0 0; padding-left:18px; } li { margin:2px 0; }
+  code { background:#0d1117; padding:1px 5px; border-radius:4px; border:1px solid var(--line); }
+</style>
+</head>
+<body>
+<div id="bar">
+  <button onclick="relayout('cose')">layout fuerza</button>
+  <button onclick="relayout('breadthfirst')">jerárquico</button>
+  <button onclick="relayout('concentric')">concéntrico</button>
+  <button onclick="toggleData()">datos C/F/P: <span id="df">ON</span></button>
+  <button onclick="resetHi()">reset</button>
+  <button onclick="cy.fit(null,40)">ajustar</button>
+</div>
+<div id="wrap">
+  <div id="cy"></div>
+  <div id="side">
+    <h1>PhyriadFG — dependencias</h1>
+    <div class="hint">Arrastra nodos · rueda = zoom · <b>clic en un nodo</b> = resalta sus conexiones y
+      muestra el <b>ripple</b> (de qué depende / qué lo usa). Clic en vacío = reset.</div>
+    <h2>Leyenda (capa)</h2>
+    <div class="legend" id="legend"></div>
+    <h2>Aristas</h2>
+    <div class="hint">— gris = <b>#include</b> (dependencia de compilación)<br/>
+      — color = <b>flujo de datos</b> C→F→P (canal entre hilos); guion = back-pressure</div>
+    <h2 id="selTitle">Selección</h2>
+    <div id="selBody" class="hint">Haz clic en un nodo para ver sus ramificaciones.</div>
+  </div>
+</div>
+<script>
+const COL = { capture:'#1F77B4', flow:'#17BECF', warp:'#FF7F0E', present:'#9467BD',
+  instrument:'#7F7F7F', cli:'#BCBD22', core:'#2AA198', framework:'#8C564B', shaders:'#2CA02C' };
+
+// Nodos = módulos (post-separación). 'sub' agrupa visualmente core.
+const N = [
+  ['cli','cli\nConfig + parse','cli'],
+  ['fgctx','core/fg_context\nESTADO COMPARTIDO (hub)','core'],
+  ['vkutil','core/vk_util\nImg/HBuf · barriers · submit','core'],
+  ['device','core/device\nVDev · pick_mem','core'],
+  ['globals','core/globals\ng_quit · vk_live · atomics','core'],
+  ['rasimd','core/ra_simd\nF16C decode','core'],
+  ['main','core/main\nORQUESTADOR (init + lanza 3 + join)','core'],
+  ['capture','capture\nrun_capture (hilo C)','capture'],
+  ['flow','flow\nrun_flow (hilo F)','flow'],
+  ['warp','warp_blend\nWapPipe · field/fill','warp'],
+  ['present','present\nrun_present (hilo P)','present'],
+  ['instr','instrument\ndump','instrument'],
+  ['fw','framework\nPILARES: OFP · PresentSurface · hal · topology · schema','framework'],
+  ['shaders','shaders\n20 .comp','shaders'],
+];
+// Aristas #include (A depende de B), extraídas de los #include reales.
+const E_INC = [
+  ['warp','device'],
+  ['present','device'],['present','vkutil'],['present','fgctx'],['present','flow'],['present','instr'],
+  ['present','globals'],['present','fw'],
+  ['vkutil','device'],['vkutil','fw'],['vkutil','globals'],
+  ['rasimd','fw'],
+  ['fgctx','cli'],['fgctx','vkutil'],['fgctx','device'],['fgctx','globals'],['fgctx','capture'],
+  ['fgctx','warp'],['fgctx','fw'],
+  ['capture','device'],['capture','vkutil'],['capture','fgctx'],
+  ['flow','device'],['flow','vkutil'],['flow','globals'],['flow','fgctx'],['flow','rasimd'],['flow','instr'],
+  ['warp','vkutil'],
+  ['main','fw'],['main','cli'],['main','vkutil'],['main','device'],['main','globals'],['main','flow'],
+  ['main','capture'],['main','warp'],['main','present'],['main','instr'],['main','fgctx'],
+  ['fw','shaders'], // OFP consume sus .comp
+];
+// Aristas de FLUJO DE DATOS (canal entre hilos).
+const E_DATA = [
+  ['capture','flow','c_seq + anillo (frames reales)', false],
+  ['flow','present','f_seq + f_pair_* (pares + MV/SAD/dis)', false],
+  ['present','flow','p_presenting (back-pressure)', true],
+];
+
+const elements = [];
+N.forEach(([id,label,layer]) => elements.push({ data:{ id, label, layer } }));
+E_INC.forEach(([s,t]) => elements.push({ data:{ id:'i_'+s+'_'+t, source:s, target:t, kind:'inc' } }));
+E_DATA.forEach(([s,t,lab,dash]) => elements.push({ data:{ id:'d_'+s+'_'+t, source:s, target:t, label:lab, kind:'data', dash } }));
+
+const cy = cytoscape({
+  container: document.getElementById('cy'),
+  elements,
+  style: [
+    { selector:'node', style:{
+      'background-color': e => COL[e.data('layer')] || '#888',
+      'label':'data(label)','color':'#0d1117','font-size':'10px','text-wrap':'wrap','text-max-width':'120px',
+      'text-valign':'center','text-halign':'center','width':'120px','height':'52px','shape':'round-rectangle',
+      'border-width':2,'border-color':'#0d1117','text-outline-width':0 } },
+    { selector:'edge', style:{ 'curve-style':'bezier','width':1.6,'target-arrow-shape':'triangle',
+      'line-color':'#586069','target-arrow-color':'#586069','arrow-scale':0.9 } },
+    { selector:'edge[kind="data"]', style:{ 'width':2.6,'line-color':'#d29922','target-arrow-color':'#d29922',
+      'label':'data(label)','font-size':'9px','color':'#d29922','text-background-color':'#0d1117',
+      'text-background-opacity':0.85,'text-background-padding':2 } },
+    { selector:'edge[?dash]', style:{ 'line-style':'dashed','line-color':'#f85149','target-arrow-color':'#f85149','color':'#f85149' } },
+    { selector:'.faded', style:{ 'opacity':0.12 } },
+    { selector:'.hi', style:{ 'opacity':1 } },
+    { selector:'node.sel', style:{ 'border-color':'#e6edf3','border-width':4 } },
+  ],
+  layout:{ name:'cose', animate:false, padding:40, nodeRepulsion:9000, idealEdgeLength:110 },
+  wheelSensitivity:0.2,
+});
+
+function relayout(name){ const o={name,animate:false,padding:40};
+  if(name==='cose'){o.nodeRepulsion=9000;o.idealEdgeLength=110;}
+  if(name==='breadthfirst'){o.directed=true;o.spacingFactor=1.2;o.roots='#main';}
+  if(name==='concentric'){o.minNodeSpacing=30;}
+  cy.layout(o).run(); }
+
+let dataOn=true;
+function toggleData(){ dataOn=!dataOn; cy.edges('[kind="data"]').style('display', dataOn?'element':'none');
+  document.getElementById('df').textContent = dataOn?'ON':'OFF'; }
+
+function resetHi(){ cy.elements().removeClass('faded hi'); cy.nodes().removeClass('sel');
+  document.getElementById('selTitle').textContent='Selección';
+  document.getElementById('selBody').innerHTML='<span class="hint">Haz clic en un nodo para ver sus ramificaciones.</span>'; }
+
+cy.on('tap','node', ev => {
+  const n=ev.target;
+  cy.elements().addClass('faded').removeClass('hi'); cy.nodes().removeClass('sel');
+  const nb=n.closedNeighborhood(); nb.removeClass('faded').addClass('hi'); n.addClass('sel');
+  // ripple
+  const deps = n.outgoers('node').map(x=>x.id());          // de qué depende (lo que incluye/usa)
+  const users = n.incomers('node').map(x=>x.id());          // qué lo usa (afectado si lo cambias)
+  const dflow = n.connectedEdges('[kind="data"]').map(e=>`${e.source().id()} → ${e.target().id()}: ${e.data('label')}`);
+  const pill = id => { const ly=(N.find(x=>x[0]===id)||[])[2]; return `<span class="pill" style="background:${COL[ly]||'#888'};color:#0d1117">${id}</span>`; };
+  document.getElementById('selTitle').textContent = n.id();
+  document.getElementById('selBody').innerHTML =
+    `<div style="font-weight:600;margin-bottom:6px">${n.data('label').replace(/\n/g,' — ')}</div>`+
+    `<h2>Depende de</h2>${deps.length?deps.map(pill).join(''):'<span class=hint>(nada intra-proyecto)</span>'}`+
+    `<h2>Lo usan (afectado si lo cambias)</h2>${users.length?users.map(pill).join(''):'<span class=hint>(nadie — hoja)</span>'}`+
+    (dflow.length?`<h2>Flujo de datos</h2><ul>${dflow.map(d=>`<li>${d}</li>`).join('')}</ul>`:'');
+});
+cy.on('tap', ev => { if(ev.target===cy) resetHi(); });
+
+// leyenda
+document.getElementById('legend').innerHTML = Object.entries(COL)
+  .map(([k,v])=>`<span><span class="sw" style="background:${v}"></span>${k}</span>`).join('');
+</script>
+</body>
+</html>

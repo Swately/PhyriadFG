@@ -1,0 +1,173 @@
+// framework/render/vulkan/shaders/optical_flow_affine_fit.comp
+// ARC-A LEVER-1: per-tile PARAMETRIC (affine) MV refinement — the COMPANION-FIELD post-pass.
+//
+// WHY this exists (proven root cause, held-out test-field): the hierarchical block-match emits ONE
+// TRANSLATIONAL MV per 8x8 tile. On NON-translational motion (zoom / rotation / scale) a single MV
+// cannot represent the intra-tile divergence/curl → the warp samples wrong content → the crossfade
+// the operator sees on real combat. This is the DOMINANT, step-INVARIANT flow-error mode (zoo_held:
+// zoom flowdsc 0.599, orbit 0.834, mixed 1.211 — NOT reducible by search radius, only by a richer
+// per-tile motion MODEL). This pass adds that model WITHOUT touching the hot match kernel.
+//
+// SHAPE: a SEPARATE compute dispatch that runs AFTER the finest match level has written the full-res
+// MV field (binding 3 of optical_flow_hier_match.comp). It READS that field (as a sampler) and, per
+// output tile, fits a LOCAL LINEAR motion model over the 3x3 NEIGHBOURHOOD of best_mv samples
+// (9 samples) by an fp32 least-squares solve, then EMITS the model's 2x2 linear part into a COMPANION
+// per-tile affine-params field. The translational part is the tile's own best_mv (already in the MV
+// field) — this pass only adds the intra-tile variation M, so the full per-pixel flow a consumer
+// reconstructs is:
+//
+//     flow(p) = best_mv(tile) + M · (p − tile_centre)        // p, tile_centre in MV-grid (tile) units
+//
+// where M = [[a, b], [c, d]] is the emitted 2x2 (.xyzw of binding 1). On a pure translation M ≈ 0
+// (every neighbour shares the MV → zero gradient) → flow(p) = best_mv exactly = byte-identical to the
+// translational field at every pixel. The benefit is ONLY the intra-tile variation, which is exactly
+// what zoom/rotation/scale need and what a centre-only metric would FALSELY null.
+//
+// LEAST-SQUARES FIT (per tile, 9-sample, fp32, NORMAL EQUATIONS over a 2x2 system):
+//   We fit each MV component (u = dx, v = dy) independently as an affine function of the LOCAL tile
+//   offset (ox, oy) = (neighbour_tile − this_tile) ∈ {−1,0,1}²:
+//       u(ox,oy) ≈ u0 + a·ox + b·oy
+//       v(ox,oy) ≈ v0 + c·ox + d·oy
+//   The design matrix over the centred 3x3 stencil is orthogonal in (1, ox, oy): Σox = Σoy = Σ(ox·oy)
+//   = 0, Σox² = Σoy² = 6 (the present neighbours after edge clamping break exact orthogonality at the
+//   grid border — handled below). So the unweighted LS slopes are simply
+//       a = Σ(u·ox)/Σox² ,  b = Σ(u·oy)/Σoy² ,  c = Σ(v·ox)/Σox² ,  d = Σ(v·oy)/Σoy²
+//   which is the cheap separable closed form. We compute the actual Σox², Σoy² over the PRESENT (in
+//   -bounds) samples so the border degrades gracefully (fewer samples → larger fit variance, gated).
+//
+// ILL-CONDITIONING / CONFIDENCE GATE (back to plain best_mv = M=0):
+//   The affine helps only where the 3x3 neighbourhood is (a) well-populated and (b) the central match
+//   is itself trustworthy. We gate M to ZERO (→ pure translation, byte-identical flow) when:
+//     • fewer than kMinSamples in-bounds neighbours (grid corner/edge → too few to fit 2 slopes), OR
+//     • the central tile's match is NOT confident: sad_best ≥ residual_ceil OR the match does not
+//       explain improvement_frac of sad_zero (the SAME confidence test the warp's gate uses; aperture
+//       / flat-interior tiles fail this and must NOT get a fabricated gradient), OR
+//     • the fitted gradient magnitude exceeds kMaxSlope (a runaway slope from one outlier neighbour MV
+//       — a wrong match in the stencil — would warp content off the tile; clamp to translation).
+//   The gate reads the SAME SAD field the warp consumes (binding 2): R=sad_best, G=sad_zero per tile.
+//
+// Bindings:
+//   set=0 binding=0  combined image sampler — the finest MV field (RG16F, pixel units): best_mv per tile
+//   set=0 binding=1  storage image (rgba16f)— OUTPUT: per-tile 2x2 linear part M = (a,b,c,d)
+//   set=0 binding=2  combined image sampler — the SAD field (RG16F): R=sad_best, G=sad_zero (the gate)
+//
+// Push constants (8 bytes): { float residual_ceil; float improvement_frac; } — the warp's confidence
+//   gate parameters, so a tile the warp would BLEND never receives a fabricated affine gradient.
+//
+// COST: one extra dispatch over the MV grid (W/8 × H/8 tiles), 9 texture fetches + a handful of fp32
+//   ops per tile — negligible against the (2R+1)²·64-SAD match. Opt-in (the pipeline only records this
+//   dispatch when armed); the companion field is unread by the in-pillar warp (phase-2 work) — phase-1
+//   is the matcher + the scorer so the discrepancy reduction is MEASURABLE before warp integration.
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0) uniform sampler2D u_motion_vectors;            // finest MV field (pixel units)
+layout(set = 0, binding = 1, rgba16f) uniform writeonly image2D u_affine;   // OUTPUT: M = (a,b,c,d)
+layout(set = 0, binding = 2) uniform sampler2D u_sad_field;                 // R=sad_best, G=sad_zero
+layout(push_constant) uniform PushConsts { float residual_ceil; float improvement_frac; } pc;
+
+// Gate constants (documented above + at the planarity gate).
+const int   kMinSamples = 6;      // need >= this many in-bounds neighbours of the 9 to trust two slopes
+const float kMaxSlope   = 4.0;    // px per tile-step; a steeper fit is an outlier MV → clamp to M=0
+const float kMinExplain = 0.60;   // the planar fit must explain >= 60% of the stencil MV variance, else
+                                  //   the "gradient" is integer-MV rounding noise (rigid pan) → M=0.
+const float kMinSlope   = 0.50;   // px/tile deadband: combined slope below this is under the <=1px MV
+                                  //   rounding step over the +-1-tile span → not real signal → M=0.
+
+void main() {
+    const ivec2 tile_idx = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 mv_size  = imageSize(u_affine);
+    if (tile_idx.x >= mv_size.x || tile_idx.y >= mv_size.y) return;
+
+    // Default = pure translation (M = 0): byte-identical per-pixel flow to the translational field.
+    vec4 M = vec4(0.0);
+
+    // Central-tile confidence gate (the SAME test the warp's confidence gate uses): a tile the warp
+    // would BLEND (failed/aperture match) must NOT receive a fabricated intra-tile gradient.
+    const vec2 sad_c = texelFetch(u_sad_field, tile_idx, 0).xy;   // (sad_best, sad_zero)
+    const bool conf  = (sad_c.x < pc.residual_ceil) &&
+                       (sad_c.y * (1.0 - pc.improvement_frac) > sad_c.x);
+    if (!conf) { imageStore(u_affine, tile_idx, M); return; }
+
+    // Separable LS slopes over the centred 3x3 stencil (offsets ox,oy ∈ {−1,0,1}). We accumulate the
+    // present (in-bounds) neighbours only, tracking Σox², Σoy² so the border degrades gracefully, AND the
+    // sums needed for the FIT RESIDUAL (the gate below). The mean MV (u0,v0) is the constant term.
+    float sUx = 0.0, sUy = 0.0, sVx = 0.0, sVy = 0.0;   // Σ(u·ox), Σ(u·oy), Σ(v·ox), Σ(v·oy)
+    float sU  = 0.0, sV  = 0.0;                         // Σu, Σv  (for the mean / constant term)
+    float sxx = 0.0, syy = 0.0;                         // Σox², Σoy² over present samples
+    float mvN[9]; float ox9[9]; float oy9[9];           // cached samples + offsets for the residual pass
+    int   nsamp = 0;
+    for (int oy = -1; oy <= 1; ++oy)
+        for (int ox = -1; ox <= 1; ++ox) {
+            const ivec2 nidx = tile_idx + ivec2(ox, oy);
+            if (nidx.x < 0 || nidx.y < 0 || nidx.x >= mv_size.x || nidx.y >= mv_size.y) continue;
+            const vec2 mv = texelFetch(u_motion_vectors, nidx, 0).xy;   // best_mv at the neighbour
+            const float fox = float(ox), foy = float(oy);
+            sUx += mv.x * fox; sUy += mv.x * foy;
+            sVx += mv.y * fox; sVy += mv.y * foy;
+            sU  += mv.x;       sV  += mv.y;
+            sxx += fox * fox;  syy += foy * foy;
+            mvN[nsamp] = mv.x; ox9[nsamp] = fox; oy9[nsamp] = foy;   // u cached for the residual (v done inline below)
+            ++nsamp;
+        }
+
+    // Too few samples (grid corner) → keep translation (M = 0).
+    if (nsamp < kMinSamples || sxx < 0.5 || syy < 0.5) {
+        imageStore(u_affine, tile_idx, M);
+        return;
+    }
+    const float invN = 1.0 / float(nsamp);
+
+    // Closed-form separable slopes (the orthogonal-stencil normal equations). a,b for u; c,d for v.
+    float a = sUx / sxx;   // ∂u/∂ox
+    float b = sUy / syy;   // ∂u/∂oy
+    float c = sVx / sxx;   // ∂v/∂ox
+    float d = sVy / syy;   // ∂v/∂oy
+    const float u0 = sU * invN, v0 = sV * invN;   // constant terms (stencil mean)
+
+    // Runaway-slope gate: one outlier neighbour MV (a wrong match in the stencil) can blow a slope up.
+    if (abs(a) > kMaxSlope || abs(b) > kMaxSlope || abs(c) > kMaxSlope || abs(d) > kMaxSlope) {
+        imageStore(u_affine, tile_idx, vec4(0.0)); return;
+    }
+
+    // ── PLANARITY / QUANTIZATION gate (the decisive one). best_mv is INTEGER px per tile, so on RIGID
+    //   motion (pan) neighbour MVs differ only by ±1px ROUNDING — which an unguarded LS reads as a
+    //   spurious ~0.33–1.0 px/tile "gradient" and the per-pixel metric then amplifies (the verified pan
+    //   inflation 0.03→0.29). The affine helps ONLY where the 9 MVs genuinely lie on a PLANE with a
+    //   slope well above that rounding noise. Two coupled tests, BOTH must pass or M→0:
+    //     (1) variance-explained: the planar fit must reduce the stencil MV variance by ≥ kMinExplain
+    //         (the same "model must explain a fraction" logic the matcher's confidence gate uses). A
+    //         rigid-pan stencil is near-constant (tiny variance, dominated by rounding) → the plane
+    //         explains little of it → fail → translation. A real zoom/rotation stencil has a strong
+    //         coherent ramp → the plane explains most of the variance → pass.
+    //     (2) deadband: the combined slope magnitude must exceed kMinSlope (px/tile), above the ≤1px
+    //         rounding step spread over the ±1-tile span (~0.5 px/tile) — a hard floor under (1).
+    float ss_tot = 0.0, ss_res = 0.0;   // total stencil variance (about the mean) and post-fit residual, over u AND v
+    for (int i = 0; i < nsamp; ++i) {
+        const float du = mvN[i] - u0;                          // u residual about the mean
+        const float fu = a * ox9[i] + b * oy9[i];              // u plane prediction (about the mean)
+        ss_tot += du * du; ss_res += (du - fu) * (du - fu);
+    }
+    // second pass for v (not cached to keep registers light — re-fetch, identical loop count).
+    {
+        int j = 0;
+        for (int oy = -1; oy <= 1; ++oy)
+            for (int ox = -1; ox <= 1; ++ox) {
+                const ivec2 nidx = tile_idx + ivec2(ox, oy);
+                if (nidx.x < 0 || nidx.y < 0 || nidx.x >= mv_size.x || nidx.y >= mv_size.y) continue;
+                const float vv = texelFetch(u_motion_vectors, nidx, 0).y;
+                const float dv = vv - v0;
+                const float fv = c * float(ox) + d * float(oy);
+                ss_tot += dv * dv; ss_res += (dv - fv) * (dv - fv);
+                ++j;
+            }
+    }
+    const float explained = (ss_tot > 1e-6) ? (1.0 - ss_res / ss_tot) : 0.0;
+    const float slope_mag = sqrt(a*a + b*b + c*c + d*d);
+    if (explained < kMinExplain || slope_mag < kMinSlope) {
+        imageStore(u_affine, tile_idx, vec4(0.0)); return;   // rounding noise / aperture → pure translation
+    }
+
+    M = vec4(a, b, c, d);
+    imageStore(u_affine, tile_idx, M);
+}
+// Made with my soul - Swately <3

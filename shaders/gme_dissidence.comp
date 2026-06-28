@@ -1,0 +1,64 @@
+// apps/render_assistant/shaders/gme_dissidence.comp
+// IDEA-1 (gme-gpu): the per-block DISSIDENCE pass, run ON DEVICE B. GPU port of the dissidence-mask
+// loop in main.cpp gme_fit_affine (main.cpp:1249-1273), in PLAIN fp32 (precision gate GREEN — see
+// gme_reduce.comp header). Runs ONCE after the 3 IRLS reduce+solve passes, against the FINAL model.
+//
+// For every block (gx,gy) over the FULL grid (the mask ALWAYS covers all blocks — the CPU sub2 only
+// sub-samples the FIT, not the mask):
+//   rx = u − (a + b·gx + c·gy); ry = v − (d + e·gx + f·gy);
+//   r  = sqrt(rx²+ry²);
+//   q  = round(16·r) clamped to 255                                 (main.cpp:1259)
+//   THE CHANGE GATE (STAGE-70, main.cpp:1260-1270): a block whose content did not change cannot be
+//   dissident — if use_gate AND q>0 AND sad_zero < kChangeGateSadZ → q = 0. sad_zero is the .G channel
+//   of the SAD field (RG16F: R=sad_best, G=sad_zero). kChangeGateSadZ = 0.5 (main.cpp:1169).
+//
+// OUTPUT FORMAT — a PACKED-BYTE SSBO, not an image. The dissidence mask is mvw×mvh BYTES (R8). We do
+// NOT use an R8 storage image because R8_UNORM is not a mandatory storage-image format (portability —
+// verify-before-claim: we cannot assume the 1080 Ti exposes it). Instead the byte goes into a uint[]
+// SSBO, 4 blocks per uint, via atomicOr into a buffer the host PRE-CLEARS to 0 each pass (vkCmdFillBuffer
+// before this dispatch). atomicOr is core GLSL (no extension); each uint covers 4 distinct blocks so the
+// OR composes their bytes race-free given the 0 init. The SSBO is the host-imported hostDIS bridge
+// (imported on B as STORAGE) — so B writes the mask straight into the host-coherent buffer F reads after
+// the fence and A uploads into wapDISA. No copy-out, no device-local mask image.
+//
+// COORDINATE CONVENTION: identical to gme_reduce.comp — integer grid texels, model fitted/evaluated
+// over grid indices (gx,gy). 2D dispatch (mvw/8 × mvh/8 workgroups of 8×8), one invocation per block.
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rg16f) uniform readonly image2D u_mv;     // RG16F MV (px units)
+layout(set = 0, binding = 1, rg16f) uniform readonly image2D u_sad;    // RG16F SAD (R=sad_best, G=sad_zero)
+layout(set = 0, binding = 2) buffer DisMask { uint w[]; } u_dis;       // packed R8 mask, 4 blocks/uint
+layout(set = 0, binding = 3) readonly buffer Model { float m[6]; } model;
+
+layout(push_constant) uniform PC {
+    uint  mvw;
+    uint  mvh;
+    uint  use_gate;        // 1 = apply the STAGE-70 change gate (cfg.change_gate); 0 = no gate
+    float change_gate_sz;  // kChangeGateSadZ (0.5) — pushed so the constant lives in one place (the host)
+} pc;
+
+void main() {
+    const ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (uint(p.x) >= pc.mvw || uint(p.y) >= pc.mvh) return;
+    const vec2 mv = imageLoad(u_mv, p).xy;
+    const float u = mv.x, v = mv.y;
+    const float gx = float(p.x), gy = float(p.y);
+    const float a = model.m[0], b = model.m[1], c = model.m[2];
+    const float d = model.m[3], e = model.m[4], f = model.m[5];
+    const float rx = u - (a + b*gx + c*gy);
+    const float ry = v - (d + e*gx + f*gy);
+    const float r  = sqrt(rx*rx + ry*ry);
+    int q = int(16.0*r + 0.5);                  // round(16·r), matches the CPU (int)(16.0*r+0.5)
+    if (q > 255) q = 255;
+    if (pc.use_gate != 0u && q > 0) {
+        const float sz = imageLoad(u_sad, p).y;  // .G = sad_zero
+        if (sz < pc.change_gate_sz) q = 0;
+    }
+    // Pack the byte q into the uint[] mask at linear block index, 4 blocks/uint, low byte = lowest block.
+    const uint idx  = uint(p.y) * pc.mvw + uint(p.x);
+    const uint word = idx >> 2u;
+    const uint shft = (idx & 3u) * 8u;
+    if (q != 0) atomicOr(u_dis.w[word], uint(q) << shft);   // buffer pre-cleared to 0 by the host
+}
+// Made with my soul - Swately <3

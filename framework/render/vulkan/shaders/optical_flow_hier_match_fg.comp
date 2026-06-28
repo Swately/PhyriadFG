@@ -1,0 +1,168 @@
+// framework/render/vulkan/shaders/optical_flow_hier_match_fg.comp
+// FG-LOCAL FORK of optical_flow_hier_match.comp — the runner-up (second-best / STAGE-77 candidate)
+// tracking COMPILED OUT for the render_assistant's DEFAULT flow path (the matcher consumed with
+// emit_second=false AND use_ambig OFF — verify apps/render_assistant/src/main.cpp:4355 / :3766: the
+// candidate field is created only under use_ambig=cfg.ambig&&use_gme, default OFF, and the runner-up
+// field is never read on that path). This is the CANON #12 app-local fork + PERFECTION_TRADEOFF_DOCTRINE
+// §2 (perf bought with scalability for an app): the CANONICAL optical_flow_hier_match.comp stays
+// BYTE-IDENTICAL for the gme/ambig consumers that DO arm binding 5; this variant is ADDITIVE and selected
+// by OpticalFlowPipeline ONLY when fg_variant is armed AND emit_second_best is OFF.
+//
+// WHAT IS REMOVED vs the canonical (the ONLY difference — see optical_flow_hier_match.comp:167-178,199,
+// 201-203,262-267): the second_cost / second_sad / second_mv runner-up accumulators and their per-candidate
+// demote/insert compares inside the search scan, plus the binding-5 imageStore. The canonical's own comment
+// (:173-175) records that those extra comparisons "run at EVERY level regardless of emit_second" — i.e. they
+// run unconditionally on the default path with NO consumer; this variant strips them. Everything else — the
+// SAME descriptor layout (binding 5 still declared so the pipeline layout / descriptor sets are reused
+// unchanged), the SAME 24-byte push constant block, the SAD math, sad_zero, the candsel + subpel finest-level
+// levers, the dual-centre prior — is IDENTICAL to the canonical, so the MV (binding 3) + SAD (binding 4)
+// outputs this variant writes are byte-for-byte the same the canonical writes on the emit_second=0 path.
+//
+// G2 HONESTY CAVEAT (the supervisor will measure before claiming a win): the SAD texelFetch loop dominates
+// the matcher cost, so removing the handful of runner-up float compares per candidate may be a low-single-digit
+// % saving or lost in fg_perf_bench's `flow ms` jitter. UNCONFIRMED until the bench reads variant vs canonical.
+//
+// Bindings (IDENTICAL to the canonical — the layout is shared so OpticalFlowPipeline reuses match_dsl_/
+// match_pipeline_layout_/descriptor sets unchanged):
+//   set=0 binding=0  combined image sampler — this level's frame A
+//   set=0 binding=1  combined image sampler — this level's frame B
+//   set=0 binding=2  combined image sampler — coarser MV field (RG16F), in coarser-level pixels
+//   set=0 binding=3  storage image (rg16f)  — output MV (this level)
+//   set=0 binding=4  storage image (rg16f)  — output SAD pair: R=sad_best, G=sad_zero
+//   set=0 binding=5  storage image (rgba16f)— second-best (CANDIDATE) field. PRESENT in the layout for
+//     binary-compatibility with the canonical pipeline layout, but NEVER written by this variant (the fork
+//     exists precisely because the default path does not consume it). emit_second is 0 on every path that
+//     selects this variant; the placeholder is bound here exactly as on the canonical OFF path.
+//
+// Push constants (24 bytes — IDENTICAL to the canonical):
+//   int   search_radius   ± window for THIS level
+//   float pred_scale      predictor multiplier (0 at the coarsest level, 2.0 when refining)
+//   int   dual_centre     STAGE-42 temporal MV prior (coarsest level: search both (0,0) and the prior centre)
+//   int   emit_second     ALWAYS 0 on this variant's path (the runner-up field is not produced here); kept in
+//     the push block so the push-constant range is byte-identical to the canonical pipeline layout.
+//   int   subpel          ARC-A LEVER-1b sub-pixel refinement (finest level only when armed) — IDENTICAL.
+//   int   candsel         ARC-A holonic candidate-selection (finest level only when armed) — IDENTICAL.
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0) uniform sampler2D u_frame_a;
+layout(set = 0, binding = 1) uniform sampler2D u_frame_b;
+layout(set = 0, binding = 2) uniform sampler2D u_predictor;
+layout(set = 0, binding = 3, rg16f) uniform writeonly image2D u_motion_vectors;
+layout(set = 0, binding = 4, rg16f) uniform writeonly image2D u_sad_field;
+layout(set = 0, binding = 5, rgba16f) uniform writeonly image2D u_second_best; // present for layout parity; never written here
+layout(push_constant) uniform PushConsts { int search_radius; float pred_scale; int dual_centre; int emit_second; int subpel; int candsel; } pc;
+
+const int kBlockSize = 8;
+
+// ARC-A LEVER-1b sub-pixel helper: PURE SAD (no lambda) at a candidate MV — IDENTICAL to the canonical.
+float pure_sad(vec3 ref_block[kBlockSize * kBlockSize], ivec2 tile_origin, ivec2 frame_size, ivec2 mv) {
+    float sad = 0.0;
+    for (int py = 0; py < kBlockSize; ++py)
+        for (int px = 0; px < kBlockSize; ++px) {
+            const ivec2 b_pos = clamp(tile_origin + ivec2(px, py) + mv, ivec2(0), frame_size - 1);
+            const vec3 b_pix = texelFetch(u_frame_b, b_pos, 0).rgb;
+            const vec3 r_pix = ref_block[py * kBlockSize + px];
+            sad += abs(r_pix.r - b_pix.r) + abs(r_pix.g - b_pix.g) + abs(r_pix.b - b_pix.b);
+        }
+    return sad;
+}
+
+void main() {
+    const ivec2 tile_idx = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 mv_size  = imageSize(u_motion_vectors);
+    if (tile_idx.x >= mv_size.x || tile_idx.y >= mv_size.y) return;
+
+    const ivec2 tile_origin = tile_idx * kBlockSize;
+    const ivec2 frame_size  = textureSize(u_frame_a, 0);
+
+    // Predictor centre (this level's pixel units): sample the coarser MV proportionally, scale ×2.
+    const vec2 mv_uv   = (vec2(tile_idx) + vec2(0.5)) / vec2(mv_size);
+    const vec2 pred    = texture(u_predictor, mv_uv).xy * pc.pred_scale;
+    const ivec2 centre = ivec2(round(pred));
+
+    vec3 ref_block[kBlockSize * kBlockSize];
+    const ivec2 centre0 = (pc.dual_centre != 0) ? ivec2(0) : centre;
+    const ivec2 centre1 = centre;
+    const bool  do_two  = (pc.dual_centre != 0) && (centre1 != centre0);
+    for (int py = 0; py < kBlockSize; ++py)
+        for (int px = 0; px < kBlockSize; ++px) {
+            const ivec2 a_pos = clamp(tile_origin + ivec2(px, py), ivec2(0), frame_size - 1);
+            ref_block[py * kBlockSize + px] = texelFetch(u_frame_a, a_pos, 0).rgb;
+        }
+
+    // in-place (zero-motion) SAD — always computed; feeds the confidence gate in the warp. IDENTICAL.
+    float sad_zero = 0.0;
+    for (int py = 0; py < kBlockSize; ++py)
+        for (int px = 0; px < kBlockSize; ++px) {
+            const ivec2 b_pos = clamp(tile_origin + ivec2(px, py), ivec2(0), frame_size - 1);
+            const vec3 b_pix = texelFetch(u_frame_b, b_pos, 0).rgb;
+            const vec3 r_pix = ref_block[py * kBlockSize + px];
+            sad_zero += abs(r_pix.r - b_pix.r) + abs(r_pix.g - b_pix.g) + abs(r_pix.b - b_pix.b);
+        }
+
+    // Motion-cost bias — IDENTICAL to the canonical. best_sad tracks the PURE SAD (no lambda) for the gate.
+    const float kLambda = 0.001;
+    float best_cost = 1e30;
+    float best_sad  = 0.0;   // pure SAD at the winning MV (no lambda)
+    ivec2 best_mv   = centre0;
+    // THE FORK: the second_cost / second_sad / second_mv runner-up accumulators and their per-candidate
+    // demote/insert branch (canonical :176-178,199,201-203) are REMOVED — the default FG path never reads
+    // the runner-up, so it is not tracked. The scan keeps ONLY the best-so-far, exactly as a single-winner
+    // block-match. The MV/SAD this produces is byte-identical to the canonical's emit_second=0 output (the
+    // runner-up tracking never influenced best_*; it only fed the binding-5 store the canonical gated off).
+    for (int c = 0; c < 2; ++c) {
+        if (c == 1 && !do_two) break;
+        const ivec2 ctr = (c == 0) ? centre0 : centre1;
+        for (int dy = -pc.search_radius; dy <= pc.search_radius; ++dy)
+            for (int dx = -pc.search_radius; dx <= pc.search_radius; ++dx) {
+                const ivec2 mv = ctr + ivec2(dx, dy);
+                float sad = 0.0;
+                for (int py = 0; py < kBlockSize; ++py)
+                    for (int px = 0; px < kBlockSize; ++px) {
+                        const ivec2 b_pos = clamp(tile_origin + ivec2(px, py) + mv, ivec2(0), frame_size - 1);
+                        const vec3 b_pix = texelFetch(u_frame_b, b_pos, 0).rgb;
+                        const vec3 r_pix = ref_block[py * kBlockSize + px];
+                        sad += abs(r_pix.r - b_pix.r) + abs(r_pix.g - b_pix.g) + abs(r_pix.b - b_pix.b);
+                    }
+                const float cost = sad + kLambda * float(abs(dx) + abs(dy));   // bias toward this centre
+                if (cost < best_cost) {
+                    best_cost = cost; best_sad = sad; best_mv = mv;
+                }
+            }
+    }
+    // ARC-A LEVER (holonic CANDIDATE-SELECTION) — IDENTICAL to the canonical. At the FINEST level when armed,
+    // give an AMBIGUOUS interior tile the COHERENT region-scale motion instead of its noisy local best.
+    const float kCandSelMargin = 0.12;   // the local match must beat the region model's SAD by ≥12% to win.
+    if (pc.candsel != 0) {
+        const ivec2 pred_c = ivec2(round(pred));
+        const int kCandSelMaxJump = 8;
+        const ivec2 d = abs(pred_c - centre0);
+        if (d.x <= kCandSelMaxJump && d.y <= kCandSelMaxJump) {
+            const float sad_pred = pure_sad(ref_block, tile_origin, frame_size, pred_c);
+            if (!(best_sad < sad_pred * (1.0 - kCandSelMargin))) {
+                best_mv  = pred_c;
+                best_sad = sad_pred;
+            }
+        }
+    }
+    // ARC-A LEVER-1b: sub-pixel MV at the finest level when armed — IDENTICAL to the canonical.
+    vec2 mv_out = vec2(float(best_mv.x), float(best_mv.y));
+    if (pc.subpel != 0) {
+        const float s0  = best_sad;                                              // PURE SAD at best_mv
+        const float sxm = pure_sad(ref_block, tile_origin, frame_size, best_mv + ivec2(-1,  0));
+        const float sxp = pure_sad(ref_block, tile_origin, frame_size, best_mv + ivec2(+1,  0));
+        const float sym = pure_sad(ref_block, tile_origin, frame_size, best_mv + ivec2( 0, -1));
+        const float syp = pure_sad(ref_block, tile_origin, frame_size, best_mv + ivec2( 0, +1));
+        const float denx = sxm - 2.0 * s0 + sxp;
+        const float deny = sym - 2.0 * s0 + syp;
+        const float dx = (denx > 1e-4) ? clamp(0.5 * (sxm - sxp) / denx, -0.5, 0.5) : 0.0;
+        const float dy = (deny > 1e-4) ? clamp(0.5 * (sym - syp) / deny, -0.5, 0.5) : 0.0;
+        mv_out += vec2(dx, dy);
+    }
+    imageStore(u_motion_vectors, tile_idx, vec4(mv_out.x, mv_out.y, 0.0, 0.0));
+    imageStore(u_sad_field,      tile_idx, vec4(best_sad, sad_zero, 0.0, 0.0));
+    // No binding-5 (candidate) store: this variant is selected ONLY when the runner-up field is unused, so
+    // it is never produced. The emit_second push is 0 on every path that binds this pipeline; the canonical
+    // shader holds the emit_second=1 path for the gme/ambig consumers.
+}
+// Made with my soul - Swately <3

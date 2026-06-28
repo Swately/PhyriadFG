@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PhyriadFG</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>PhyriadFG</h1>
+        <span class="subtitle">launcher &amp; control</span>
+      </div>
+
+      <div class="status" id="status">
+        <div class="fps">
+          <div class="fps-block">
+            <span class="fps-label">captura</span>
+            <span class="fps-val" id="fps-cap">--</span>
+          </div>
+          <span class="fps-arrow">&rarr;</span>
+          <div class="fps-block">
+            <span class="fps-label">ingesta</span>
+            <span class="fps-val" id="fps-in">--</span>
+          </div>
+          <span class="fps-arrow">&rarr;</span>
+          <div class="fps-block">
+            <span class="fps-label">salida</span>
+            <span class="fps-val accent" id="fps-out">--</span>
+          </div>
+        </div>
+        <div class="state">
+          <span class="state-pill stopped" id="state-pill">detenido</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel" id="controls">
+        <!-- option groups are rendered here by main.js -->
+      </section>
+
+      <aside class="sidebar">
+        <div class="card run-card">
+          <button id="btn-start" class="btn btn-primary">Iniciar</button>
+          <button id="btn-stop" class="btn btn-danger" disabled>Detener</button>
+          <!-- Control SOLO de UI (no entra en el modelo GROUPS de flags): con el FG en
+               ejecución, al cambiar cualquier flag/control el launcher reinicia el FG con la
+               nueva config (el FG lee su Config solo al arrancar). -->
+          <label
+            class="auto-restart"
+            for="auto-restart"
+            style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--text-dim);"
+          >
+            <input type="checkbox" id="auto-restart" />
+            <span>Auto-reiniciar al cambiar config</span>
+          </label>
+        </div>
+
+        <div class="card">
+          <label class="field-label" for="exe-path">Ruta del ejecutable</label>
+          <input
+            type="text"
+            id="exe-path"
+            class="text-input"
+            value="G:\PhyriadFG\build\phyriad_fg.exe"
+            spellcheck="false"
+          />
+        </div>
+
+        <div class="card">
+          <label class="field-label" for="raw-flags">Flags crudos (avanzado)</label>
+          <textarea
+            id="raw-flags"
+            class="text-input raw"
+            rows="3"
+            spellcheck="false"
+            placeholder="--wsub --csv salida.csv ..."
+          ></textarea>
+          <p class="hint">Se anexan al final del comando. Casi todos los flags ya están expuestos arriba; usa esta caja para overrides, alias (--exit-after, --present-fp16), el bi-argumento --qdump DIR N, o flags nuevos.</p>
+        </div>
+
+        <div class="card cmd-card">
+          <label class="field-label">Comando</label>
+          <code id="cmd-preview" class="cmd-preview">phyriad_fg.exe</code>
+        </div>
+      </aside>
+    </main>
+
+    <section class="logwrap card">
+      <div class="log-head">
+        <span class="field-label">Salida en vivo</span>
+        <button id="btn-clear" class="btn btn-ghost">Limpiar</button>
+      </div>
+      <div id="log" class="log"></div>
+    </section>
+  </body>
+</html>

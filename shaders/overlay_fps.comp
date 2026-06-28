@@ -1,0 +1,114 @@
+#version 450
+// apps/minimal_fg/shaders/overlay_fps.comp
+//
+// LSFG-style live FPS overlay for the PhyriadFG minimal core. Draws two integers --
+// the INPUT fps (captured frames/s) and the OUTPUT fps (presented frames/s) -- as
+// "in -> out" in the TOP-LEFT corner of the interpolated frame C, e.g. "60->120".
+//
+// C is the warp output (rgba8, VK_FORMAT_R8G8B8A8_UNORM, GENERAL layout). The overlay
+// READS+WRITES C (a read-modify-write storage image) so the dark box behind the text is
+// SEMI-OPAQUE over the underlying content (LSFG look); the glyphs are drawn OPAQUE bright
+// green for high contrast over any scene. Only the small box rect is touched -- every
+// pixel outside it returns without an imageStore, so the rest of C is left EXACTLY as the
+// OFP warp wrote it. Dispatched over the overlay rect only (kOverlayW x kOverlayH).
+//
+// Font: a BAKED 5x7 bitmap for digits 0-9 plus '-' and '>' (the "->" separator), declared
+// in-shader as FONT[12*7]. Each row is 5 bits (bit 4 = leftmost column). Glyphs are scaled
+// SX x (integer nearest) so they stay legible after the C->bridge upscale at present.
+//
+// Push constants (16 bytes): { uint in_fps; uint out_fps; uint width; uint height; }
+//   in_fps / out_fps : the two numbers to draw (clamped to 9999 = 4 digits each).
+//   width / height   : C's dimensions (px) -- the per-invocation bounds guard.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rgba8) uniform image2D u_img;   // C (read-modify-write)
+
+layout(push_constant) uniform PushConsts {
+    uint in_fps;
+    uint out_fps;
+    uint width;
+    uint height;
+} pc;
+
+// 5x7 baked bitmap font, rows top->bottom, 5 bits/row (bit 4 = leftmost column).
+// Glyphs: 0..9 = digits, 10 = '-', 11 = '>'.
+const uint FONT[84] = uint[84](
+    14u, 17u, 19u, 21u, 25u, 17u, 14u,   // 0
+     4u, 12u,  4u,  4u,  4u,  4u, 14u,   // 1
+    14u, 17u,  1u,  2u,  4u,  8u, 31u,   // 2
+    31u,  2u,  4u,  2u,  1u, 17u, 14u,   // 3
+     2u,  6u, 10u, 18u, 31u,  2u,  2u,   // 4
+    31u, 16u, 30u,  1u,  1u, 17u, 14u,   // 5
+     6u,  8u, 16u, 30u, 17u, 17u, 14u,   // 6
+    31u,  1u,  2u,  4u,  8u,  8u,  8u,   // 7
+    14u, 17u, 17u, 14u, 17u, 17u, 14u,   // 8
+    14u, 17u, 17u, 15u,  1u,  2u, 12u,   // 9
+     0u,  0u,  0u, 31u,  0u,  0u,  0u,   // '-' (10)
+    16u,  8u,  4u,  2u,  4u,  8u, 16u    // '>' (11)
+);
+
+const int GW  = 5;             // glyph cell width  (font columns)
+const int GH  = 7;             // glyph cell height (font rows)
+const int SX  = 4;             // integer scale (each font pixel -> SX x SX block)
+const int PAD = 6;             // padding (px) around the text inside the dark box
+const int ORG = 10;            // box top-left inset from the image corner (px)
+const int ADV = (GW + 1) * SX; // per-glyph horizontal advance (1 spacing column)
+
+void main() {
+    const ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (uint(p.x) >= pc.width || uint(p.y) >= pc.height) return;   // out of C -> nothing
+
+    // Build the glyph list: digits(in) , '-' , '>' , digits(out). Max 4 + 2 + 4 = 10.
+    int g[10];
+    int n = 0;
+    const uint DIV[4] = uint[4](1000u, 100u, 10u, 1u);
+
+    uint vi = pc.in_fps;  if (vi > 9999u) vi = 9999u;
+    int ndi = (vi >= 1000u) ? 4 : (vi >= 100u) ? 3 : (vi >= 10u) ? 2 : 1;
+    for (int i = 4 - ndi; i < 4; ++i) g[n++] = int((vi / DIV[i]) % 10u);
+
+    g[n++] = 10;   // '-'
+    g[n++] = 11;   // '>'
+
+    uint vo = pc.out_fps; if (vo > 9999u) vo = 9999u;
+    int ndo = (vo >= 1000u) ? 4 : (vo >= 100u) ? 3 : (vo >= 10u) ? 2 : 1;
+    for (int i = 4 - ndo; i < 4; ++i) g[n++] = int((vo / DIV[i]) % 10u);
+
+    // Box extents hug the text. text width = n*ADV - SX (drop the trailing spacing column).
+    const int text_w = n * ADV - SX;
+    const int box_w  = text_w + 2 * PAD;
+    const int box_h  = GH * SX + 2 * PAD;
+
+    // Local coords inside the box (its top-left is at ORG,ORG).
+    const int lx = p.x - ORG;
+    const int ly = p.y - ORG;
+    if (lx < 0 || ly < 0 || lx >= box_w || ly >= box_h) return;   // outside the box -> leave C untouched
+
+    // Text-area coords (inside the padding).
+    const int tx = lx - PAD;
+    const int ty = ly - PAD;
+
+    bool ink = false;
+    if (tx >= 0 && ty >= 0 && ty < GH * SX) {
+        const int slot = tx / ADV;          // which glyph
+        const int inx  = tx - slot * ADV;   // x within the advance cell
+        if (slot < n && inx < GW * SX) {
+            const int  fcol = inx / SX;      // 0..GW-1
+            const int  frow = ty  / SX;      // 0..GH-1
+            const uint bits = FONT[g[slot] * GH + frow];
+            // bit (GW-1-fcol) set => ink (bit 4 = leftmost column).
+            if ((bits & (1u << uint(GW - 1 - fcol))) != 0u) ink = true;
+        }
+    }
+
+    vec4 outc;
+    if (ink) {
+        outc = vec4(0.15, 1.0, 0.20, 1.0);                       // bright green glyph (opaque)
+    } else {
+        const vec4 bg = imageLoad(u_img, p);                     // current C content
+        outc = vec4(mix(bg.rgb, vec3(0.0), 0.55), 1.0);          // dark semi-opaque box
+    }
+    imageStore(u_img, p, outc);
+}
+// Made with my soul - Swately <3

@@ -1,0 +1,168 @@
+// apps/render_assistant/shaders/mv_median.comp
+// STAGE-49b: 3x3 component-wise vector-median filter on an uploaded MV field.
+//
+// The flat-content blind spot (operator photo, 2026-06-12, the synthetic ball): a wrong
+// block MV that lands BOTH warp samples on identical flat content (yellow-yellow / bg-bg)
+// passes the d_ab photometric check with ~0, and the backward matcher fails identically on
+// the same flat content so the fwd<->bwd round-trip "closes" too — so neither the commit
+// trigger nor the bidir classifier can see the error. The artifacts are ISOLATED bad
+// vectors at the moving rim (block holes inside the object, detached block stamps outside).
+// Dossier F2 predicted it verbatim ("SAD fails at low local variation"); the production cure
+// is FIELD-LEVEL consensus (F9 vector-median): a stray vector that disagrees with its 8
+// neighbours is replaced by the neighbourhood median — content-independent, no photometry.
+//
+// Mechanism: per MV-grid texel, take the 3x3 neighbourhood and emit the per-component median
+// (the .x median of the 9 .x values, the .y median of the 9 .y values). This is the standard
+// cheap "vector-median approximation" (component-wise marginal median), not a true L1 vector
+// median — it is the form every production MCFI postfilter uses (Guo&Lu 2016, F9) because it
+// is separable and a single sorting network does it. Edge texels clamp (CLAMP_TO_EDGE sampler).
+//
+// Median-of-9 algorithm: the canonical 19-compare-exchange network (the McGuire GPU median
+// net, "A Fast, Small-Radius GPU Median Filter"). It needs ONLY min/max — no full sort, no
+// shared memory, no branches — and lands the 5th-of-9 order statistic in slot p4 after 19
+// compare-exchanges. Each s2(a,b) is a vec2 min/max SWAP, so it processes the .x and .y
+// components at once: the .x median and the .y median fall out together (the component-wise
+// marginal median). VERIFIED (offline, 700k random/duplicate/float cases, 0 mismatches vs a
+// brute-force sort). Cost: 9 texture taps + 19 vec2 min/max per texel — negligible at
+// mvw*mvh (~32k texels at 1080p / 8).
+//
+// ── STAGE-49c: color-WEIGHTED consensus (push-selected, sim_thresh > 0.0) ─────────────────
+//   The blind 3x3 median (above) kills ISOLATED stray vectors, but COORDINATED rim errors
+//   survive: when several rim blocks are wrong TOGETHER (they agree on the wrong vector),
+//   neighbourhood consensus cannot fix peers that agree. The operator's contour-membership
+//   principle (2026-06-12 A/B): pixels belong to objects by COLOR-SIBLING relation; the
+//   contour is where that relation breaks; motion should be assigned by MEMBERSHIP, not by
+//   photometric measurement — which sidesteps the aperture problem (measuring an MV on flat
+//   yellow is impossible; INHERITING the yellow object's MV is trivial). Dossier backing:
+//   F1 halo fix = "a pixel disagreeing with its MV-consistent neighbour group gets that
+//   group's average" — exactly local intensity-membership segmentation; F4 = MV clustering +
+//   boundary-only refinement; the named production family is edge-aware/cross-bilateral MV
+//   filtering.
+//
+//   Mechanism (cross-bilateral on the MV field, weight = color membership in cur_real):
+//     · c_self = cur_real sampled at THIS block's centre — the full-res uv of the block
+//       centre is (cell + 0.5) / mv_grid_size (the cell index is gl_GlobalInvocationID.xy,
+//       the grid is imageSize(u_mv_out)). One tap.
+//     · for each of the 8 neighbours j: c_j = cur_real at neighbour j's block centre (one tap
+//       each). Vote j is INCLUDED iff max-channel |c_self − c_j| ≤ sim_thresh (the same
+//       max-channel color metric the warp's d_ab uses — a color sibling is one whose
+//       dominant-channel difference stays within the band; this is the membership test).
+//     · if FEWER than 3 neighbours are included (excluding self) → there is no color cohort
+//       to form a consensus across the contour → keep THIS block's own MV unchanged (the
+//       blind median would average across the contour, the exact error we are avoiding).
+//     · else → component-wise median over the INCLUDED votes + self (a variable-count set of
+//       4..9 elements). The fixed 9-element McGuire network cannot take a variable count, so
+//       we use a small insertion median: gather the included .x (and .y) into a local array,
+//       insertion-sort it, take the middle element (lower-median for even counts). At most 9
+//       elements in a compute shader — the insertion sort is a few dozen compare-swaps, the
+//       same order as the McGuire network, and is provably correct (it is a full sort, then
+//       the middle index). This is the form F1/F4 describe: the median of the COLOR-CONSISTENT
+//       neighbour group, not the spatial neighbourhood blindly.
+//
+//   sim_thresh == 0.0 (default OFF, = --mv-guided not set) takes the McGuire blind-median path
+//   above, BYTE-IDENTICAL to STAGE-49b. The cur_real sampler (binding 2) is still bound (a
+//   valid image) but UNREAD when off. When --mv-guided is given it REPLACES the blind median
+//   (the host sets sim_thresh > 0 → this branch; the app prints the precedence note).
+//
+// In/out: a SEPARATE scratch image (no in-place — every invocation reads a 3x3 neighbourhood
+// and writes its own texel; the host ping-pongs scratch -> the MV image after this pass).
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) uniform sampler2D u_mv_in;            // RG16F MV field (pixel units)
+layout(set = 0, binding = 1, rg16f) uniform writeonly image2D u_mv_out; // RG16F scratch
+layout(set = 0, binding = 2) uniform sampler2D u_cur_real;         // STAGE-49c: cur frame (membership color)
+layout(push_constant) uniform PushConsts {
+    float sim_thresh;   // STAGE-49c: 0 = blind McGuire median (default, byte-identical);
+                        // >0 = color-weighted consensus (max-channel membership band).
+} pc;
+
+void main() {
+    const ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 sz    = imageSize(u_mv_out);
+    const bool  valid = (coord.x < sz.x && coord.y < sz.y);
+
+    // Sample the 3x3 neighbourhood by integer texel offset. texelFetch on the clamped index
+    // (CLAMP_TO_EDGE replicates the border) — exact texel values, no bilinear blur of the field.
+    const ivec2 mxc = sz - ivec2(1);
+    #define TAP(dx,dy) texelFetch(u_mv_in, clamp(coord + ivec2(dx,dy), ivec2(0), mxc), 0).xy
+    vec2 p[9];
+    p[0] = TAP(-1,-1); p[1] = TAP(0,-1); p[2] = TAP(1,-1);
+    p[3] = TAP(-1, 0); p[4] = TAP(0, 0); p[5] = TAP(1, 0);
+    p[6] = TAP(-1, 1); p[7] = TAP(0, 1); p[8] = TAP(1, 1);
+    #undef TAP
+
+    vec2 out_mv;
+    if (pc.sim_thresh > 0.0) {
+        // ── STAGE-49c: color-weighted consensus (membership-gated variable-count median) ────
+        // c_self = cur_real at THIS block's centre. The mv-grid cell index IS coord; the
+        // full-res uv of the cell centre is (coord + 0.5) / grid_size (the same mapping the
+        // warp uses: uv = (out_coord + 0.5)/out_size, evaluated at the block-centre out-pixel).
+        const vec2 inv_grid = 1.0 / vec2(sz);
+        const vec3 c_self   = texture(u_cur_real, (vec2(coord) + vec2(0.5)) * inv_grid).rgb;
+
+        // Gather the INCLUDED neighbours' MVs (color siblings of c_self) into a local array,
+        // self always included (index 4 is the centre). The 8 offsets match p[] above.
+        const ivec2 off[9] = ivec2[9](
+            ivec2(-1,-1), ivec2(0,-1), ivec2(1,-1),
+            ivec2(-1, 0), ivec2(0, 0), ivec2(1, 0),
+            ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1));
+        vec2 inc[9];
+        int  ninc = 0;       // included count (votes contributing to the median, incl. self)
+        int  nneigh = 0;     // included NEIGHBOURS (excludes self) — the cohort-size test
+        for (int k = 0; k < 9; ++k) {
+            if (k == 4) { inc[ninc] = p[4]; ninc += 1; continue; }   // self always votes
+            const ivec2 nc = clamp(coord + off[k], ivec2(0), mxc);
+            const vec3  c_j = texture(u_cur_real, (vec2(nc) + vec2(0.5)) * inv_grid).rgb;
+            const vec3  ad  = abs(c_self - c_j);
+            const float dmax = max(ad.r, max(ad.g, ad.b));          // max-channel membership metric
+            if (dmax <= pc.sim_thresh) { inc[ninc] = p[k]; ninc += 1; nneigh += 1; }
+        }
+
+        if (nneigh < 3) {
+            // 49c-fix (operator ball A/B round 3): "keep own MV" here PROTECTED bad rim
+            // vectors — their partial-weight blends downstream showed as a dim-yellow halo
+            // fringe. A block with no color cohort cannot vouch for its own vector either:
+            // fall back to the BLIND median over all 9 (emergency consensus beats
+            // self-protection; the cross-contour averaging it risks is the lesser,
+            // already-measured evil — the round-2 bitten chunks were smaller than the halo).
+            for (int k = 0; k < 9; ++k) inc[k] = p[k];
+            ninc = 9;
+        }
+        {
+            // Component-wise median over the variable-count included set (4..9 elements).
+            // Insertion-sort the .x components and the .y components independently (a full
+            // sort, then the lower-median index ninc/2) → correct by construction for any count.
+            // At most 9 elements: a few dozen compare-swaps, no shared memory, no recursion.
+            float xs[9]; float ys[9];
+            for (int i = 0; i < ninc; ++i) { xs[i] = inc[i].x; ys[i] = inc[i].y; }
+            for (int i = 1; i < ninc; ++i) {
+                float kx = xs[i]; int j = i - 1;
+                while (j >= 0 && xs[j] > kx) { xs[j+1] = xs[j]; j -= 1; }
+                xs[j+1] = kx;
+            }
+            for (int i = 1; i < ninc; ++i) {
+                float ky = ys[i]; int j = i - 1;
+                while (j >= 0 && ys[j] > ky) { ys[j+1] = ys[j]; j -= 1; }
+                ys[j+1] = ky;
+            }
+            out_mv = vec2(xs[ninc / 2], ys[ninc / 2]);   // lower-median for even counts
+        }
+    } else {
+        // ── STAGE-49b: blind McGuire 19-op median-of-9 (byte-identical default) ────────────
+        // s2(a,b) is a vec2 compare-exchange: p[a]<-min, p[b]<-max, applied componentwise so
+        // .x and .y are sorted in lockstep. After the net, p[4] holds the per-component median.
+        #define S2(a,b) { vec2 lo = min(p[a], p[b]); p[b] = max(p[a], p[b]); p[a] = lo; }
+        S2(1,2) S2(4,5) S2(7,8)
+        S2(0,1) S2(3,4) S2(6,7)
+        S2(1,2) S2(4,5) S2(7,8)
+        S2(0,3) S2(5,8) S2(4,7)
+        S2(3,6) S2(1,4) S2(2,5)
+        S2(4,7) S2(4,2) S2(6,4)
+        S2(4,2)
+        #undef S2
+        out_mv = p[4];
+    }
+
+    if (valid) imageStore(u_mv_out, coord, vec4(out_mv, 0.0, 0.0));
+}

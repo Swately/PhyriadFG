@@ -1,0 +1,15 @@
+// apps/render_assistant/shaders/upscale_bilinear.comp
+// Bilinear upscale (any res → 2×). One invocation per OUTPUT pixel.
+// Bindings: set=0 b0=sampler2D src ; b1=rgba8 storage dst.
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0) uniform sampler2D u_src;
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D u_dst;
+void main() {
+    const ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 dst_size = imageSize(u_dst);
+    if (coord.x >= dst_size.x || coord.y >= dst_size.y) return;
+    const vec2 uv = (vec2(coord) + vec2(0.5)) / vec2(dst_size);
+    imageStore(u_dst, coord, texture(u_src, uv));
+}
+// Made with my soul - Swately <3

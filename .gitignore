@@ -1,0 +1,29 @@
+# ── Build output ────────────────────────────────────────────────
+build-render-assistant/
+build*/
+*.exe
+*.obj
+*.pdb
+*.spv
+*.ilk
+*.exp
+*.lib
+
+# ── UI (Tauri) — generated / vendored, never versioned ──────────
+ui/node_modules/
+ui/dist/
+ui/src-tauri/target/
+# ui/webview2: fixed WebView2 runtime (downloaded MS cab, ~149MB) — re-fetchable, not vendored
+ui/webview2/
+ui/Microsoft.WebView2*
+*.cab
+.vscode/
+
+# ── Scratch / diagnostics (gitignored campaign artifacts) ───────
+frames/
+*.bak
+*.rej
+*.patch
+ra_out*.txt
+c7_*.txt
+pslab_run/

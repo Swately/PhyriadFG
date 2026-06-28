@@ -1,0 +1,154 @@
+// framework/render/vulkan/shaders/optical_flow_warp.comp
+// Confidence-gated + source-agreement-gated motion-vector frame interpolation
+// (STAGE-20 confidence gate; STAGE-24 post-warp source-agreement gate).
+//
+// Given two frames A, B, a motion-vector field, and the per-tile SAD pair from
+// optical_flow_hier_match.comp, produces the temporal-midpoint frame C.
+//
+// ── Gate 1: Confidence (STAGE-20) ────────────────────────────────────────────
+// Per-tile WARP/BLEND decision using the two SADs in the SAD field (binding 3):
+//   sad_best : residual at the winning MV  (block-match quality — low = good match).
+//   sad_zero : residual at MV=(0,0)        (in-place change   — low = static tile).
+//
+// Gate: passes iff BOTH conditions hold:
+//   (a) sad_best < residual_ceil              — match residual is below tolerance.
+//   (b) (sad_zero − sad_best) / sad_zero > improvement_frac
+//       ⟺ sad_zero × (1 − improvement_frac) > sad_best    (avoids divide-by-zero).
+//
+// Key property: (sad_zero − sad_best) cancels the local dither floor. If a tile is
+// STATIC (sad_zero ≈ sad_best ≈ noise), condition (b) fails → BLEND → correct, pin-in-place.
+// This makes the gate noise-floor-invariant: no per-capture threshold knob needed.
+// If the scene moves well (sad_zero >> sad_best), condition (b) holds → WARP passes to gate 2.
+//
+// ── Gate 2: Source agreement (STAGE-24) ──────────────────────────────────────
+// After computing the warp samples A[uv−mv/2] and B[uv+mv/2] (already needed for the
+// WARP result), measure the source disagreement:
+//
+//   d = length(A_samp.rgb − B_samp.rgb)    (range ≈ [0, √3] for rgba8 in [0,1])
+//
+// A PER-TILE MEAN is computed via shared memory (8×8 workgroup, 64 threads):
+//   d_tile = mean(d) over the workgroup.
+//
+// The tile WARPs iff BOTH gates pass AND d_tile < agreement_threshold.
+// If d_tile ≥ threshold, the two warp sources disagree — the MV is a compromise
+// that blends pixels from opposite sides of a motion boundary → force BLEND.
+//
+// Threshold guidance: raw length() units in [0, √3].
+//   0.05 ≈ 7/255 per channel  (very tight — fires at soft texture gradients)
+//   0.10 ≈ 15/255 per channel
+//   0.20 ≈ 29/255 per channel (default — good balance; no false positives on uniform motion)
+//   0.40 ≈ 59/255 per channel (loose — only fires at strong colour steps)
+//
+// Setting agreement_threshold ≥ √3 ≈ 1.733 disables gate 2 (confidence-only behaviour).
+//
+// Implementation note — why the barrier is unconditional:
+//   The MV is sampled via texture() (bilinear), so MV varies per-pixel even within a tile.
+//   This means the confidence gate decision is NOT guaranteed to be uniform across the
+//   workgroup. Therefore the shared-memory barrier must be OUTSIDE any conditional, at
+//   the top level of main(), to be in unconditional (uniform-control-flow) scope.
+//   Consequence: the warp samples A_samp / B_samp are ALWAYS fetched — on tiles that will
+//   ultimately BLEND (confidence fails or agreement fails), 2 extra texture reads are paid.
+//   This is the source of the +12% warp-only cost increase measured in stage23_agreement.
+//
+// BLEND output:
+//   (1−t)·texture(u_frame_a, uv) + t·texture(u_frame_b, uv)   — in-place blend at phase t.
+//
+// Special cases:
+//   sad_zero=0, sad_best=0 → cond(b): 0*(1−p) > 0 = false → BLEND (perfectly static tile).
+//   agreement_threshold=∞  → gate 2 always passes → confidence-only behaviour.
+//   residual_ceil < 0      → always BLEND.
+//
+// (History: replaces the per-tile STATIC LOCK (STAGE-18). Confidence gate (STAGE-20) removed
+//  the absolute static_thresh. Agreement gate (STAGE-24) extends gate 2 to also BLEND tiles
+//  where the warp sources straddle a motion boundary — the SAD-based gate alone could not
+//  detect this because block-match finds compromise MVs with low SAD. Measured in
+//  bench/stage23_agreement: per-tile thresh=0.20 → hud_fine +39 dB vs texelFetch conf_only,
+//  blob_edge/large_uni/two_vel delta=0; no false positives on uniform motion.)
+//
+// Bindings:
+//   set=0 binding=0  combined image sampler — frame A
+//   set=0 binding=1  combined image sampler — frame B
+//   set=0 binding=2  combined image sampler — motion vectors (RG16F, finest level, pixel units)
+//   set=0 binding=3  combined image sampler — SAD field (RG16F): R=sad_best, G=sad_zero per tile
+//   set=0 binding=4  storage image (rgba8)  — output C
+//
+// Push constants (16 bytes): {float residual_ceil; float improvement_frac; float agreement_threshold; float t}
+//   residual_ceil:          gate (a) ceiling for sad_best. Default 32.0.
+//   improvement_frac:       gate (b) minimum relative improvement. Default 0.5.
+//   agreement_threshold:    gate 2 d_tile ceiling in length() units. Default 0.20.
+//   t:                      temporal phase in (0,1). 0.5 = midpoint; k/N for Nx pacing (STAGE-29).
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D u_frame_a;
+layout(set = 0, binding = 1) uniform sampler2D u_frame_b;
+layout(set = 0, binding = 2) uniform sampler2D u_motion_vectors;
+layout(set = 0, binding = 3) uniform sampler2D u_sad_field;
+layout(set = 0, binding = 4, rgba8) uniform writeonly image2D u_output;
+layout(push_constant) uniform PushConsts {
+    float residual_ceil;
+    float improvement_frac;
+    float agreement_threshold;
+    float t;          // temporal phase: 0.5 = midpoint; k/N for Nx pacing (STAGE-29)
+} pc;
+
+// Shared memory for per-tile d reduction (64 invocations in the 8×8 workgroup).
+// Allocated unconditionally — the barrier below is always reached.
+shared float s_d[64];
+
+void main() {
+    const ivec2 coord    = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 out_size = imageSize(u_output);
+    // Out-of-bounds invocations (edge workgroups when the image is NOT a multiple of 8) must
+    // NOT early-return here: the per-tile reduction barrier below must be reached by EVERY
+    // invocation in the workgroup (uniform control flow — a Vulkan requirement). They run the
+    // whole body (writing 0 to s_d so the tile mean is unaffected) and only skip the final
+    // imageStore. (An early return here would make the barrier divergent → undefined behaviour;
+    // it happened to pass the multiple-of-8 test resolutions, which spawn no edge invocations.)
+    const bool valid = (coord.x < out_size.x && coord.y < out_size.y);
+
+    // Tile UV — shared for MV, SAD, and frame lookups. Bilinear filtering on the MV and SAD
+    // textures gives a soft transition across tile boundaries (no visible 8×8 grid artifacts).
+    const vec2 uv = (vec2(coord) + vec2(0.5)) / vec2(out_size);
+
+    const vec2  mv       = texture(u_motion_vectors, uv).xy;   // pixel units
+    const vec2  sad_pair = texture(u_sad_field,       uv).xy;  // R=sad_best, G=sad_zero
+    const float sad_best = sad_pair.r;
+    const float sad_zero = sad_pair.g;
+
+    // ── Gate 1: Confidence (STAGE-20) ──────────────────────────────────────────
+    const bool good_match  = (sad_best < pc.residual_ceil);
+    const bool good_improv = (sad_zero * (1.0 - pc.improvement_frac) > sad_best);
+
+    // ── Gate 2: Source agreement (STAGE-24) — per-tile mean d ──────────────────
+    // Fetch warp samples UNCONDITIONALLY so the barrier is in uniform control flow.
+    // These samples are reused directly for the WARP result when both gates pass.
+    // C_t(x) = (1−t)·A[x−t·mv] + t·B[x+(1−t)·mv]  (convention: MV points A→B)
+    const vec2 t_mv_uv     = (mv * pc.t)           / vec2(out_size);
+    const vec2 inv_t_mv_uv = (mv * (1.0 - pc.t))   / vec2(out_size);
+    const vec4 A_samp      = texture(u_frame_a, uv - t_mv_uv);
+    const vec4 B_samp      = texture(u_frame_b, uv + inv_t_mv_uv);
+    const float d_pixel   = length(A_samp.rgb - B_samp.rgb);
+
+    // Per-tile reduction: write each thread's d, barrier, then one thread (all threads)
+    // sum and compute the mean. All 64 threads compute the same sum — no branch divergence.
+    s_d[gl_LocalInvocationIndex] = valid ? d_pixel : 0.0;
+    barrier();
+    float d_sum = 0.0;
+    for (uint i = 0u; i < 64u; ++i) d_sum += s_d[i];
+    const float d_tile      = d_sum / 64.0;
+    const bool sources_agree = (d_tile < pc.agreement_threshold);
+
+    // ── WARP / BLEND decision ───────────────────────────────────────────────────
+    vec4 result;
+    if (good_match && good_improv && sources_agree) {
+        // WARP: both gates pass — motion-compensated midpoint.
+        // A BACKWARD by t·mv, B FORWARD by (1−t)·mv (convention: MV points A→B).
+        result = (1.0 - pc.t) * A_samp + pc.t * B_samp;
+    } else {
+        // BLEND: confidence fails OR sources disagree → safe in-place blend at phase t.
+        result = (1.0 - pc.t) * texture(u_frame_a, uv) + pc.t * texture(u_frame_b, uv);
+    }
+    if (valid) imageStore(u_output, coord, result);
+}
+// Made with my soul - Swately <3

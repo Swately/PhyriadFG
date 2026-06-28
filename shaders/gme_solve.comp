@@ -1,0 +1,48 @@
+// apps/render_assistant/shaders/gme_solve.comp
+// IDEA-1 (gme-gpu): the 3×3 CRAMER SOLVE of the global-motion normal equations, run ON DEVICE B in a
+// SINGLE invocation. GPU port of main.cpp gme_fit_affine's solve block (main.cpp:1233-1245), in PLAIN
+// fp32 (the precision gate is GREEN — see gme_reduce.comp header).
+//
+// The reduce pass (gme_reduce.comp) wrote the 12 accumulators into the Accum SSBO. This pass solves
+// the SHARED symmetric 3×3 M for BOTH the x-model and the y-model by Cramer's rule (the CPU's solve3
+// lambda, applied to bx* then by*), and writes the 6 params {a,b,c,d,e,f} into the Model SSBO.
+//
+//   M = [[Sw, Swx, Swy], [Swx, Swxx, Swxy], [Swy, Swxy, Swyy]]
+//   det = Sw·(Swxx·Swyy − Swxy²) − Swx·(Swx·Swyy − Swxy·Swy) + Swy·(Swx·Swxy − Swxx·Swy)
+//   |det| < 1e-9 → singular: leave the model UNCHANGED (the CPU's `break` keeps the prior a..f). On
+//   iter 0 the prior model SSBO is the zero-init / last-pair value; the host treats a singular iter-0
+//   fit the same way the CPU does (the dissidence pass below runs on whatever model survives).
+//
+// Run as ONE workgroup of 1 (dispatch 1,1,1); only invocation 0 does anything. Chains directly after
+// gme_reduce.comp in the SAME command buffer with a buffer barrier (Accum: shader-write → shader-read).
+#version 450
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer Accum {
+    float Sw, Swx, Swy, Swxx, Swxy, Swyy;
+    float bx0, bx1, bx2;
+    float by0, by1, by2;
+} acc;
+layout(set = 0, binding = 1) buffer Model { float m[6]; } model;
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) return;
+    const float Sw=acc.Sw, Swx=acc.Swx, Swy=acc.Swy, Swxx=acc.Swxx, Swxy=acc.Swxy, Swyy=acc.Swyy;
+    const float det = Sw*(Swxx*Swyy - Swxy*Swxy)
+                    - Swx*(Swx*Swyy - Swxy*Swy)
+                    + Swy*(Swx*Swxy - Swxx*Swy);
+    if (abs(det) < 1e-9) return;                 // singular → keep the prior model (CPU `break`)
+    const float invdet = 1.0 / det;
+    // Cofactor solve for a generic RHS (r0,r1,r2) → the three params (the CPU solve3 lambda, verbatim).
+    const float bx0=acc.bx0, bx1=acc.bx1, bx2=acc.bx2;
+    const float by0=acc.by0, by1=acc.by1, by2=acc.by2;
+    // x-model → a,b,c
+    model.m[0] = invdet * ( bx0*(Swxx*Swyy - Swxy*Swxy) - Swx*(bx1*Swyy - Swxy*bx2) + Swy*(bx1*Swxy - Swxx*bx2) );
+    model.m[1] = invdet * ( Sw*(bx1*Swyy - Swxy*bx2) - bx0*(Swx*Swyy - Swxy*Swy) + Swy*(Swx*bx2 - bx1*Swy) );
+    model.m[2] = invdet * ( Sw*(Swxx*bx2 - bx1*Swxy) - Swx*(Swx*bx2 - bx1*Swy) + bx0*(Swx*Swxy - Swxx*Swy) );
+    // y-model → d,e,f
+    model.m[3] = invdet * ( by0*(Swxx*Swyy - Swxy*Swxy) - Swx*(by1*Swyy - Swxy*by2) + Swy*(by1*Swxy - Swxx*by2) );
+    model.m[4] = invdet * ( Sw*(by1*Swyy - Swxy*by2) - by0*(Swx*Swyy - Swxy*Swy) + Swy*(Swx*by2 - by1*Swy) );
+    model.m[5] = invdet * ( Sw*(Swxx*by2 - by1*Swxy) - Swx*(Swx*by2 - by1*Swy) + by0*(Swx*Swxy - Swxx*Swy) );
+}
+// Made with my soul - Swately <3

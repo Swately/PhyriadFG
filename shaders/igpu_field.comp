@@ -1,0 +1,55 @@
+// apps/render_assistant/shaders/igpu_field.comp
+// STAGE-G1 (P0): iGPU image-derived contour field producer — the stigmergic substrate
+// pass. Runs as a SECOND dispatch on G.q2 right after igpu_convert_pack, consuming the
+// iGPU's between-source-frame idle. Reads the convert's RGBA8 output (hostR, 1 uint/px,
+// sysRAM SSBO, zero PCIe) and writes a per-pixel field (hostFIELD, 1 uint/px):
+//   byte 0 = contour_dist  : luma-gradient (Sobel) magnitude 0..255 — the image-edge response.
+//   byte 1 = occ_class     : P0 stub — 1 = edge-band (mag >= edge_thr), 0 = interior.
+// P0 scope: a single-pass per-pixel edge field, trivially reproducible by a CPU reference
+// (the --igpu-field-verify gate, D-13). The richer occ/disocclusion classification + the
+// inward chamfer distance (mirroring main.cpp kChamfOrtho/kChamfDiag, the STAGE-63 analogue)
+// are later P0.x refinements; this is the minimal correct producer.
+//
+// Default-OFF behind --igpu-field; when off this shader is never dispatched (byte-identical).
+// SSBO/std430 + 1D dispatch mirror igpu_convert_pack.comp (the iGPU operates on host buffers,
+// not images).
+#version 450
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) readonly  buffer Src   { uint s[]; };  // hostR RGBA8: R | G<<8 | B<<16 | 0xFF<<24
+layout(std430, binding = 1) writeonly buffer Field { uint f[]; };  // 1 uint/px: contour_dist | occ_class<<8
+layout(push_constant) uniform PC { uint w; uint h; uint edge_thr; uint pad; };
+
+float luma(uint px) {
+    // hostR is normalized RGBA8 (convert already swizzled BGRA->RGBA), low byte = R.
+    float r = float( px        & 0xffu);
+    float g = float((px >>  8u) & 0xffu);
+    float b = float((px >> 16u) & 0xffu);
+    return 0.299 * r + 0.587 * g + 0.114 * b;   // 0..255
+}
+
+void main() {
+    const uint i  = gl_GlobalInvocationID.x;
+    const uint px = w * h;
+    if (i >= px) return;
+
+    const uint x = i % w;
+    const uint y = i / w;
+    // clamped 3x3 neighbourhood (edge-replicate)
+    const uint xm = (x > 0u)      ? x - 1u : 0u;
+    const uint xp = (x + 1u < w)  ? x + 1u : w - 1u;
+    const uint ym = (y > 0u)      ? y - 1u : 0u;
+    const uint yp = (y + 1u < h)  ? y + 1u : h - 1u;
+
+    const float l00 = luma(s[ym * w + xm]), l10 = luma(s[ym * w + x]), l20 = luma(s[ym * w + xp]);
+    const float l01 = luma(s[y  * w + xm]),                            l21 = luma(s[y  * w + xp]);
+    const float l02 = luma(s[yp * w + xm]), l12 = luma(s[yp * w + x]), l22 = luma(s[yp * w + xp]);
+
+    const float gx = (l20 + 2.0 * l21 + l22) - (l00 + 2.0 * l01 + l02);
+    const float gy = (l02 + 2.0 * l12 + l22) - (l00 + 2.0 * l10 + l20);
+    const float mag = sqrt(gx * gx + gy * gy) * 0.25;   // Sobel range ~[0,1020] -> ~[0,255]
+
+    const uint dist = uint(clamp(mag, 0.0, 255.0));
+    const uint occ  = (dist >= edge_thr) ? 1u : 0u;     // P0 stub: edge-band vs interior
+    f[i] = dist | (occ << 8u);
+}
+// Made with my soul - Swately <3

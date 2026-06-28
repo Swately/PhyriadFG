@@ -1,0 +1,34 @@
+// apps/render_assistant/shaders/upscale_lanczos.comp
+// Separable Lanczos-2 (a=2) upscale (any res → 2×). 4×4 support, 16 explicit taps
+// per output pixel. Same shader as stage4_enhance (STAGE-4 upper-bound upscaler).
+// Bindings: set=0 b0=sampler2D src ; b1=rgba8 storage dst.
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0) uniform sampler2D u_src;
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D u_dst;
+
+const float PI = 3.14159265358979323846;
+float sinc(float x) { if (abs(x) < 1e-5) return 1.0; const float a = PI * x; return sin(a) / a; }
+float lanczos(float x) { const float A = 2.0; if (abs(x) >= A) return 0.0; return sinc(x) * sinc(x / A); }
+
+void main() {
+    const ivec2 coord    = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 dst_size = imageSize(u_dst);
+    if (coord.x >= dst_size.x || coord.y >= dst_size.y) return;
+    const ivec2 src_size = textureSize(u_src, 0);
+    const vec2  scale    = vec2(src_size) / vec2(dst_size);
+    const vec2  src_pos  = (vec2(coord) + vec2(0.5)) * scale - vec2(0.5);
+    const ivec2 base     = ivec2(floor(src_pos));
+    const vec2  frac     = src_pos - vec2(base);
+    vec4 acc = vec4(0.0); float wsum = 0.0;
+    for (int j = -1; j <= 2; ++j) {
+        const float wy = lanczos(frac.y - float(j));
+        for (int i = -1; i <= 2; ++i) {
+            const float w = lanczos(frac.x - float(i)) * wy;
+            const ivec2 p = clamp(base + ivec2(i, j), ivec2(0), src_size - 1);
+            acc += w * texelFetch(u_src, p, 0); wsum += w;
+        }
+    }
+    imageStore(u_dst, coord, acc / max(wsum, 1e-5));
+}
+// Made with my soul - Swately <3

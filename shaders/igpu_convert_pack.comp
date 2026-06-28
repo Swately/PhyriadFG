@@ -1,0 +1,87 @@
+// apps/render_assistant/shaders/igpu_convert_pack.comp
+// STAGE-26c-1/26c-3: iGPU fused convert(BGRA8/RGBA8→RGB8) + pack into SSBO layout.
+// Source: bench/stage26a_igpu_convert — same logic, app context.
+//
+// Reads raw BGRA8/RGBA8 capture from sysRAM SSBO (Astage, host-bounced by DD/WGC),
+// writes two outputs — both in sysRAM, zero PCIe crossings:
+//   binding=1  packed RGB8 (hostRP) — 3 uint32s per 4-px group, for B ingest (~25% less bytes).
+//   binding=2  RGBA8 unpacked (hostR) — 1 uint32 per pixel, for A present + no-upscale path.
+//
+// STAGE-26c-1: binding=1 only.
+// STAGE-26c-3: binding=2 added; pc.px added for bounds-check on the last group's tail pixels.
+//
+// is_bgra=1 (WGC/DD B8G8R8A8_UNORM): bits[23:16]=R, [15:8]=G, [7:0]=B.
+// is_bgra=0 (R8G8B8A8_UNORM): bits[7:0]=R, [15:8]=G, [23:16]=B.
+//
+// STAGE-34-3: is_hdr=1 (DD on an HDR desktop → R16G16B16A16_FLOAT scRGB, 8 bytes/px =
+// 2 uint32/px): unpack the FP16 pair, tone-map (clamp·exposure → sRGB OETF) to 8-bit RGB.
+// Same math as the A-path hdr_convert.comp. Source stride doubles (s[i*2+0],s[i*2+1]).
+//
+// Pack layout (4 px -> 3 uint32s, compatible with unpack_packed.comp):
+//   d[g*3+0] = r0|(g0<<8)|(b0<<16)|(r1<<24)
+//   d[g*3+1] = g1|(b1<<8)|(r2<<16)|(g2<<24)
+//   d[g*3+2] = b2|(r3<<8)|(g3<<16)|(b3<<24)
+//
+// RGBA8 layout (R8G8B8A8_UNORM, A=255):
+//   r[px_idx] = r | (g<<8) | (b<<16) | 0xFF000000
+#version 450
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) readonly  buffer Src  { uint s[]; };  // BGRA8/RGBA8 (1 uint/px) OR FP16 (2 uint/px)
+layout(std430, binding = 1) writeonly buffer Dst  { uint d[]; };  // packed: 3 uints per 4-px group
+layout(std430, binding = 2) writeonly buffer Rgba { uint r[]; };  // RGBA8:  1 uint per pixel
+layout(push_constant) uniform PC { uint groups; uint is_bgra; uint px; uint is_hdr; float exposure; };  // px = W*H
+
+vec3 srgb_oetf(vec3 c) {
+    bvec3 lo = lessThan(c, vec3(0.0031308));
+    vec3 a = c * 12.92;
+    vec3 b = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;
+    return mix(b, a, vec3(lo));
+}
+
+// STAGE-34-3: one FP16 scRGB pixel (2 uint32) → tone-mapped 8-bit RGB (0..255).
+uvec3 hdr_px(uint i, float expo) {
+    vec2 rg = unpackHalf2x16(s[i*2u+0u]);   // R,G
+    vec2 ba = unpackHalf2x16(s[i*2u+1u]);   // B,A
+    vec3 c = vec3(rg.x, rg.y, ba.x);
+    c = min(max(c, vec3(0.0)) * expo, vec3(1.0));
+    c = srgb_oetf(c);
+    return uvec3(round(c * 255.0));
+}
+
+void main() {
+    uint g = gl_GlobalInvocationID.x;
+    if (g >= groups) return;
+    uint r0, g0, b0, r1, g1, b1, r2, g2, b2, r3, g3, b3;
+    if (is_hdr != 0u) {
+        uvec3 c0 = hdr_px(g*4u+0u, exposure), c1 = hdr_px(g*4u+1u, exposure);
+        uvec3 c2 = hdr_px(g*4u+2u, exposure), c3 = hdr_px(g*4u+3u, exposure);
+        r0=c0.x; g0=c0.y; b0=c0.z;  r1=c1.x; g1=c1.y; b1=c1.z;
+        r2=c2.x; g2=c2.y; b2=c2.z;  r3=c3.x; g3=c3.y; b3=c3.z;
+    } else {
+    uint p0 = s[g*4+0], p1 = s[g*4+1], p2 = s[g*4+2], p3 = s[g*4+3];
+    if (is_bgra != 0u) {
+        // B8G8R8A8_UNORM uint32: bits[7:0]=B [15:8]=G [23:16]=R [31:24]=A
+        r0=(p0>>16)&0xffu; g0=(p0>>8)&0xffu; b0=p0&0xffu;
+        r1=(p1>>16)&0xffu; g1=(p1>>8)&0xffu; b1=p1&0xffu;
+        r2=(p2>>16)&0xffu; g2=(p2>>8)&0xffu; b2=p2&0xffu;
+        r3=(p3>>16)&0xffu; g3=(p3>>8)&0xffu; b3=p3&0xffu;
+    } else {
+        // R8G8B8A8_UNORM uint32: bits[7:0]=R [15:8]=G [23:16]=B [31:24]=A
+        r0=p0&0xffu; g0=(p0>>8)&0xffu; b0=(p0>>16)&0xffu;
+        r1=p1&0xffu; g1=(p1>>8)&0xffu; b1=(p1>>16)&0xffu;
+        r2=p2&0xffu; g2=(p2>>8)&0xffu; b2=(p2>>16)&0xffu;
+        r3=p3&0xffu; g3=(p3>>8)&0xffu; b3=(p3>>16)&0xffu;
+    }
+    }
+    // Packed RGB8 output (binding 1).
+    d[g*3+0] = r0 | (g0<<8) | (b0<<16) | (r1<<24);
+    d[g*3+1] = g1 | (b1<<8) | (r2<<16) | (g2<<24);
+    d[g*3+2] = b2 | (r3<<8) | (g3<<16) | (b3<<24);
+    // RGBA8 output (binding 2) — A=255; bounds check for tail pixels in last group.
+    const uint base = g * 4u;
+    r[base]    = r0 | (g0 << 8u) | (b0 << 16u) | 0xFF000000u;
+    if (base + 1u < px) r[base+1u] = r1 | (g1 << 8u) | (b1 << 16u) | 0xFF000000u;
+    if (base + 2u < px) r[base+2u] = r2 | (g2 << 8u) | (b2 << 16u) | 0xFF000000u;
+    if (base + 3u < px) r[base+3u] = r3 | (g3 << 8u) | (b3 << 16u) | 0xFF000000u;
+}
+// Made with my soul - Swately <3

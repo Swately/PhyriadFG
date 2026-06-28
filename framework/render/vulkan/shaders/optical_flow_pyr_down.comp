@@ -1,0 +1,31 @@
+// framework/render/vulkan/shaders/optical_flow_pyr_down.comp
+// Image-pyramid downsample for the hierarchical block-match (OpticalFlowPipeline).
+//
+// 2×2 box average, RGBA8 -> RGBA8 at half resolution. One invocation per DEST texel; reads the
+// four covered source texels (clamp-to-edge, matching the sampler / texelFetch convention).
+//
+// Building an A,B pyramid lets the coarse block-match find a LARGE full-res displacement with a
+// SMALL search radius: a ±R window at pyramid scale 2^L reaches ±R·2^L full-res pixels. The
+// coarse winner is propagated up and refined per level — O(R²·levels) instead of the flat O(D²).
+// Promoted from bench/stage14_hierarchical (measured: D=64 tracked at ~38 dB vs flat's collapse).
+//
+// Bindings:
+//   set=0 binding=0  combined image sampler — source level (RGBA8)
+//   set=0 binding=1  storage image (rgba8)  — destination level (half size)
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0) uniform sampler2D u_src;
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D u_dst;
+void main() {
+    const ivec2 d = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 ds = imageSize(u_dst);
+    if (d.x >= ds.x || d.y >= ds.y) return;
+    const ivec2 ss = textureSize(u_src, 0);
+    const ivec2 s  = d * 2;
+    const vec4 a = texelFetch(u_src, clamp(s,            ivec2(0), ss - 1), 0);
+    const vec4 b = texelFetch(u_src, clamp(s+ivec2(1,0), ivec2(0), ss - 1), 0);
+    const vec4 c = texelFetch(u_src, clamp(s+ivec2(0,1), ivec2(0), ss - 1), 0);
+    const vec4 e = texelFetch(u_src, clamp(s+ivec2(1,1), ivec2(0), ss - 1), 0);
+    imageStore(u_dst, d, (a + b + c + e) * 0.25);
+}
+// Made with my soul - Swately <3

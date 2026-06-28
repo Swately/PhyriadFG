@@ -1,0 +1,41 @@
+// apps/render_assistant/shaders/mv_smooth.comp
+// STAGE-35-R2: temporal motion-vector EMA — damps per-tile MV quantization jitter
+// across consecutive frame pairs (the "tile shimmer while walking" the operator saw).
+//
+// In-place on the OpticalFlowPipeline level-0 MV image (RG16F, width/8 × height/8),
+// aliased app-side via its public motion_image() handle (created STORAGE|SAMPLED|
+// TRANSFER_SRC — a storage view is legal). prev holds last pair's SMOOTHED field.
+//
+//   smoothed = (|mv_new − mv_prev| > cut) ? mv_new                      // bypass: a
+//                                          : alpha·mv_new + (1−alpha)·mv_prev
+//   where the bypass keeps direction reversals / scene cuts from smearing.
+//
+// prev is zero-initialised: on the first pair, |mv_new − 0| = |mv_new|; any real
+// motion exceeds `cut` → bypass → prev self-seeds to mv_new. Static tiles (|mv|<cut)
+// blend toward 0, which is correct (no motion).
+//
+// Both images are bound as storage (in/out). Each texel is independent, so reading
+// prev and writing it in the same invocation is race-free.
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, rg16f) uniform image2D u_mv;     // OFP MV (in: new, out: smoothed)
+layout(set = 0, binding = 1, rg16f) uniform image2D u_prev;   // app-owned (in: last smoothed, out: this)
+// 35-R2b (supervisor review): SPAN NORMALIZATION. Pairs can span >1 source frame
+// (skips happen; R1 paces for it) — their raw MV is span× larger for the SAME true
+// velocity. EMA-mixing raw MVs across different spans corrupts the magnitude exactly
+// in the moments R1 fixes (and the 6px cut won't catch it: a 4px/frame motion in a
+// span-2 pair gives |Δ|=4 < 6 → smeared). So: smooth in VELOCITY space (mv/span);
+// u_prev stores NORMALIZED per-source-frame MVs; the output is rescaled by this
+// pair's span for the warp (which expects the full pair displacement).
+layout(push_constant) uniform PC { float alpha; float cut; uint w; uint h; float span; } pc;
+
+void main() {
+    const ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (uint(p.x) >= pc.w || uint(p.y) >= pc.h) return;
+    vec2 nw = imageLoad(u_mv,   p).xy / pc.span;   // velocity (px per source frame)
+    vec2 pv = imageLoad(u_prev, p).xy;             // previous SMOOTHED velocity
+    vec2 outv = (length(nw - pv) > pc.cut) ? nw : (pc.alpha * nw + (1.0 - pc.alpha) * pv);
+    imageStore(u_mv,   p, vec4(outv * pc.span, 0.0, 0.0));  // back to pair displacement
+    imageStore(u_prev, p, vec4(outv, 0.0, 0.0));            // keep velocity space
+}
+// Made with my soul - Swately <3

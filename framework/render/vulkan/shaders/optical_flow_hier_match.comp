@@ -1,0 +1,269 @@
+// framework/render/vulkan/shaders/optical_flow_hier_match.comp
+// One level of the hierarchical (coarse-to-fine) block-match — the OpticalFlowPipeline matcher.
+//
+// Identical SAD math to the flat optical_flow_block_match.comp, EXCEPT the ±R window is CENTERED on
+// a PREDICTOR motion vector propagated from the coarser pyramid level (instead of always on zero):
+//
+//   • coarsest level: predictor is a zero field + pred_scale=0  → a plain ±R_coarse search; a ±R
+//     window at pyramid scale 2^L reaches ±R·2^L FULL-RES pixels → a small R tracks a LARGE D.
+//   • finer levels:   predictor = the coarser MV upsampled (sampled proportionally) × pred_scale
+//     (=2.0, because pixel units double when the image doubles) → refine with a small ±R.
+//
+// Cost = (2R+1)² candidates × 64 SAD per tile, summed over a FIXED level count = O(R²·levels) —
+// vs the flat search's O(D²). Output MV is in THIS level's pixel units; the finest level's field is
+// full-res/8 in full-res pixels, exactly what the confidence warp (optical_flow_warp.comp) consumes.
+// Promoted from bench/stage14_hierarchical (measured: D=16/32/64 tracked, beats flat on quality+cost).
+//
+// SAD field (STAGE-20): every level writes the (sad_best, sad_zero) pair to binding 4 (RG16F).
+// sad_best = per-tile residual at the winning MV (match quality — low = good match).
+// sad_zero = per-tile in-place residual at MV=(0,0) (change magnitude — low = static tile).
+// Coarser levels write to a subset of the image; the finest level (last dispatch) overwrites all
+// positions — so the image always holds the finest-level values when the warp consumes it.
+// The confidence gate in optical_flow_warp.comp uses these two SADs to make a per-tile WARP/BLEND
+// decision without any absolute threshold (noise-floor-invariant, no per-capture tuning).
+//
+// Bindings:
+//   set=0 binding=0  combined image sampler — this level's frame A
+//   set=0 binding=1  combined image sampler — this level's frame B
+//   set=0 binding=2  combined image sampler — coarser MV field (RG16F), in coarser-level pixels
+//   set=0 binding=3  storage image (rg16f)  — output MV (this level)
+//   set=0 binding=4  storage image (rg16f)  — output SAD pair: R=sad_best, G=sad_zero
+//   set=0 binding=5  storage image (rgba16f)— STAGE-77 second-best (CANDIDATE) field, finest level only:
+//     xy = the RUNNER-UP MV (pixel units), z = the runner-up's pure SAD, w = 0 (reserved). Written
+//     ONLY when emit_second!=0 (the finest level when the pipeline was init()'d with emit_second_best
+//     ON). The binding is ALWAYS present in the layout (the app binds a real image so the descriptor
+//     is valid even with the feature OFF — the placeholder discipline), but the imageStore is GATED on
+//     emit_second so the OFF path writes NOTHING here: the MV (binding 3) + SAD (binding 4) outputs are
+//     byte-IDENTICAL with the feature on or off. Purpose: AMBIGUITY awareness for the warp-at-presenter
+//     (periodic-texture / aliasing class). When the matcher resolves a SAD TIE arbitrarily (striped
+//     flags, concentric tunnels: best and second are ~one texture period apart with near-tied SADs),
+//     the runner-up is the other plausible vector — the presenter can prefer the candidate nearer the
+//     holon's expectation instead of the matcher's arbitrary pick.
+//
+// Push constants (24 bytes):
+//   int   search_radius   ± window for THIS level
+//   float pred_scale      predictor multiplier (0 at the coarsest level, 2.0 when refining)
+//   int   subpel          ARC-A LEVER-1b SUB-PIXEL refinement. 0 (default, and EVERY non-finest level
+//     always) → store the integer best_mv exactly as before (byte-identical to the pre-LEVER-1b shader).
+//     1 (the FINEST level, only when init'd with mv_subpel ON) → after the integer search resolves
+//     best_mv, fit a 1D parabola to the PURE SAD at the four axis-neighbours of best_mv and add the
+//     vertex offset (clamped to [-0.5,+0.5] per axis) → the MV field carries a FRACTIONAL vector. This
+//     directly reduces the dominant inter-tile rounding error (the integer-staircase) and unblocks the
+//     per-tile affine post-pass (whose intra-tile gradient was below the 1px step). The 4 extra pure-SAD
+//     blocks fire ONLY at the finest level AND only when armed → ZERO cost on the OFF path. The store path
+//     when subpel==0 is the EXACT pre-LEVER-1b vec2(float(best_mv.x), float(best_mv.y)).
+//   int   dual_centre     STAGE-42 temporal MV prior. 0 (default) → search a SINGLE ±R window
+//     around `round(predictor*pred_scale)` exactly as before (byte-identical: the app pushes 0 at
+//     every level when the prior is off, and at every FINER level always). 1 → the COARSEST level
+//     evaluates the ±R window around BOTH centres — (0,0) AND the temporal prior centre — and keeps
+//     the lower-cost winner. Self-healing on scene cuts: a poisoned prior loses to the zero centre by
+//     construction; on coherent motion the prior centre reaches displacements the zero window cannot.
+//     The app only sets it 1 at the coarsest level AND only when the prior is armed with a real
+//     previous-pair MV; in that case the predictor binding carries last pair's coarse MV (pred_scale=1).
+//   int   emit_second     STAGE-77. 0 (default, and EVERY non-finest level always) → the runner-up
+//     tracking still RUNS (a few comparisons, negligible) but binding 5 is NOT written → byte-identical
+//     to the pre-STAGE-77 shader. 1 (the finest level, only when init'd with emit_second_best ON) →
+//     store (second_mv, second_sad) into binding 5. The runner-up is the second-lowest PURE-SAD vector
+//     across BOTH search centres (it shares the same accumulator scan as best_*, so the dual-centre
+//     case yields the global runner-up over the union of the two windows).
+//   int   candsel         ARC-A LEVER (holonic CANDIDATE-SELECTION). 0 (default, and EVERY non-finest
+//     level always) → the integer best_mv from the local ±R search is stored exactly as before
+//     (byte-identical). 1 (the FINEST level, only when init'd with mv_candsel ON) → AFTER the integer
+//     search resolves best_mv/best_sad, evaluate the PURE SAD of the coarse REGION-PREDICTOR candidate
+//     pred_c = round(pred) (the coarser-pyramid MV upsampled to this level — the region holon's coherent
+//     motion offer). ADOPTION RULE (the ambiguity gate): the local best is "confidently better" than the
+//     region model ONLY when best_sad < sad_pred·(1−kCandSelMargin). If it is NOT confidently better
+//     (best_sad ≥ sad_pred·(1−margin) — the flat / textureless-interior / aperture case where the noisy
+//     local winner is no real improvement over the coherent region motion), ADOPT the region predictor:
+//     best_mv = pred_c, best_sad = sad_pred. Else keep the local best. This SELECTS the integer MV
+//     SOURCE; the subpel block (if armed) then sub-pixel-refines whatever candsel chose. Reuses pure_sad
+//     (one extra block + a compare) and fires ONLY at the finest level when armed → ZERO cost on the OFF
+//     path. The STAGE-77 second-best field is computed from the SAME scan and is NOT touched by candsel
+//     (its OFF/second-best output is unchanged). A degenerate-predictor guard keeps a wild pred_c from
+//     injecting a far MV.
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0) uniform sampler2D u_frame_a;
+layout(set = 0, binding = 1) uniform sampler2D u_frame_b;
+layout(set = 0, binding = 2) uniform sampler2D u_predictor;
+layout(set = 0, binding = 3, rg16f) uniform writeonly image2D u_motion_vectors;
+layout(set = 0, binding = 4, rg16f) uniform writeonly image2D u_sad_field;
+layout(set = 0, binding = 5, rgba16f) uniform writeonly image2D u_second_best; // STAGE-77 candidate field
+layout(push_constant) uniform PushConsts { int search_radius; float pred_scale; int dual_centre; int emit_second; int subpel; int candsel; } pc;
+
+const int kBlockSize = 8;
+
+// ARC-A LEVER-1b sub-pixel helper: PURE SAD (no lambda) at a candidate MV, computed with the SAME
+// texelFetch + clamp loop the search uses, reusing the already-cached ref_block[]. Only called at the
+// finest level when subpel is armed (4 calls/tile), so it adds nothing to the hot scan. ref_block is
+// passed by value (GLSL copies the array) — the compiler keeps it in registers; the body is identical
+// SAD math to the inner search loop so a candidate's residual here matches what the scan would compute.
+float pure_sad(vec3 ref_block[kBlockSize * kBlockSize], ivec2 tile_origin, ivec2 frame_size, ivec2 mv) {
+    float sad = 0.0;
+    for (int py = 0; py < kBlockSize; ++py)
+        for (int px = 0; px < kBlockSize; ++px) {
+            const ivec2 b_pos = clamp(tile_origin + ivec2(px, py) + mv, ivec2(0), frame_size - 1);
+            const vec3 b_pix = texelFetch(u_frame_b, b_pos, 0).rgb;
+            const vec3 r_pix = ref_block[py * kBlockSize + px];
+            sad += abs(r_pix.r - b_pix.r) + abs(r_pix.g - b_pix.g) + abs(r_pix.b - b_pix.b);
+        }
+    return sad;
+}
+
+void main() {
+    const ivec2 tile_idx = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 mv_size  = imageSize(u_motion_vectors);
+    if (tile_idx.x >= mv_size.x || tile_idx.y >= mv_size.y) return;
+
+    const ivec2 tile_origin = tile_idx * kBlockSize;
+    const ivec2 frame_size  = textureSize(u_frame_a, 0);
+
+    // Predictor centre (this level's pixel units): sample the coarser MV proportionally, scale ×2.
+    const vec2 mv_uv   = (vec2(tile_idx) + vec2(0.5)) / vec2(mv_size);
+    const vec2 pred    = texture(u_predictor, mv_uv).xy * pc.pred_scale;
+    const ivec2 centre = ivec2(round(pred));
+
+    vec3 ref_block[kBlockSize * kBlockSize];
+    // (centre0..centre1) = the search centres to evaluate this level. When dual_centre==0 (the default
+    // and EVERY finer level) only centre0=centre is searched — the loop runs once with the predictor
+    // centre, byte-identical to the pre-STAGE-42 shader. When dual_centre==1 (coarsest level, prior
+    // armed) centre0=(0,0) is searched FIRST and centre1=the prior centre second, sharing the best_*
+    // accumulators so a tie resolves to the zero centre (the self-healing default on a scene cut).
+    const ivec2 centre0 = (pc.dual_centre != 0) ? ivec2(0) : centre;
+    const ivec2 centre1 = centre;
+    // Skip the second window when the two centres coincide (a cheap guard — avoids redundant SAD work
+    // when the prior already rounds to zero; the result is identical either way since centre0 wins ties).
+    const bool  do_two  = (pc.dual_centre != 0) && (centre1 != centre0);
+    for (int py = 0; py < kBlockSize; ++py)
+        for (int px = 0; px < kBlockSize; ++px) {
+            const ivec2 a_pos = clamp(tile_origin + ivec2(px, py), ivec2(0), frame_size - 1);
+            ref_block[py * kBlockSize + px] = texelFetch(u_frame_a, a_pos, 0).rgb;
+        }
+
+    // in-place (zero-motion) SAD — always computed; feeds the confidence gate in the warp.
+    // sad_zero cancels the per-tile noise floor when compared against sad_best in the gate:
+    //   (sad_zero − sad_best)/sad_zero > improvement_frac  ⟺  sad_zero*(1−p) > sad_best
+    // A completely static tile has sad_zero ≈ sad_best ≈ noise → gate fails → BLEND (correct).
+    float sad_zero = 0.0;
+    for (int py = 0; py < kBlockSize; ++py)
+        for (int px = 0; px < kBlockSize; ++px) {
+            const ivec2 b_pos = clamp(tile_origin + ivec2(px, py), ivec2(0), frame_size - 1);
+            const vec3 b_pix = texelFetch(u_frame_b, b_pos, 0).rgb;
+            const vec3 r_pix = ref_block[py * kBlockSize + px];
+            sad_zero += abs(r_pix.r - b_pix.r) + abs(r_pix.g - b_pix.g) + abs(r_pix.b - b_pix.b);
+        }
+
+    // Motion-cost bias: a tiny penalty proportional to the offset from the predictor centre. It
+    // breaks ties toward the predictor (small/coherent motion) so an AMBIGUOUS region — e.g. a
+    // coarse level where a small object has washed out to near-flat SAD — resolves to the predictor
+    // (0 at the coarsest level) instead of a spurious corner that the pyramid would then AMPLIFY.
+    // SAD ranges 0..192 here; lambda·offset is negligible against any real match difference.
+    // best_sad tracks the PURE SAD (no lambda bias) for the confidence gate: the bias must NOT
+    // contaminate the residual comparison (it would make the gate threshold content-dependent).
+    const float kLambda = 0.001;
+    float best_cost = 1e30;
+    float best_sad  = 0.0;   // pure SAD at the winning MV (no lambda)
+    ivec2 best_mv   = centre0;
+    // STAGE-77 second-best (CANDIDATE) tracking — the runner-up over the SAME scan that finds best_*.
+    // second_cost is the lambda-biased cost (for the comparison, mirroring best_cost so the scan is a
+    // clean top-2 by the same key); second_sad is the runner-up's PURE SAD (what the warp's ambiguity
+    // rule reads against best_sad). When a candidate displaces the current best, the OLD best demotes to
+    // second (it is the next-best so far). The runner-up vector is whatever the scan ranks second — the
+    // warp's |mv_best − mv_second| > 2px test (STAGE-77) filters near-duplicate ±1px neighbours, so no
+    // exclusion radius is needed here; this keeps the inner scan branch-light. These extra comparisons
+    // run at EVERY level regardless of emit_second (a handful of float ops per candidate, negligible
+    // against the SAD); only the imageStore is gated, so the MV/SAD outputs stay byte-identical.
+    float second_cost = 1e30;
+    float second_sad  = 0.0;
+    ivec2 second_mv   = centre0;
+    // Outer pass over the search centres: pass 0 = centre0 (always), pass 1 = centre1 (only do_two).
+    // Each pass is the ORIGINAL ±R window with its lambda bias measured from ITS OWN centre — so the
+    // single-centre path (c==0 over centre0=predictor) is identical to the pre-STAGE-42 body.
+    for (int c = 0; c < 2; ++c) {
+        if (c == 1 && !do_two) break;
+        const ivec2 ctr = (c == 0) ? centre0 : centre1;
+        for (int dy = -pc.search_radius; dy <= pc.search_radius; ++dy)
+            for (int dx = -pc.search_radius; dx <= pc.search_radius; ++dx) {
+                const ivec2 mv = ctr + ivec2(dx, dy);
+                float sad = 0.0;
+                for (int py = 0; py < kBlockSize; ++py)
+                    for (int px = 0; px < kBlockSize; ++px) {
+                        const ivec2 b_pos = clamp(tile_origin + ivec2(px, py) + mv, ivec2(0), frame_size - 1);
+                        const vec3 b_pix = texelFetch(u_frame_b, b_pos, 0).rgb;
+                        const vec3 r_pix = ref_block[py * kBlockSize + px];
+                        sad += abs(r_pix.r - b_pix.r) + abs(r_pix.g - b_pix.g) + abs(r_pix.b - b_pix.b);
+                    }
+                const float cost = sad + kLambda * float(abs(dx) + abs(dy));   // bias toward this centre
+                if (cost < best_cost) {
+                    // new winner → demote the old best to second, then take the new best.
+                    second_cost = best_cost; second_sad = best_sad; second_mv = best_mv;
+                    best_cost = cost; best_sad = sad; best_mv = mv;
+                } else if (cost < second_cost) {
+                    second_cost = cost; second_sad = sad; second_mv = mv;
+                }
+            }
+    }
+    // ARC-A LEVER (holonic CANDIDATE-SELECTION): at the FINEST level when armed, give an AMBIGUOUS interior
+    // tile the COHERENT region-scale motion instead of its noisy local best. `pred` IS the coarser-pyramid
+    // region MV upsampled to this level; pred_c is its integer candidate. The local best is only "confidently
+    // better" than the region model when best_sad < sad_pred·(1−kCandSelMargin) — a MEANINGFUL margin (the
+    // SAD improvement the local match must beat to be trusted over the region model; same family as
+    // improvement_frac, NOT the tiny tie-break kLambda). When the local best is NOT confidently better (the
+    // flat / textureless-interior / aperture case, where the ±R search finds a spurious minimum that the
+    // symmetric blend then crossfades), ADOPT the region predictor. The pure_sad of pred_c reuses the cached
+    // ref_block (one extra block + a compare) and runs ONLY here when armed → ZERO cost on the OFF path. This
+    // SELECTS the integer MV source; the subpel block below then refines whatever was chosen. The STAGE-77
+    // second-best field above is from the SAME scan and is NOT modified by candsel (its OFF output is intact).
+    const float kCandSelMargin = 0.12;   // the local match must beat the region model's SAD by ≥12% to win.
+    if (pc.candsel != 0) {
+        const ivec2 pred_c = ivec2(round(pred));
+        // Degenerate-predictor guard: only consider adopting pred_c when it lies within the coarsest reach of
+        // this tile's own search centre (|pred_c − centre| ≤ kCandSelMaxJump per axis). A wild upsampled MV
+        // (e.g. a coarse outlier) cannot be injected as a far jump; in-window predictors — the coherent-motion
+        // case this lever targets — always pass. centre = round(pred) for finer levels, so the guard is slack
+        // there and binds only against a pred_c that drifted far from the search window actually evaluated.
+        const int kCandSelMaxJump = 8;
+        const ivec2 d = abs(pred_c - centre0);
+        if (d.x <= kCandSelMaxJump && d.y <= kCandSelMaxJump) {
+            const float sad_pred = pure_sad(ref_block, tile_origin, frame_size, pred_c);
+            // NOT confidently better → adopt the region predictor (coherent over noisy-ambiguous).
+            if (!(best_sad < sad_pred * (1.0 - kCandSelMargin))) {
+                best_mv  = pred_c;
+                best_sad = sad_pred;
+            }
+        }
+    }
+    // ARC-A LEVER-1b: sub-pixel MV at the finest level when armed. OFF (subpel==0, and EVERY non-finest
+    // level) → mv_out = the EXACT integer best_mv → byte-identical to the pre-LEVER-1b store. ON → fit a
+    // 1D parabola to the PURE SAD along each axis at best_mv ±1 and add the vertex offset. The whole block
+    // (4 extra pure-SAD evaluations) is gated, so the OFF path costs nothing. With candsel armed, best_mv/
+    // best_sad here are whatever candsel selected (local best OR the adopted region predictor).
+    vec2 mv_out = vec2(float(best_mv.x), float(best_mv.y));
+    if (pc.subpel != 0) {
+        const float s0  = best_sad;                                              // PURE SAD at best_mv
+        const float sxm = pure_sad(ref_block, tile_origin, frame_size, best_mv + ivec2(-1,  0));
+        const float sxp = pure_sad(ref_block, tile_origin, frame_size, best_mv + ivec2(+1,  0));
+        const float sym = pure_sad(ref_block, tile_origin, frame_size, best_mv + ivec2( 0, -1));
+        const float syp = pure_sad(ref_block, tile_origin, frame_size, best_mv + ivec2( 0, +1));
+        // Per axis: delta = 0.5*(S_minus - S_plus) / (S_minus - 2*S_0 + S_plus). The denominator is the
+        // discrete 2nd derivative — POSITIVE at a convex minimum. GUARD: denom <= 1e-4 (flat plateau or a
+        // non-convex/saddle sample where the parabola is meaningless or would diverge) → delta = 0 for that
+        // axis (keep the integer pick). CLAMP each delta to [-0.5,+0.5]: the true sub-pixel minimum of a
+        // genuine convex SAD basin lies within ±0.5 of the integer winner (else a neighbour would have won
+        // the integer scan); clamping bounds any residual numerical excursion.
+        const float denx = sxm - 2.0 * s0 + sxp;
+        const float deny = sym - 2.0 * s0 + syp;
+        const float dx = (denx > 1e-4) ? clamp(0.5 * (sxm - sxp) / denx, -0.5, 0.5) : 0.0;
+        const float dy = (deny > 1e-4) ? clamp(0.5 * (sym - syp) / deny, -0.5, 0.5) : 0.0;
+        mv_out += vec2(dx, dy);
+    }
+    imageStore(u_motion_vectors, tile_idx, vec4(mv_out.x, mv_out.y, 0.0, 0.0));
+    imageStore(u_sad_field,      tile_idx, vec4(best_sad, sad_zero, 0.0, 0.0));
+    // STAGE-77: the candidate field — finest-level second-best, only when emit_second is set. When the
+    // scan found a single candidate (a 1×1 window, or every other candidate tied above 1e30 — never in
+    // practice), second_mv defaults to centre0 and second_sad stays 0.0; the warp's ambiguity gate
+    // (second_sad ≤ 1.15·best_sad AND |Δmv| > 2px) handles those degenerate cases safely.
+    if (pc.emit_second != 0)
+        imageStore(u_second_best, tile_idx, vec4(float(second_mv.x), float(second_mv.y), second_sad, 0.0));
+}
+// Made with my soul - Swately <3

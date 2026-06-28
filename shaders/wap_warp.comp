@@ -1,0 +1,1898 @@
+// apps/render_assistant/shaders/wap_warp.comp
+// STAGE-41 (warp-at-presenter): app-local port of the pillar's optical_flow_warp.comp,
+// run ON THE PRESENTER (G) per output-clock tick at the tick's EXACT fractional phase t.
+//
+// The pillar builds the MV + SAD field on B (the block-match); in WAP mode F ships ONLY
+// that field (MV+SAD, ~0.5MB/set) to G instead of 7 pre-warped interps (~58MB/set over the
+// x4). G holds the two pair reals + the MV/SAD as sampled images and re-warps at the exact
+// per-tick phase. This subsumes the pre-generated 1/N grid and its uniq-coverage defect:
+// every tick synthesises the phase due at THAT refresh, no rounding.
+//
+// Logic is the pillar warp's, verbatim in spirit — BOTH gates and the SAME unconditional
+// barrier pattern (the divergence trap is documented below; do NOT early-return before the
+// barrier). The only differences are app-side bindings (4 separate sampler2D inputs + an
+// rgba8 storage output) and the push-constant block carrying {res_ceil, conf_improv,
+// agreement, t, soft_gate} so the presenter sets t per tick.
+//
+// ── STAGE-46: soft-gate mode (push-selected, soft_gate>0.5) ──────────────────
+//   The binary per-8×8-block keep/freeze decision pulses motion at the source rate
+//   (lag-8 autocorr). A continuous blend wins judder↔hallucination both:
+//     · each gate's margin maps through a smoothstep centred on its push threshold
+//       (improvement_frac, agreement_threshold) → w_conf, w_agree.
+//     · isolated-block suppression: a pixel whose own source-disagreement d_pixel far
+//       exceeds the TILE mean d_tile (it disagrees with all its tile neighbours) fades
+//       toward freeze (w_neigh) — kills stray wrong-MV stamps at disocclusion contours.
+//       Uses ONLY the existing s_d/d_tile statistic — no new shared array.
+//     · w = w_conf · w_agree · w_neigh; out = mix(blend, warp, w).
+//   soft_gate ≤ 0.5 (default OFF) takes the EXACT original binary branch below
+//   (byte-identical to the pre-STAGE-46 hard path — no arithmetic change).
+//
+// ── STAGE-48: bidirectional flow + occlusion classification (push-selected, occl_thresh>0.0) ─
+//   Until now A's warp approximated BACKWARD flow by negating the forward field — the SAME
+//   field served both directions, so disocclusion rims ghosted and d_ab/commit was a blind
+//   proxy. STAGE-48 ships a TRUE backward MV field (binding 5, built on B as a second
+//   record_optical_flow with swapped views) and classifies every output pixel by fwd↔bwd
+//   consistency BEFORE the 47b/c commit safety net runs:
+//     · Follow the forward flow: at this grid uv, mvf = MV_fwd(uv) (full-res pixel units, the
+//       same the warp samples). The content at uv in prev (A) lands at uv_in_cur = uv + mvf/sz
+//       in cur (B). Sample the backward field there: mvb = MV_bwd(uv_in_cur). A consistent
+//       (co-visible) pixel round-trips: mvf + mvb ≈ 0. Error e = length(mvf + mvb) in PIXEL
+//       units (the stored MV unit). Consistent iff e ≤ occl_thresh (default 1.5 px ≈ block-scale).
+//     · consistent → leave warp_result/blend_result untouched: the existing average + the 47c
+//       machinery downstream run UNCHANGED (co-visible content wants the sharp average).
+//     · inconsistent → decide OWNERSHIP via symmetric round-trips:
+//         e_fwd = the forward round-trip residual computed above (prev→cur→prev).
+//         e_bwd = the backward round-trip residual (cur→prev→cur): at uv take mvb0 = MV_bwd(uv),
+//                 land at uv_in_prev = uv + mvb0/sz, read mvf2 = MV_fwd(uv_in_prev),
+//                 e_bwd = length(mvb0 + mvf2).
+//       fwd round-trips but bwd does not (e_fwd ≤ occl_thresh < e_bwd) → the content is owned
+//       by PREV (it exists in A, is occluded/absent in B) → the PREV side (A_samp / texture(prev,uv))
+//       is the WINNER. bwd round-trips but fwd does not → owned by CUR → B_samp / texture(cur, uv)
+//       is the winner.
+//       ── STAGE-49 CHANGE (was a HARD pick): the winner is no longer assigned outright. The hard
+//         pick snapped at the e==occl_thresh boundary → a seam along disocclusion rims. Per FSR3's
+//         shipping practice (dossier F6: two disocclusion masks, mask-WEIGHTED blending), the
+//         application is now CONTINUOUS in the round-trip-error ratio r = e_loser/(e_winner+0.25):
+//         w_side = smoothstep(1.0, 3.0, r); warp_result = mix(average, winner_sample, w_side),
+//         blend_result = mix(cross_fade, winner_real, w_side). r≥3 (loser ≫ winner) = fully
+//         one-sided (the old hard behavior); r≈1 (near-tie at the rim's soft edge) blends both
+//         sides back toward the average. The classification is UNCHANGED — only the application is
+//         softened (the operator A/Bs hard-vs-weighted via build version; the off-path is untouched).
+//       NEITHER round-trips → leave both as-is → fall through to the 47b/c commit machinery
+//       (the safety net handles the truly-ambiguous case unchanged).
+//   occl_thresh == 0.0 (default OFF, = --bidir not set) takes NONE of this — the whole block is
+//   gated on occl_thresh > 0.0 (a uniform push value), byte-identical to pre-STAGE-48. The bwd
+//   sampler (binding 5) is still bound (a valid image), but unread when off.
+//
+// ── STAGE-50: divergence-directed disocclusion pick (push-selected, div_eps>0.0) ──────────
+//   The residual after STAGE-48 is a thin CONSTANT trail of speckle behind moving objects: the
+//   "NEITHER round-trips" class (genuine disocclusion slivers) falls to the 47b/c commit fallback
+//   = nearest real IN TIME, which for a disocclusion is the wrong side half the ticks. The physics
+//   picks the side deterministically: the forward-MV field DIVERGES (positive divergence) where
+//   content is being revealed (expansion — the background is ALWAYS present in cur/B) and CONVERGES
+//   (negative divergence) where it is being occluded (the background is ALWAYS present in prev/A).
+//   Still 100% real content — only the SELECTION criterion changes in the ni-ni sliver; no invented
+//   fill (no stretch/inpaint) enters here.
+//     · Compute div = ∂(mv.x)/∂x + ∂(mv.y)/∂y of the forward field by central differences over
+//       ±1 MV-GRID texel (the step in uv = 1/textureSize(u_motion_vectors,0) — queried, never
+//       hardcoded). Units: pixels (the stored MV unit) per MV-grid texel.
+//         div >  +div_eps → revealed  → warp_result = B_samp, blend_result = texture(cur,  uv).
+//         div <  −div_eps → occluded  → warp_result = A_samp, blend_result = texture(prev, uv).
+//         |div| ≤ div_eps (ambiguous) → leave both as-is → fall through to 47b/c unchanged.
+//   Lives INSIDE the STAGE-48 "neither round-trips" case and is additionally gated on div_eps > 0.0
+//   (a uniform push value): div_eps == 0.0 (default OFF, = --fill-div not set) reads NONE of this and
+//   computes NO extra taps — byte-identical to STAGE-48. Requires --bidir (no neither-class without
+//   the fwd↔bwd classification); the app errors out on --fill-div without --bidir. The added cost is
+//   4 extra MV texture taps, ONLY inside the already-rare neither-class branch.
+//
+// ── STAGE-49: candidate-rescue (push-selected, rescue_on>0.5; armed only with commit) ─────────
+//   The 47b/c commit drops a sub-block feature to source cadence (or a displaced fetch) whenever the
+//   8×8 block MV is wrong for it — but that feature's TRUE vector usually lives in an ADJACENT block
+//   (the duck's body MV dominated its tile; the duck's eye carries the eye's MV one cell over). So
+//   BEFORE the commit fallback fires, a failing pixel tries the 8 NEIGHBOR block MVs as candidates —
+//   per-pixel MV by SELECTION, the production sub-block pattern (dossier F1 = Qualcomm US8537283's
+//   neighbor-block-MV selection; F0 = 3DRS/Philips block erosion):
+//     · The pixel "fails" iff d_ab is in/above the 47c band (d_ab > 0.75·commit_thresh) AND rescue is
+//       on (rescue_on>0.5, which the app sets only with commit armed). The whole loop is gated inside
+//       the existing `commit_thresh>0` block, so the default path is byte-identical.
+//     · For each of the 8 neighbors (3×3 fwd-grid cells, center excluded — its MV already failed),
+//       sample mv_c = MV_fwd(uv + offset·mv_texel) where mv_texel = 1/textureSize(u_motion_vectors,0),
+//       re-warp A_c = prev[uv − t·mv_c/sz] and B_c = cur[uv + (1−t)·mv_c/sz] (the SAME sign/scale as
+//       the primary warp), score d_c = max-channel |A_c − B_c|, track the best (lowest d_c).
+//     · best d_c ≤ commit_thresh → RESCUED: warp_result = (1−t)·A_c_best + t·B_c_best (the candidate's
+//       average — the feature found its vector) and the commit mix is SKIPPED for this pixel (wc→0).
+//       No candidate passes → proceed to 47b/c exactly as before.
+//   blend_result is left untouched by rescue (it stays the soft-gate fallback path). Cost: confined to
+//   the already-failing branch, 8 candidates × (1 MV tap + 2 color taps) worst case. rescue_on ≤ 0.5
+//   (default OFF) reads NONE of this — byte-identical to STAGE-50.
+//
+// ── STAGE-52: the frame-holon — global affine motion model (push-selected, gme_on > 0.5) ──────
+//   A cheap GLOBAL parametric model fitted per pair on the CPU (F thread) from the whole fwd MV grid
+//   by IRLS least squares (object outliers reweighted): mv_model(gx,gy) = (a + b·gx + c·gy,
+//   d + e·gx + f·gy), gx,gy the mv-grid coords. The 6 params ride the push ({gme_a..gme_f}); the
+//   shader evaluates the model at this pixel's grid position (gme_model_mv → gx = uv·G − 0.5, the
+//   bilinear texel coord, matching the CPU fit's lattice). Two consumers, BOTH gated on gme_on>0.5:
+//     · RESCUE CANDIDATE (inside the STAGE-49 rescue loop): the model MV is ONE extra candidate,
+//       scored by the SAME windowed SAD and competing for best_s like a neighbour. A fast camera pan
+//       moves more than the block-match search window → the local MV and all 8 neighbours are wrong;
+//       the global model (robust to the moving objects) recovers the camera/background MV. Armed only
+//       with --rescue (it lives in the rescue loop); without it gme still fits + masks + fill-div-assists.
+//     · FILL-DIV BACKGROUND MV (inside the STAGE-50 neither-class disocclusion branch): the revealed
+//       background's true motion is the camera/background motion (the model), NOT the local MV (the
+//       occluding object's). The owning real is sampled at the MODEL displacement instead of raw uv —
+//       the documented MEMC background-extension (dossier F5). Gated on gme_on so fill-div alone
+//       (gme off) is byte-identical (the model offset collapses to zero, raw-uv samples kept).
+//   gme_on == 0.0 (default OFF, = --gme not set) reads NONE of this — byte-identical to STAGE-49.
+//   The per-block dissidence mask (|mv − model|) is built + shipped to wapDISA on the HOST side; the
+//   warp does NOT sample it yet (STAGE-53's boundary-first compositing will).
+//
+// ── STAGE-47: commit-don't-hedge mode (push-selected, commit_thresh>0.0) ─────
+//   Root cause of the ghost eye (operator, 2026-06-12): our TWO averaging layers.
+//     (1) warp_result = (1−t)·A_samp + t·B_samp shows BOTH samples whenever the 8×8
+//         block MV is wrong for a sub-block feature (a small high-contrast detail the
+//         body's MV dominates) → the previous-frame eye averaged onto the new one.
+//     (2) the fallback blend_result = (1−t)·prev + t·cur is a static cross-fade =
+//         a double exposure of moving content by construction.
+//   Commit mode replaces averaging with COMMITMENT where the sources disagree:
+//     · warp: per-pixel d_ab = max-channel abs diff (A_samp.rgb vs B_samp.rgb).
+//       d_ab ≤ commit_thresh → keep the average (the MV is right here; averaging only
+//       sharpens). d_ab > commit_thresh → the MV is wrong for THIS pixel → commit to
+//       the temporally NEAREST sample (t<0.5 ? A_samp : B_samp; tie at 0.5 → B/cur,
+//       forward-consistent, no flicker).
+//     · fallback: blend_result becomes the nearest REAL sample (t<0.5 ? prev : cur;
+//       tie → cur) instead of the cross-fade — identical for static content, kills the
+//       old-frame double exposure for gated moving content.
+//   commit_thresh == 0.0 (default OFF) takes the EXACT original averages below
+//   (byte-identical — the whole commit path is gated on commit_thresh > 0.0, NOT on
+//   d_ab, so any difference at thresh 0 does NOT trigger a commit). It composes with
+//   soft mode: the soft branch reads the same (possibly committed) warp/blend results.
+//
+// ── STAGE-56: the stasis layer (the HUD fix) — push-selected, stasis_thresh > 0.0 ───────────
+//   The operator's post-55 verdict: the pipeline is healthy (cons==arr, frz unpinned, lat 16-20ms);
+//   the residual pain is contour hallucination, WORST on the HUD — static overlay pixels over a
+//   moving world, damaged by EVERY motion-helping layer (the bilateral fetch lends them a moving
+//   corner's MV; the rescue "rescues" their flat pixels with world vectors — the flat-content blind
+//   spot at HUD edges; the matte classifies them dissident → object layer → dragged edges).
+//   The answer is already in the SAD field: sad_zero is the per-tile in-place residual at MV=(0,0)
+//   (built in the pillar's optical_flow_hier_match.comp, lines 88-95: a SUM over the 64 block pixels
+//   of Σ_chan |A_chan − B_chan|, RGB, normalized [0,1] color units — range [0,192]). sad_zero ≈ 0
+//   means the 8×8 block is IDENTICAL in both pair frames; its correct interpolation at ANY phase t
+//   is THAT SAME content, untouched. So a stasis pixel BYPASSES all motion machinery and presents
+//   the current frame's content directly.
+//     · stz = texture(u_sad_field, uv).g  — sad_zero at this position (block-res, bilinear tap).
+//     · stasis = (stasis_thresh > 0.0) && (stz <= stasis_thresh).
+//     · APPLIED as the FINAL select, after the soft/hard selection produces `result`, immediately
+//       before imageStore: `if (stasis) result = texture(u_cur_real, uv);`. This is the LAST word —
+//       it DOMINATES warp/commit/matte/soft for stasis pixels (identical-content pixels are exact by
+//       definition and immune to vector lending). Cost: ZERO extra — the SAD field is already bound
+//       (Gate 1 reads it); one extra .g read, no new tap, no new binding, no new shared array.
+//   stasis_thresh == 0.0 (default OFF, = --stasis not set) computes stz but `stasis` is always false
+//   (the `> 0.0` short-circuits the comparison), so the override never fires → BYTE-IDENTICAL to
+//   pre-STAGE-56. Honest tradeoffs (documented, not hidden):
+//     (a) the SAD field is block-res (full-res/8); the bilinear .g tap smears the stasis boundary by
+//         up to one block. Pixels NEAR a static block lean static — the SAFE direction (a stationary
+//         pixel mis-helped is far worse than a moving pixel held one block; the held pixel is at most
+//         one block stale at a boundary, which is sub-perceptual for HUD edges).
+//     (b) a slowly-CHANGING HUD element (a ticking number/clock) has small NONZERO sad_zero and may
+//         FLICKER between stasis/normal at the threshold tick-to-tick. The known cure is temporal
+//         hysteresis (hold the stasis decision across a few ticks) — a LATER stage; not done here.
+//
+// ── Gate 1: Confidence (STAGE-20) ────────────────────────────────────────────
+//   sad_best : residual at the winning MV (low = good match).
+//   sad_zero : residual at MV=(0,0)       (low = static tile).
+//   Passes iff:  (a) sad_best < residual_ceil
+//                (b) sad_zero·(1 − improvement_frac) > sad_best   (no divide; cancels dither)
+//
+// ── Gate 2: Source agreement (STAGE-24) ──────────────────────────────────────
+//   d = length(A_samp.rgb − B_samp.rgb); per-tile MEAN over the 8×8 workgroup (shared mem).
+//   WARP iff both gates pass AND d_tile < agreement_threshold; else BLEND.
+//
+// Implementation note — why the barrier is unconditional (the divergence trap):
+//   The MV is sampled via texture() (bilinear) so the per-tile gate decision is NOT
+//   guaranteed uniform across the workgroup. The shared-memory barrier MUST therefore sit at
+//   the top level of main(), OUTSIDE any conditional (uniform-control-flow — a Vulkan
+//   requirement). An early return for out-of-bounds invocations would make the barrier
+//   divergent → undefined behaviour (it happened to pass multiple-of-8 resolutions, which
+//   spawn no edge invocations). So OOB invocations run the whole body (writing 0 to s_d so
+//   the tile mean is unaffected) and only skip the final imageStore.
+//
+//   C_t(x) = (1−t)·A[x − t·mv] + t·B[x + (1−t)·mv]   (convention: MV points A→B; prev=A, cur=B)
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D u_prev_real;       // frame A (phase 0)
+layout(set = 0, binding = 1) uniform sampler2D u_cur_real;        // frame B (phase 1)
+layout(set = 0, binding = 2) uniform sampler2D u_motion_vectors;  // RG16F, finest level, pixel units
+layout(set = 0, binding = 3) uniform sampler2D u_sad_field;       // RG16F: R=sad_best, G=sad_zero
+layout(set = 0, binding = 4, rgba8) uniform writeonly image2D u_output;
+layout(set = 0, binding = 5) uniform sampler2D u_motion_vectors_bwd; // STAGE-48: RG16F, cur→prev, pixel units
+layout(set = 0, binding = 6) uniform sampler2D u_dissidence;      // STAGE-53: R8, |mv−model|/16px (mvw×mvh)
+                                                                 //   The R8 store on the host is min(255, 16·r_px),
+                                                                 //   so a sample reads v = 16·r_px/255 ∈ [0,1]:
+                                                                 //   matte_thresh 0.25 ↔ r = 0.25·255/16 ≈ 4 px.
+                                                                 //   This is the PREV-anchored (fwd) silhouette.
+layout(set = 0, binding = 7) uniform sampler2D u_dissidence_bwd;  // STAGE-53b: R8, |mv_bwd−model_bwd|/16px (mvw×mvh)
+                                                                 //   The CUR-anchored silhouette — the SAME quantization,
+                                                                 //   fitted on the BACKWARD MV field. Advected BACKWARD in
+                                                                 //   the matte decision, it covers the LEADING edge the
+                                                                 //   prev-anchored mask arrives late at (the dual anchor).
+                                                                 //   Bound always (valid view); read only when matte_on>0.5.
+layout(set = 0, binding = 8) uniform sampler2D u_persistence;    // STAGE-57: R8, per-MV-block motion-state hysteresis
+                                                                 //   counter / 255 ∈ [0,1] (the host stores persist∈[0,255]
+                                                                 //   directly, so 16/255≈0.063 per sustained-static pair).
+                                                                 //   A block with persistence ≥ inertia_thresh has a STATIC
+                                                                 //   HISTORY → the three motion-restriction gates apply.
+                                                                 //   Bound always (valid view); read only when inertia_thresh>0.5.
+// ── STAGE-59: the laser mass counter — the PRESENTED matte occupancy (push-selected, matte_on>0.5) ──
+//   The matte's phase-t silhouette is now the t-weighted INTERPOLATION of the two anchored occupancies
+//   (mix(dis_fwd, dis_bwd, t) — see the matte decision block) rather than their union. The lerp can
+//   THIN the silhouette at mid-t with imperfect masks (the union never did); the mass-conservation
+//   feedback (P-side, --mass-k) is the counterweight. To close that loop the warp MEASURES the presented
+//   mass: the number of pixels classified OBJECT (matte_object) this dispatch. A per-workgroup shared
+//   reduction (s_matte_cnt) + ONE atomicAdd into this host-visible counter at local index 0 (NOT per
+//   pixel) — the same one-atomicAdd-per-workgroup discipline the kickoff specifies. P resets it to 0
+//   before each dispatch and reads it AFTER the existing fBridge fence wait (coherent, no stall). The
+//   count is gated on matte_on>0.5 (a uniform push value) → when matte is off NOTHING is added (the
+//   counter stays whatever P last reset it to, and --mass-k feedback is inert) → byte-identical output.
+layout(set = 0, binding = 9) buffer MatteCounter { uint matte_count; } u_matte_counter;
+// STAGE-77: the second-best CANDIDATE field (RGBA16F, mvw×mvh) — the matcher's RUNNER-UP per tile:
+//   .xy = runner-up motion vector (pixel units), .z = runner-up pure SAD, .w = 0 (reserved). Bound ALWAYS
+//   (a valid sampled view — wapC2A when use_ambig, else a placeholder = the MV view); the shader reads it
+//   ONLY when ambig_on>0.5 (a uniform push value). Periodic textures (striped flags, concentric tunnels)
+//   make the matcher resolve SAD TIES arbitrarily — the runner-up is the OTHER plausible vector, ~one
+//   texture period away with a near-tied SAD; the ambiguity rule (the primary-MV site) arbitrates the tie
+//   on background/texture-interior pixels against the gme model referee. Read only under ambig_on>0.5.
+layout(set = 0, binding = 10) uniform sampler2D u_candidates;
+// STAGE-90 (P2b): the iGPU image-derived CONTOUR FIELD (STAGE-G1, wapFIELDA, R32_UINT, full-res):
+//   byte 0 = Sobel contour distance 0..255, byte 1 = occ-class (1 = edge-band). Read via imageLoad (an
+//   INTEGER format, NOT sampleable) ONLY when bg_snap_on>0.5 — the background-snap disocclusion fix. Bound
+//   ALWAYS (the warp-completeness discipline, like bindings 5/6/7/8/10: wapFIELDA when --bg-snap/--afill own
+//   it, else a 1×1 r32ui placeholder), never read when off → byte-identical.
+layout(set = 0, binding = 11, r32ui) uniform readonly uimage2D u_field;
+// STAGE-94 (--vblend): the NEXT pair's forward MV field (RG16F, mvw×mvh, pixel units) — the
+//   velocity-continuity TARGET. The present thread runs ~1 pair behind the freshest published
+//   generation, so the next-fresher generation's MV grid is available "for free" in the F→P ring.
+//   Sampled EXACTLY like u_motion_vectors (binding 2) / u_motion_vectors_bwd (binding 5): an rg16f
+//   MV grid as a sampler2D. Bound ALWAYS (the warp-completeness discipline like bindings 5/10): the
+//   real wapMVTA when --vblend owns it, else the forward MV view (wMV) as an unread placeholder. Read
+//   ONLY when vblend_on>0.5 (a uniform push value) → never sampled when off → byte-identical.
+layout(set = 0, binding = 12) uniform sampler2D u_mv_target;
+// STAGE-97 (--ts-smooth): the PREVIOUS final output frame (RGBA8, full-res WW×WH) — the temporal-smoothing
+//   history. The host copies wapOutA → wapPrevOutA after each tick's blit, so this holds LAST tick's presented
+//   FG frame at the same uv (no motion-comp → it trails on moving content, hence the garbage-gate below confines
+//   the blend to low-confidence/disocclusion pixels). Sampled EXACTLY like u_prev_real (binding 0). Bound ALWAYS
+//   (the warp-completeness discipline like bindings 5/10/12): the real wapPrevOutA when --ts-smooth owns it, else
+//   wapCurA as an unread placeholder. Read ONLY when ts_smooth>0 (a uniform push value) → never sampled when off
+//   → byte-identical.
+layout(set = 0, binding = 13) uniform sampler2D u_prev_out;
+layout(push_constant) uniform PushConsts {
+    float residual_ceil;
+    float improvement_frac;
+    float agreement_threshold;
+    float t;          // temporal phase set by the presenter per output-clock tick
+    float soft_gate;  // STAGE-46: 0 = binary gates (default); >0.5 = continuous blend
+    float commit_thresh; // STAGE-47: 0 = average (default); >0 = commit-don't-hedge (color units)
+    float commit_real;   // STAGE-47b: >0.5 = commit to the UNWARPED nearest real (no displaced
+                         // fetch through the bad MV — kills the overdrive-like edge fringe at
+                         // the cost of local source-cadence stepping); 0 = nearest WARPED sample.
+    float occl_thresh;   // STAGE-48: 0 = bidir OFF (default, byte-identical); >0 = fwd↔bwd
+                         // consistency threshold in PIXEL units (round-trip residual ≤ thresh =
+                         // co-visible; above = occluded → one-sided sampling; default 1.5).
+    float div_eps;       // STAGE-50: 0 = fill-div OFF (default, byte-identical); >0 = divergence
+                         // band for the bidir neither-class sliver (pixels/MV-grid-texel). div >
+                         // +div_eps → revealed → sample cur; div < −div_eps → occluded → sample
+                         // prev; |div| ≤ div_eps → fall through to 47b/c. Requires occl_thresh>0.
+    float rescue_on;     // STAGE-49: 0 = candidate-rescue OFF (default, byte-identical); >0.5 = a pixel
+                         // whose primary MV fails the d_ab commit trigger tries the 8 NEIGHBOR block MVs
+                         // (3×3 fwd field) first; if the best candidate's two warped samples agree
+                         // ≤ commit_thresh it is RESCUED (warp = that candidate's average, commit skipped).
+                         // Requires commit_thresh>0 (the commit trigger). 4+16 extra taps WORST case,
+                         // only in the already-failing branch.
+    float mv_guided;     // STAGE-49c: 0 = LINEAR MV upsampling (default, byte-identical); >0.5 = bilateral
+                         // (color-membership) PRIMARY MV fetch — texelFetch the 4 surrounding MV-grid
+                         // corners, sample cur_real at each corner's block centre, pick the corner whose
+                         // centre color is closest (max-channel) to this pixel's color; near-tie / none-
+                         // similar → the standard LINEAR texture() result. The selected mv feeds
+                         // EVERYTHING downstream exactly as the bilinear mv did. ENCODING: the host packs
+                         // the membership band as mv_guided = 1.0 + sim_thresh (sim∈[0.02,0.5] → 1.02..1.5,
+                         // so >0.5 gates ON and sim = mv_guided−1.0 is the --mv-sim value). Set --mv-guided.
+    float gme_on;        // STAGE-52: 0 = frame-holon OFF (default, byte-identical); >0.5 = the global
+                         // affine motion model is armed. When on it adds ONE extra rescue candidate (the
+                         // model MV, scored by the same windowed SAD) inside the rescue loop, and directs
+                         // the fill-div revealed/occluded cases to sample at the MODEL displacement (the
+                         // F5 background-MV repair). The whole gme block is gated on gme_on>0.5 (a uniform
+                         // push value) → byte-identical when off. Set --gme (requires --warp-at-presenter).
+    float gme_a;         // STAGE-52: the 6 affine params. mv_model(gx,gy) = (a + b·gx + c·gy,
+    float gme_b;         //          d + e·gx + f·gy), gx,gy = the mv-grid coords. The host fits these on
+    float gme_c;         //          the CPU (F) per pair from the fwd MV grid (IRLS, object outliers
+    float gme_d;         //          reweighted). The shader evaluates the model at gx = uv.x·G.x − 0.5,
+    float gme_e;         //          gy = uv.y·G.y − 0.5 (G = textureSize(u_motion_vectors,0)) — the
+    float gme_f;         //          bilinear texel coord, equal to the integer grid index at texel centres,
+                         //          so the in-shader evaluation matches the CPU fit's grid lattice EXACTLY.
+    float matte_on;      // STAGE-53: 0 = fluid-matte OFF (default, byte-identical); >0.5 = boundary-first
+                         //          two-layer compositing. Per output pixel a BINARY matte is decided from
+                         //          the ADVECTED dissidence (u_dissidence): OBJECT → the existing 41..52
+                         //          pipeline result stands; BACKGROUND → BOTH warp_result and blend_result
+                         //          are overwritten with the pure global-model layer sample, so the soft-gate
+                         //          mixes two identical values and no half-weight rim fringe survives. Set
+                         //          only when use_matte AND this generation's model is valid (requires --gme).
+    float matte_thresh;  // STAGE-53: the dissidence cutoff in R8-normalized units [0,1] (v = 16·r_px/255);
+                         //          a pixel is OBJECT iff max(dis_self, dis_gather) > matte_thresh. Default
+                         //          0.25 ↔ r ≈ 4 px. Read only when matte_on > 0.5.
+    float stasis_thresh; // STAGE-56: 0 = stasis OFF (default, byte-identical); > 0 = a pixel whose block
+                         //          sad_zero (the .g of u_sad_field) is ≤ stasis_thresh BYPASSES all motion
+                         //          machinery and presents texture(u_cur_real, uv) directly — the FINAL
+                         //          override before imageStore (dominates warp/commit/matte/soft). Units:
+                         //          the pillar's per-8×8-block SUM of Σ_chan|A−B| over RGB in [0,1] color
+                         //          units (range [0,192]); ~0 = identical block. Default ~0.5 (≈ 1/255 of
+                         //          mean per-channel slack over the block). Read every pixel (one .g tap,
+                         //          0 extra cost — u_sad_field is already bound for Gate 1).
+    float inertia_thresh; // STAGE-57: 0 = inertia OFF (default, byte-identical); > 0 = the inertia prior is
+                         //          armed. A pixel whose block persistence p = texture(u_persistence,uv).r is
+                         //          ≥ inertia_thresh has a STATIC HISTORY → THREE motion-restriction gates fire
+                         //          for it: (a) the rescue loop REJECTS candidate MVs with |mv_c| > 2px, (b) the
+                         //          bilateral PRIMARY-MV fetch falls back to LINEAR if the color-chosen corner's
+                         //          |mv| > 2px, (c) the gme model rescue candidate is SKIPPED. The block's OWN
+                         //          matched MV is NEVER restricted — the F-side counter already reset to 0 if the
+                         //          matcher confidently found big own-motion (the evidence path lives F-side).
+                         //          Units: R8-normalized [0,1]; 16/255≈0.063 per static pair, default 0.5 ≈ 8
+                         //          sustained-static pairs. The whole block is gated on inertia_thresh>0.0 (a
+                         //          uniform push value) → byte-identical when off (the gates never enter, no tap).
+    float crescent_on;   // STAGE-62: 0 = crescent-directed background fetch OFF (default OFF for the off-proof,
+                         //          but the HOST sets it 1.0 by default — matte governs); >0.5 = inside the matte
+                         //          BACKGROUND branch (matte_on>0.5 && !matte_object) the prev/cur model-layer
+                         //          samples are re-weighted by their NON-contamination: c_f=smoothstep(0.5·thr,
+                         //          1.5·thr,dis_fwd), c_b=smoothstep(0.5·thr,1.5·thr,dis_bwd) (thr=matte_thresh,
+                         //          the SAME quantization both masks share); w_prev=(1−t)·(1−c_f), w_cur=t·(1−c_b).
+                         //          The trailing crescent (object covered it in PREV) has high dis_fwd → its
+                         //          prev-side OBJECT sample (the trail) is down-weighted; the leading crescent has
+                         //          high dis_bwd → its cur-side contamination is down-weighted. Both sides
+                         //          contaminated (w_prev+w_cur<1e-4) → fall back to the CURRENT (1−t,t) blend
+                         //          unchanged; else normalize. Mask-WEIGHTED side fetch (FSR3 form), NOT hard
+                         //          one-sided. REUSES the dis_fwd/dis_bwd the matte block already computed this
+                         //          invocation (no re-sample). Gated on crescent_on>0.5 AND matte_on>0.5 → off ⇒
+                         //          byte-identical (the host sets it 1.0 only when use_matte AND cfg.crescent).
+    float appear_on;     // STAGE-64: 0 = appearance-band temporal re-blend OFF (default OFF for the off-proof,
+                         //          but the HOST sets it 1.0 by default when commit is armed — commit governs);
+                         //          >0.5 = inside the commit SOFT band (wc>0.0) the one-sided COMMITTED value is
+                         //          temporally re-blended toward the phase-t color when the two anchors at the
+                         //          committed fetch position differ only mildly in TONE (the brightness-constancy
+                         //          violator: a pulsing/shadowed surface whose structure agrees but whose tone
+                         //          shifts between anchors). S_n = the committed (time-nearest) side's sample at its
+                         //          fetch position; S_o = the OTHER anchor sampled at the SAME position (ONE extra
+                         //          tap). w_app = 1 − smoothstep(band, 2·band, dmax(S_n,S_o)): small tone gap →
+                         //          full temporal interpolation (the pulsing tone is restored phase-correct); large
+                         //          gap = structural disagreement (the reason commit exists) → w_app→0, the
+                         //          one-sided commit stands. commit_target := mix(S_n, (1−t)·prev_pos + t·cur_pos,
+                         //          w_app), both samples at the committed position. Gated on appear_on>0.5 AND
+                         //          inside commit_thresh>0 (the host sets 1.0 only when commit live AND cfg.appearance)
+                         //          → off ⇒ byte-identical (the committed value passes through unchanged).
+    float appear_band;   // STAGE-64: the appearance band in max-channel [0,1] color units (default 0.10, clamp
+                         //          [0.02,0.5]). Read only when appear_on>0.5.
+    float travel_on;     // STAGE-67: 0 = the STAGE-59 occupancy lerp of the FULL max(self,gather) testimonies
+                         //          (default OFF for the off-proof, but the HOST sets it 1.0 by default when
+                         //          matte governs); >0.5 = the TRAVELING-silhouette occupancy. The matte
+                         //          decision's self crutches (53b's cover for bad MVs) FADE with phase so the
+                         //          phase-t silhouette TRAVELS rather than smearing across the swept band: the
+                         //          fwd self decays by (1−t), the bwd self by t, the gather terms (which carry
+                         //          the OBJECT MV post-STAGE-61/63 repair, so they ARE the traveling mask) are
+                         //          kept at full weight via max(). occ_fwd = max(dis_self·(1−t), dis_gather);
+                         //          occ_bwd = max(dis_self_b·t, dis_gather_b); matte_occ = mix(occ_fwd,occ_bwd,t).
+                         //          CRITICAL: dis_fwd/dis_bwd (the crescent's contamination evidence, far below)
+                         //          REMAIN the full max(self,gather) — only the OCCUPANCY decision is faded.
+                         //          Gated on travel_on>0.5 AND matte_on>0.5 → off ⇒ the STAGE-59 lerp exactly
+                         //          (byte-identical; the host sets it 1.0 only when use_matte governs).
+    float contour_on;    // STAGE-71: 0 = the binary matte composition (default OFF for the off-proof, but the
+                         //          HOST sets it 1.0 by default when matte governs); >0.5 = the contour
+                         //          marriage — per-PIXEL boundary-band arbitration by color affinity. In the
+                         //          uncertain band (|matte_occ − matte_thresh| < matte_thresh) the OBJECT layer
+                         //          (the 41..64 warp/blend) and the BACKGROUND layer (the crescent-weighted bg)
+                         //          are arbitrated by which one the time-nearest real at uv resembles:
+                         //          d_o=maxch|ref−obj|, d_b=maxch|ref−bg|, alpha_obj=(d_b+eps)/(d_o+d_b+2·eps),
+                         //          result=mix(bg,obj,alpha_obj). Sub-block precision from appearance for the
+                         //          contour-band bites/chunks the block-MV warp drags across edges. Outside the
+                         //          band the binary !matte_object decision is EXACTLY as today. Gated on
+                         //          contour_on>0.5 AND matte_on>0.5 → off ⇒ byte-identical (the host sets it 1.0
+                         //          only when use_matte governs; cascades via matte_push like crescent/travel).
+    float obj_crescent_on; // STAGE-72: 0 = the OBJECT layer's A/B blend stays the plain (1−t,t) average and the
+                         //          commit's side pick stays time-nearest (default OFF for the off-proof, but the
+                         //          HOST sets it 1.0 by default when matte governs); >0.5 = anchored-claim side
+                         //          weighting for the OBJECT layer — the symmetric piece of the STAGE-62 crescent,
+                         //          applied to the OBJECT layer where 62 only ever touched the BACKGROUND. The bite:
+                         //          at the leading band the prev-anchored fetch is background (the object has not
+                         //          arrived in prev), the (1−t,t) blend washes it, and the commit one-sides to the
+                         //          time-nearest anchor (=prev at early t) → a quarter-displacement bite at fg4. The
+                         //          correct content EXISTS in the OTHER anchor (cur — the object already arrived).
+                         //          Each anchor's OBJECT-PRESENCE CLAIM is the SAME crescent weight 62 uses (REUSED
+                         //          the dis_fwd/dis_bwd the matte block already computed — no re-sample): c_f =
+                         //          smoothstep(0.5·thr,1.5·thr,dis_fwd) = "the prev anchor claims this pixel as
+                         //          object"; c_b = the cur anchor's claim (thr = matte_thresh, the SAME quantization
+                         //          both masks share). Two consumers, BOTH gated on obj_crescent_on>0.5 AND
+                         //          matte_on>0.5 AND matte_object (the OBJECT-classified pixels only):
+                         //            (1) the A/B blend weights upgrade from (1−t,t) to w_A ∝ (1−t)·mix(1,c_f,k),
+                         //                w_B ∝ t·mix(1,c_b,k) with k=1 (full claim gating), normalized; both claims
+                         //                ≈ 0 → fall back to (1−t,t) unchanged. Leading band (c_f≈0,c_b≈1) → cur
+                         //                carries at ANY t; trailing (c_b≈0,c_f≈1) → prev carries. The DEEP-OBJECT
+                         //                case (c_f≈c_b≈1, the interior away from both crescents) reduces to EXACTLY
+                         //                (1−t,t): mix(1,1,1)=1 both sides → w_A=(1−t),w_B=t → normalized = (1−t,t).
+                         //            (2) the commit's time-nearest side pick RESPECTS the claims: for an object
+                         //                pixel where one claim clearly dominates, the committed side becomes the
+                         //                CLAIMING anchor (not the temporally nearest), so the (1) blend's cur-side
+                         //                content is NOT dragged back to the non-claiming prev anchor (the bite). The
+                         //                pick reduces to one boolean commit_use_A threaded through the commit +
+                         //                appearance side-selectors (all of which are side-selectors, never phase
+                         //                weights — the (1−t),t multipliers stay literal). Near-equal claims (incl.
+                         //                deep-object c_f≈c_b) keep the time-nearest pick (commit_use_A = t<0.5),
+                         //                so deep-object commit behavior is UNCHANGED.
+                         //          Gated on obj_crescent_on>0.5 AND matte_on>0.5 → off ⇒ byte-identical (the host
+                         //          sets it 1.0 only when use_matte AND cfg.obj_crescent; cascades via matte_push).
+    float phase_anchor_on; // STAGE-73: 0 = the primary MV is the PREV-anchored forward field at uv (default OFF for the
+                         //          off-proof, but the HOST sets it 1.0 by default when --bidir is active AND the bwd
+                         //          field is valid this generation — i.e. occl_thresh>0); >0.5 = the PRIMARY per-pixel
+                         //          MV is PHASE-ANCHORED: at low t it is the forward field (correct where the content
+                         //          STILL is), at high t the cur-anchored backward field NEGATED (correct where the
+                         //          content NOW is). The fwd field, anchored at PREV, fetches stale vectors at high
+                         //          phase (the content has moved 2-4 blocks from where its vectors live — the operator's
+                         //          outdump damage that GROWS with phase). The cur-anchored bwd field (binding 5) maps
+                         //          cur→prev; the warp's forward convention wants mv_true ≈ −mv_bwd at cur-anchored
+                         //          positions. Blend: w_b = smoothstep(0.35,0.65,t); mv = mix(mv_fwd, −mv_bwd, w_b). At
+                         //          t≤0.35 = mv_fwd EXACTLY (today); at t≥0.65 = −mv_bwd (the cur-anchored field); smooth
+                         //          centre (both near-valid, no pop). ONE primary site → every consumer (the A/B fetch
+                         //          positions, the matte advection gathers, the crescent geometry, the rescue primary)
+                         //          inherits the phase-anchored mv coherently. The round-trip OCCLUSION CLASSIFICATION is
+                         //          DELIBERATELY EXEMPT — it still compares the RAW fwd vs RAW bwd fields (mv_fwd, not the
+                         //          blend), so its fwd↔bwd consistency test is unaffected. Requires the bwd field (binding
+                         //          5) valid → the host gates phase_anchor_on on use_bidir && cfg.phase_anchor && bwd_ok,
+                         //          which is exactly the occl_thresh>0 condition (the shader additionally guards on
+                         //          occl_thresh>0.0 so a stale push can never read an unbuilt bwd field). Gated on
+                         //          phase_anchor_on>0.5 → off ⇒ mv = mv_fwd (the existing fetch) → BYTE-IDENTICAL. Set
+                         //          --no-phase-anchor to revert (the off path). ONE extra bwd MV tap, only when armed.
+    float ambig_on;      // STAGE-77: 0 = the primary MV is the matcher's raw pick (default OFF for the off-proof, but
+                         //          the HOST sets it 1.0 by default when --ambig is active AND gme is live — use_ambig =
+                         //          cfg.ambig && use_gme); >0.5 = the AMBIGUITY rule arbitrates SAD TIES. Periodic textures
+                         //          (striped flags, concentric tunnels) make the matcher pick ONE of two near-tied vectors
+                         //          ~one texture-period apart with no awareness of the other; B now ships the RUNNER-UP
+                         //          (binding 10, u_candidates: .xy=second MV, .z=second SAD). A tile is ALIASED when the
+                         //          runner-up's SAD is near-tied (cand.z ≤ 1.15·sad_best) AND its MV is a real alternative
+                         //          (|cand.xy − mv| > 2px). For an aliased BACKGROUND/texture-interior pixel (NOT matte_object),
+                         //          pick whichever of {mv, cand.xy} is NEARER the gme background model referee gme_model_mv(uv)
+                         //          — the model is the smooth global-motion expectation a periodic interior should follow.
+                         //          OBJECT interiors are EXEMPT (their field is already holon-arbitrated by the matte/repair).
+                         //          Gated on ambig_on>0.5 AND gme_on>0.5 (the referee is the gme model; use_ambig required the
+                         //          final use_gme on the host, so gme_on is always set when ambig_on is). OFF (ambig_on ≤ 0.5)
+                         //          leaves mv untouched → BYTE-IDENTICAL (the binding-10 placeholder is never sampled). Set
+                         //          --no-ambig to revert. ONE candidate tap + ONE model eval, only when armed.
+    float member_commit_on; // STAGE-79: 0 = the warp-vs-blend selection is unchanged (default OFF for the off-proof,
+                         //          but the HOST sets it 1.0 by default when matte governs); >0.5 = MEMBERSHIP BEATS
+                         //          THE BLEND. The photometric confidence gates (Gate 1 residual/improvement, Gate 2
+                         //          agreement d_tile) fall back to blend_result on low-texture object INTERIORS (the
+                         //          flat-content blind spot) — but post-STAGE-61/63 the field inside a tracked
+                         //          silhouette is holon-repaired: the motion is KNOWN there, so the blend hedge is
+                         //          obsolete timidity that cross-fades two fixed positions (the operator's GHOST-STEP:
+                         //          the object materializes at its new position while a trace lingers at the old). For
+                         //          a pixel INSIDE the object self-mask the blend-fallback pressure is SCALED DOWN by
+                         //          (1 − member_strength), member_strength = smoothstep(thr, 2·thr, max(self_fwd,
+                         //          self_bwd)) (thr = matte_thresh; the SAME mv-free OBJECT proxy STAGE-77b uses — the
+                         //          per-pixel SELF dissidence of either anchor, NO gathers, acyclic). Soft mode: the
+                         //          gate weight w is pulled toward 1 (pure warp) — w' = mix(w, 1.0, member_strength).
+                         //          Hard mode: a confident member selects warp_result even when a gate fails. EXTREME
+                         //          escape (true garbage protection): if d_pixel > 3·agreement_threshold the member
+                         //          boost is SUPPRESSED (the two warped samples disagree wildly — a real ambiguity,
+                         //          not the flat-interior blind spot) → the normal gate stands → blend. Gated on
+                         //          member_commit_on>0.5 AND matte_on>0.5 (the self-mask needs the dissidence masks,
+                         //          valid only under matte) → OFF (≤0.5) leaves the selection untouched → BYTE-
+                         //          IDENTICAL. Two dissidence taps + one max-channel d_pixel reuse, only when armed.
+    float commit_default_on; // STAGE-80: 0 = the warp-vs-blend selection keeps the photometric-confidence FALLBACK
+                         //          (Gate 1 residual/improvement, Gate 2 agreement) as the default — low confidence →
+                         //          the (1−t,t) cross-fade at FIXED positions (default OFF for the off-proof, but the
+                         //          HOST sets it 1.0 by default whenever the warp runs — gated on wap, MATTE-INDEPENDENT).
+                         //          >0.5 = THE FLIP: WARP IS THE DEFAULT. The post-STAGE-79 selection is the operator's
+                         //          remaining dominant artifact — wherever member_strength<1 (silhouette fringes, sub-mask
+                         //          text, unclustered detail) the blend fallback still cross-fades two FIXED positions, so
+                         //          moving nameplate TEXT doubles (two phantom copies fading). LSFG's lesson: COMMIT to the
+                         //          warp; the fixed cross-fade is only for EVIDENCED garbage. The only honest evidence the
+                         //          warp is wrong is the post-warp source disagreement d_pixel (the two warped anchors land
+                         //          on contradictory content). g = smoothstep(2·agreement_threshold, 4·agreement_threshold,
+                         //          d_pixel) ∈ [0,1] is that evidence (0 = anchors agree, warp is trustworthy; 1 = wild
+                         //          disagreement, the warp is genuinely wrong). SOFT mode (the live default): the gate weight
+                         //          floors at warp — w_final = max(w, 1 − g): warp WINS (w→1) unless d_pixel is genuinely
+                         //          large; the photometric confidence gates no longer FORCE a blend on their own. The mbb
+                         //          member boost (STAGE-79) is applied FIRST and remains compatible (it only raises w, never
+                         //          lowers it; the floor composes). HARD mode: select blend ONLY when d_pixel > 2·agreement_
+                         //          threshold (otherwise warp), instead of the photometric-AND. Gated on commit_default_on>0.5
+                         //          AND inside the soft/hard selection → OFF (≤0.5) leaves the selection EXACTLY as STAGE-79
+                         //          (the floor/the relaxed hard test never apply) → BYTE-IDENTICAL. NO new tap/binding/barrier
+                         //          (d_pixel + agreement_threshold are already in scope). Set --no-commit-default to revert.
+    float onepos_on;     // STAGE-81: 0 = warp_result is the two-sample blend exactly (default OFF for the off-proof, but the
+                         //          HOST sets it 1.0 by default whenever the warp runs — gated on wap, MATTE-INDEPENDENT, like
+                         //          STAGE-80). >0.5 = ONE POSITION PER PIXEL (the double-exposure collapse — the ghost-step
+                         //          ROOT). warp_result is ITSELF a two-sample blend (1−t)·A[x−t·mv] + t·B[x+(1−t)·mv]; with
+                         //          imperfect or ZERO mv the two samples land on DIFFERENT content = a double exposure. The
+                         //          nameplate TEXT is the pure case: too thin to cluster, mv=0 → the warp's own blend ≡ the
+                         //          cross-fade by identity (two FIXED positions averaged). STAGE-79/80 killed the FALLBACK
+                         //          cross-fade (blend_result) but the warp's OWN two-truth blend remained. The art (occlusion-
+                         //          selected single-sided warping) made cheap+exact: DISAGREEMENT COLLAPSE — when the two
+                         //          displaced samples AGREE (d_pixel small) the blend is safe (identical content, averaging
+                         //          only sharpens); when they DISAGREE, blending IS the ghost → SELECT the heavier side at
+                         //          full weight. c = smoothstep(athr, 2·athr, d_pixel) (athr = agreement_threshold, already in
+                         //          scope; d_pixel already computed at the A/B fetch). The EFFECTIVE A/B weights (whatever form
+                         //          is live this pixel — the plain (1−t,t) OR STAGE-72's claim-weighted normalized w_A/w_B)
+                         //          sharpen toward winner-take-all as c→1: wa' = mix(wa, wa>wb?1.0:0.0, c); wb' = 1 − wa'
+                         //          (normalization preserved). c=0 (agreement) → today's blend EXACTLY; c=1 (disagreement) →
+                         //          the heavier side paints ALONE (single position). Applied AT the warp_result composition
+                         //          site so ALL downstream consumers (48 occlusion, 50 fill-div, 49 rescue, 47 commit, 53/71
+                         //          matte) inherit a single-position object layer. blend_result (the 79/80 machinery) is NOT
+                         //          touched. Gated on onepos_on>0.5 → OFF (≤0.5) leaves warp_result the plain two-sample blend
+                         //          → BYTE-IDENTICAL. NO new tap/binding/barrier. Set --no-onepos to revert.
+    float onepos_band;   // STAGE-82: the collapse-onset scale (the operator's factor-of-2 dial). The collapse
+                         //          onset becomes agreement_threshold·band: 1.0 = STAGE-81 exactly; lower = the
+                         //          sub-threshold faint crescents collapse too (each halving ≈ halves the ghost);
+                         //          the noise floor is the honest limit (≈0 = winner-take-all everywhere →
+                         //          flicker on genuinely intermediate content). --onepos-band F, clamp [0.05,4].
+                         //          Read only when onepos_on>0.5 (host pushes 1.0 when off — inert).
+    float disoccl_commit_on; // STAGE-89: 0 = the two contaminated-band BLEND FALLBACKS stand (default OFF for the
+                         //          off-proof — the HOST sets it 1.0 ONLY under --disoccl-commit). >0.5 = OCCLUSION-
+                         //          AWARE ONE-SIDED COMMIT replaces the symmetric `w_sum < 1e-4` blend fallback at the
+                         //          TWO residual crescent sites (dossier F8/F9 — Softmax-Splatting z-ordering / PerVFI
+                         //          asymmetric blending: never average two contaminated samples; commit each band pixel
+                         //          to the single correct side by the occlusion evidence). The two sites:
+                         //            (A) the OBJECT layer (STAGE-72/81 wa fallback): both anchors' object CLAIMS are
+                         //                ~0 (c_f≈c_b≈0 → w_sum<1e-4) — the disocclusion sliver where neither anchor
+                         //                cleanly carries the object. The SYMMETRIC fallback wa=(1−t) averages two
+                         //                stale samples = the half-moon. Even below the claim smoothstep's floor, the
+                         //                RAW dissidence asymmetry (dis_fwd vs dis_bwd) still encodes the edge: the
+                         //                LEADING edge (object IS in cur, WAS background in prev) has dis_bwd>dis_fwd →
+                         //                commit to CUR (wa→0); the TRAILING edge (object WAS in prev, IS background in
+                         //                cur) has dis_fwd>dis_bwd → commit to PREV (wa→1). The commit is SOFT in the
+                         //                asymmetry magnitude so a TRUE tie (dis_fwd≈dis_bwd, no edge evidence) keeps
+                         //                the (1−t) phase blend EXACTLY — the honest wall: a one-sided pick on a
+                         //                genuinely ambiguous band can mis-pick, so the evidence GATES the commit.
+                         //            (B) the BACKGROUND layer (STAGE-62 bg fallback): both sides object-CONTAMINATED
+                         //                (c_f≈c_b≈1 → w_sum<1e-4). The symmetric fallback (1−t)·bg_prev+t·bg_cur
+                         //                averages two object-painted samples = the estela. Commit to the LESS
+                         //                contaminated side: dis_fwd<dis_bwd → the PREV side carries less object → use
+                         //                bg_prev; dis_bwd<dis_fwd → use bg_cur. Same soft asymmetry gate → a true tie
+                         //                keeps the phase blend.
+                         //          REUSES dis_fwd/dis_bwd (hoisted, already fetched this invocation) — NO new tap,
+                         //          binding, or barrier; runtime ≈ 0, only in the already-rare w_sum<1e-4 branch. Gated
+                         //          on disoccl_commit_on>0.5 → OFF (≤0.5) leaves BOTH fallbacks the exact symmetric
+                         //          blend → BYTE-IDENTICAL. Requires matte_on>0.5 at both sites (the dissidence is the
+                         //          evidence; the host gates --disoccl-commit on use_matte). Set --disoccl-commit.
+    float bg_snap_on;    // STAGE-90 (P2b): 0 = background-snap OFF (default, byte-identical); >0.5 = the
+                         //          image-field-gated disocclusion fix is armed. At the iGPU contour band (binding
+                         //          11, advected to phase t) the BACKGROUND-side pixels snap their MV toward
+                         //          gme_model_mv (the global background model) BEFORE A_samp/B_samp → background
+                         //          takes background-motion, not the object's attracted MV → kills the optical-flow
+                         //          "gravity" (= LSFG's disocclusion artifact) with NO side-pick (so NO --fill-div
+                         //          flaming). THE SIDE is photometric, matte-free: the object's own MV warps the
+                         //          object CONSISTENTLY (low d), but an attracted-background pixel warped by the
+                         //          object MV lands its two anchors on contradictory content (high d) → bg-side =
+                         //          smoothstep(agree,2·agree,d0). (The dissidence/object_proxy is CORRUPTED in
+                         //          exactly this band — the attracted bg carries the object MV → high dissidence —
+                         //          so it cannot discriminate here; the photometric disagreement can.) Gated on
+                         //          bg_snap_on>0.5 AND gme_on>0.5 (the model must be valid). OFF ⇒ mv untouched ⇒
+                         //          BYTE-IDENTICAL. 1 field imageLoad + 2 color taps, ONLY at band pixels.
+    float bg_snap_strength; // STAGE-90 (P2b): the snap weight scale [0,1] — the operator's hard↔soft CONTINUUM.
+                         //          w = bg_snap_strength · band · bg_side; mv = mix(mv, gme_model_mv, w). 1.0 + a
+                         //          sharp band ⇒ a HARD snap; <1 / a soft band ⇒ a SOFT blend (the hard snap is the
+                         //          LIMIT of the blend, ONE knob — both at once, the holonic choice). Read when armed.
+    float bg_snap_norm;  // STAGE-90 (P2b): the contour-distance→[0,1] normalizer (~1/edge_thr, default 0.04):
+                         //          band = (occ != 0) ? clamp(dist · bg_snap_norm, 0, 1) : 0. Read only when armed.
+    float extrap;        // STAGE-91 (ASW): bounded forward-EXTRAPOLATION amount in PHASE units (the overshoot
+                         //          past phase 1). 0 = OFF (byte-identical). The host sends >0 ONLY under --asw AND
+                         //          when the sync-clock content_clock overshot the held pair (B behind = the
+                         //          deficit/freeze regime). The final result is projected forward: cur[uv-extrap*mv]
+                         //          (the object keeps moving through the deficit instead of HOLD-at-1 freezing).
+    float vblend_on;     // STAGE-94 (--vblend): 0 = velocity-continuity OFF (default, byte-identical); >0.5 =
+                         //          near the pair's END (high phase t) the effective MV used for the A/B sample
+                         //          offsets is tilted toward the NEXT pair's MV (u_mv_target, binding 12) so the
+                         //          boundary velocity transitions SMOOTHLY instead of stepping (the perceived
+                         //          "pulse"). Endpoint preserved: at t=1 the sample offsets are 0 regardless, so
+                         //          the result is still exactly cur. ONLY the sample offsets use the tilted MV —
+                         //          the occlusion-classification round-trip keeps reading the RAW mv_fwd/bwd
+                         //          fields (its fwd↔bwd consistency test is unchanged). Gated wholly on
+                         //          vblend_on>0.5 (a uniform push value): off → vb_w=0 → mv unchanged → BYTE-
+                         //          IDENTICAL (u_mv_target is never sampled). 1 MV-target tap when armed.
+    float vblend_t0;     // STAGE-94 (--vblend): the phase where the tilt ramp BEGINS. vb_w ramps 0->strength
+                         //          via smoothstep(vblend_t0, 1.0, t). Default 0.6 (clamp [0,0.95]); below t0 the
+                         //          tilt is 0 (the early pair is untouched). Read only when vblend_on>0.5.
+    float vblend_strength; // STAGE-94 (--vblend): the maximum tilt weight at t=1 (the mix fraction toward the
+                         //          NEXT pair's MV). Default 0.5 (clamp [0,1]). Read only when vblend_on>0.5.
+    float band_xfade;    // STAGE-95 (--band-xfade): 0 = OFF (default, byte-identical); >0 = strength. In the
+                         //          image-field disocclusion band, on the BACKGROUND side, blend the final result
+                         //          toward blend_result (the un-warped (1−t)·prev[uv]+t·cur[uv] cross-fade) =
+                         //          the GRAVITY-CANCELLATION point (our push + LSFG's pull average to this). For
+                         //          STATIC bg the crossfade IS the clean background (no gravity/no double); the
+                         //          OBJECT keeps its sharp warp (band/bg-gated) → beats the global LSFG stack.
+                         //          bx_w = band_xfade·band·bg (band from the swept image-field contour, bg from the
+                         //          photometric d0). Does NOT need gme_on (no model). OFF → bx_w=0 → BYTE-IDENTICAL.
+    float vblend_exact;  // STAGE-96 (--vblend-exact): 0 = PREDICT (default, byte-identical: mv_target_s = 2·mv − mv_ut,
+                         //          where u_mv_target holds the PREV pair MV); >0.5 = EXACT (u_mv_target holds the REAL
+                         //          next-pair MV, made available by the host's +1 pair of present lead → mv_target_s = mv_ut,
+                         //          no constant-accel prediction error). Read only when vblend_on>0.5.
+    float ts_smooth;     // STAGE-97 (--ts-smooth): 0 = OFF (byte-identical, no temporal-smoothing blend). >0 =
+                         //          ADAPTIVE temporal smoothing strength: just before imageStore, blend result toward
+                         //          the PREVIOUS output frame (binding 13) ONLY where the warp is low-confidence/garbage
+                         //          (high source-disagreement d_pixel = disocclusion/flow-failure = the gravity-prone
+                         //          pixels) — clean co-visible pixels (low d_pixel) get ~0 blend → stay sharp+responsive
+                         //          (asymmetric: masks the residual disocclusion artifacts without smearing clean motion).
+    float mc_on;         // STAGE-98 (--multicand): 0 = OFF (byte-identical, the existing soft_gate/hard 2-candidate path
+                         //          runs); >0.5 = ON, the scored MULTI-CANDIDATE medoid selection replaces the result birth.
+                         //          SOTA-grounded (FG_VFI_PRIOR_ART §11): generate candidates + select the consensus
+                         //          (no GT recoverable — F37; we reduce ARTIFACTS, not recover truth). Read only here.
+    float mc_nperturb;   // STAGE-98: number of speed-perturbed warp candidates added to {warp, A-only, B-only}: 0, 2, or 4
+                         //          (the generate-more lever, F44/F37 speed-ambiguity). Higher = more hypotheses, more cost.
+    float mc_perturb;    // STAGE-98: speed-perturbation fraction for the perturbed warps (mv·(1±perturb), and ±2·perturb for 4).
+    float mc_disp;       // STAGE-98: candidate-set DISPERSION threshold (mean L1 of the medoid to the others). Above it = NO
+                         //          consensus (open problem 6) → fall to the safe crossfade UNLESS on a true edge (mc_edge).
+    float mc_edge;       // STAGE-98: the iGPU Sobel image-boundary threshold (0..1). edge ≥ mc_edge = a TRUE edge → keep the
+                         //          HARD medoid pick (never the linear-blend crossfade = the ghost, F43). Our differentiator
+                         //          (no shipping FG uses an image-edge gate — F29). mc_edge=0 → always hard; ~1 → gate off.
+    vec2  cam_lead;      // STAGE-114 (--camera-twarp): a GLOBAL sample-UV lead offset (in UV units) added to the warp's
+                         //          BASE sampling position `uv` (line ~736) BEFORE any tap, so the WHOLE interpolated frame
+                         //          samples shifted in the camera's motion direction — PRESERVING the A/B interpolation (this
+                         //          is NOT the cur-only `extrap` path above, which replaces the result and loses interpolation).
+                         //          The store coordinate stays at the ORIGINAL gl_GlobalInvocationID (`coord`), so only the
+                         //          SAMPLING shifts. cam_lead = (gme6[0],gme6[3])/out_size · amt (the gme affine TRANSLATION in
+                         //          px = the dominant camera/global motion). The host sends (0,0) when --camera-twarp is OFF or
+                         //          gme is invalid for the pair → `uv += (0,0)` is a no-op → BYTE-IDENTICAL. The revealed screen
+                         //          edge (uv+cam_lead outside [0,1]) is handled by the sampler's existing clamp-to-edge (a tiny
+                         //          bounded edge stretch). Appended LAST so every prior field's offset is unchanged. NOTE: a vec2
+                         //          push member is std430-aligned to 8B; the preceding 50 floats land it at offset 200 (4·50),
+                         //          which is 8-aligned, so no implicit pad is inserted before it (the host mirrors it as two
+                         //          trailing floats {cl_x,cl_y} at offset 200/204 — see main.cpp pcw). pcr.size grows 200→208B,
+                         //          well within the 256B device limit. Read only when nonzero (cam_lead!=(0,0)).
+    float disoccl_hardpick;  // STAGE-116 (--disoccl-hardpick): edge-gated HARD-PICK at the STAGE-48 bidir disocclusion
+                         //          reveal band (convergent guide #1: hard-pick one direction at disocclusion, never blend
+                         //          — FSR3 dual-mask / PerVFI quasi-binary / ASTRI single-anchor). The threshold (0..1) on the
+                         //          iGPU Sobel image-edge field (binding 11 — the ground-truth contour NO shipping FG has,
+                         //          F29): where the field shows a TRUE contour (>= this) the exactly-one-side-OWNS branch
+                         //          commits FULLY to the round-trip-consistent winner (w_use→1), so the seam lands ON the real
+                         //          edge (invisible) instead of the soft STAGE-49 weighted blend that smears the reveal band
+                         //          (= the operator's step/crescent/gravity). In FLAT interior (low edge) the STAGE-49 soft
+                         //          blend is kept (no seam). A binary edge-gated pick is also more temporally STABLE than the
+                         //          jittering ratio-weighted blend (eases the vibration). 0 = OFF: the branch below is never
+                         //          entered → BYTE-IDENTICAL. Appended LAST (offset 208) so no prior field's offset shifts;
+                         //          a float after the 8-aligned vec2 cam_lead lands at 208 (4-aligned, no pad). pcr.size 208→212.
+} pc;
+
+shared float s_d[64];
+shared uint  s_matte_cnt;   // STAGE-59: per-workgroup presented-object-pixel accumulator (matte mass)
+
+// ── STAGE-49b: 3x3 full-res window SAD for a candidate (or primary) MV ──────────────
+// The single-pixel d_ab CANNOT discriminate a wrong vector that lands both samples on
+// identical FLAT content (yellow-yellow / bg-bg) — it scores ~0 for the wrong MV exactly
+// like the right one (dossier F2). A small WINDOW does: score the pixel AND its 8 immediate
+// full-res neighbours (±1 pixel in uv) by the same warp at the SAME mv, summing the
+// max-channel |A−B| over the 9 positions. A window that straddles the moving edge sees the
+// disagreement the centre flat pixel hides. Same sign/scale as the primary warp per position
+// (A at uv'−t·mv/sz, B at uv'+(1−t)·mv/sz). Returns the SUM over 9 positions (range [0, 9·1]);
+// the caller compares against 9·commit_thresh (the per-position threshold scaled by the window
+// size — an AVERAGE-per-position bar of commit_thresh). 9 positions × 2 color taps per call.
+float window_sad(vec2 uv, vec2 sz, vec2 mv) {
+    const vec2 px      = 1.0 / sz;                       // one full-res pixel in uv
+    const vec2 t_off   = (mv * pc.t)         / sz;       // A displacement (uv)
+    const vec2 it_off  = (mv * (1.0 - pc.t)) / sz;       // B displacement (uv)
+    float s = 0.0;
+    for (int wy = -1; wy <= 1; ++wy) {
+        for (int wx = -1; wx <= 1; ++wx) {
+            const vec2 uvw = uv + vec2(float(wx), float(wy)) * px;   // neighbour position
+            const vec4 A_w = texture(u_prev_real, uvw - t_off);
+            const vec4 B_w = texture(u_cur_real,  uvw + it_off);
+            const vec3 ab  = abs(A_w.rgb - B_w.rgb);
+            s += max(ab.r, max(ab.g, ab.b));
+        }
+    }
+    return s;
+}
+
+// ── STAGE-49c: bilateral (color-membership) PRIMARY MV fetch ─────────────────────────────
+// The MV texture is sampled with LINEAR filtering, so a rim pixel straddling the MV-grid
+// boundary between the moving ball's cell and the background cell receives a MIXED ball/bg MV
+// — wrong for BOTH (the staircase the operator photographed). Under mv-guided we choose a
+// SINGLE corner by color membership instead of blending the two.
+//
+// LINEAR-equivalence derivation (so the OFF path is byte-identical and the corner set is the
+// EXACT one bilinear would interpolate). GLSL `texture(samp, uv)` with LINEAR filtering and a
+// texture of size G computes the continuous texel coordinate s = uv*G − 0.5; the four texels
+// it blends are the integer corners i00 = floor(s), i10 = i00+(1,0), i01 = i00+(0,1),
+// i11 = i00+(1,1), with bilinear weights f = fract(s): result = mix(mix(T[i00],T[i10],f.x),
+// mix(T[i01],T[i11],f.x), f.y). Each texel i has its CENTRE at uv (i+0.5)/G — so a corner's
+// block-centre color is cur_real at (corner+0.5)/G, the SAME mapping the median pass uses.
+// We texelFetch exactly those four floor/ceil corners (clamped to the grid), so the candidate
+// set IS the bilinear footprint. When no corner wins decisively we RETURN the bilinear
+// texture() result verbatim → for mv_guided ≤ 0.5 the caller never calls this and the fetch
+// stays `texture(...)`, so OFF is byte-identical by construction (this function is unreached).
+//
+// Selection: c_pix = cur_real at uv (the pixel's own membership color); for each of the 4
+// corners sample its block-centre color, score max-channel |c_pix − c_corner|; the winner is
+// the min-score corner (winner-take-all). NEAR-TIE / NONE-SIMILAR fallback to bilinear:
+//   · none similar — even the best corner's color differs by > sim_thresh (the pixel belongs
+//     to neither cell's object, e.g. a thin feature) → no membership decision → bilinear.
+//   · near tie — the two best corners score within sim_thresh of each other (the pixel sits
+//     inside one color object spanning both cells; both corners are valid) → bilinear is the
+//     right (smooth) answer, picking one would inject a discontinuity. (sim_thresh reused as
+//     the tie band — same color-membership scale as the consensus pass.)
+vec2 guided_mv(vec2 uv, float sim_thresh) {
+    const vec2  grid     = vec2(textureSize(u_motion_vectors, 0));
+    const vec2  inv_grid = 1.0 / grid;
+    const ivec2 mxc      = ivec2(grid) - ivec2(1);
+    const vec2  s        = uv * grid - vec2(0.5);          // bilinear continuous texel coord
+    const ivec2 i00      = ivec2(floor(s));                // floor corner (bilinear footprint)
+    const ivec2 corn[4]  = ivec2[4](i00, i00 + ivec2(1,0), i00 + ivec2(0,1), i00 + ivec2(1,1));
+    const vec3  c_pix     = texture(u_cur_real, uv).rgb;   // the pixel's own membership color
+    int   best_i = 0; float best_d = 1e9; float second_d = 1e9;
+    for (int k = 0; k < 4; ++k) {
+        const ivec2 ci  = clamp(corn[k], ivec2(0), mxc);
+        const vec3  c_c = texture(u_cur_real, (vec2(ci) + vec2(0.5)) * inv_grid).rgb;
+        const vec3  ad  = abs(c_pix - c_c);
+        const float dmx = max(ad.r, max(ad.g, ad.b));      // max-channel membership distance
+        if (dmx < best_d)      { second_d = best_d; best_d = dmx; best_i = k; }
+        else if (dmx < second_d) { second_d = dmx; }
+    }
+    // none similar (best corner still > band) OR near-tie (two corners within band of each
+    // other) → bilinear is the correct answer. Otherwise commit to the winning corner's MV.
+    if (best_d > sim_thresh || (second_d - best_d) <= sim_thresh) {
+        return texture(u_motion_vectors, uv).xy;           // the standard LINEAR result
+    }
+    return texelFetch(u_motion_vectors, clamp(corn[best_i], ivec2(0), mxc), 0).xy;
+}
+
+// ── STAGE-52: evaluate the global affine motion model at this pixel's mv-grid position ───────
+// The CPU fits mv_model(gx,gy) = (a + b·gx + c·gy, d + e·gx + f·gy) over INTEGER grid indices
+// (gx,gy) ∈ [0,G.x)×[0,G.y) where G = textureSize(u_motion_vectors,0) (the MV grid, mvw×mvh). The
+// MV texture is sampled with LINEAR filtering: GLSL `texture(samp, uv)` maps uv to the continuous
+// texel coordinate s = uv·G − 0.5, and at a texel CENTRE uv = (i+0.5)/G that gives s = i exactly.
+// So evaluating the affine model at (gx,gy) = uv·G − 0.5 reproduces, on the lattice, the SAME grid
+// position the CPU fit used → the model the shader computes per pixel is consistent with the field
+// the fit was derived from (and with how the warp samples the bilinear MV). Result in PIXEL units
+// (the stored MV unit), used exactly like a sampled MV downstream.
+vec2 gme_model_mv(vec2 uv) {
+    const vec2 grid = vec2(textureSize(u_motion_vectors, 0));
+    const vec2 g    = uv * grid - vec2(0.5);          // bilinear texel coord = grid index at centres
+    return vec2(pc.gme_a + pc.gme_b * g.x + pc.gme_c * g.y,
+                pc.gme_d + pc.gme_e * g.x + pc.gme_f * g.y);
+}
+
+void main() {
+    const ivec2 coord    = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 out_size = imageSize(u_output);
+    const bool  valid    = (coord.x < out_size.x && coord.y < out_size.y);
+
+    // ── STAGE-114b (--camera-twarp): PER-PIXEL responsiveness lead on the SAMPLING base ───────────────
+    // Each pixel leads FORWARD by ITS OWN motion (the MV field at this pixel) — NOT a global-uniform shift.
+    // A uniform lead (STAGE-114 used the gme average translation) deforms the NON-uniform scene (parallax: near
+    // moves more than far; + the mouse-look camera rotation) → the operator's "jelly" wobble (parts lag, then
+    // settle). The per-pixel MV lead is CONSISTENT with the warp's own per-pixel motion → no deformation. `uv`
+    // is the SAMPLING base for the ENTIRE warp (MV read, A/B blend, matte, dissidence, sad, persistence,
+    // ts-smooth, extrap); the store below uses the ORIGINAL integer `coord` (only SAMPLING shifts). pc.cam_lead.x
+    // carries the lead scalar `amt` (host: cfg.camera_twarp ? amt : 0; no gme dependency — the lead is the MV).
+    // OFF → amt=0 → uv==uv0 → BYTE-IDENTICAL. The revealed screen edge is the sampler's clamp-to-edge (a tiny
+    // bounded stretch). SIGN: +mv continues the motion forward (same direction as the B/cur sample); eye-tunable
+    // (negate amt host-side if the lag worsens). The edge of an INDEPENDENTLY-moving object leads by its own MV
+    // (correct); only the disocclusion BOUNDARY (ambiguous MV) can fray — the matte/bg-snap already covers it.
+    const vec2 uv0 = (vec2(coord) + vec2(0.5)) / vec2(out_size);
+    // STAGE-114c: lead by the SMOOTH gme AFFINE model (gme_model_mv) instead of the raw per-pixel MV. The raw
+    // MV's per-pixel NOISE, amplified by the lead, wobbled the image = the operator's "underwater" refraction
+    // (the lead samples THROUGH the MV field like light through moving water; MV noise → ripple). The affine
+    // model varies SMOOTHLY across the frame (it captures the camera pan/yaw/zoom — the mouse-look motion that
+    // IS the responsiveness symptom) with NO per-pixel noise → kills the underwater AND keeps the per-pixel
+    // spatial variation that killed the global-uniform "jelly". Falls back to the raw MV when gme is off
+    // (--no-gme). amt = pc.cam_lead.x; cam_lead.x<=0 (OFF) → _lmv=0 → uv==uv0 → BYTE-IDENTICAL (no extra work).
+    const vec2 _lmv = (pc.cam_lead.x <= 0.0) ? vec2(0.0)
+                    : (pc.gme_on > 0.5)      ? gme_model_mv(uv0)
+                    :                          texture(u_motion_vectors, uv0).xy;
+    const vec2 uv = uv0 + _lmv * pc.cam_lead.x / vec2(out_size);
+
+    // ── STAGE-57: the inertia prior — read the per-block persistence ONCE (only when armed) ───────
+    // p ∈ [0,1] = the static-history counter / 255. inertia_on gates the whole prior on the uniform
+    // push value inertia_thresh > 0.0 → when off, NO persistence tap (byte-identical) and inertia_static
+    // is constant-false, so none of the three gates below ever fire. inertia_static = this block has a
+    // SUSTAINED static history (p ≥ thresh) → it must not adopt exterior motion through ambiguity paths.
+    const bool  inertia_on     = (pc.inertia_thresh > 0.0);
+    const float inertia_p      = inertia_on ? texture(u_persistence, uv).r : 0.0;
+    const bool  inertia_static = inertia_on && (inertia_p >= pc.inertia_thresh);
+
+    // STAGE-49c: PRIMARY MV fetch. mv_guided ≤ 0.5 (default OFF) keeps the EXACT LINEAR sample —
+    // byte-identical to pre-STAGE-49c (guided_mv is never entered, the fetch is the same
+    // `texture(...)` call). mv_guided > 0.5 picks ONE MV-grid corner by color membership
+    // (bilateral upsampling, see guided_mv); the selected mv feeds A_samp/B_samp and EVERYTHING
+    // downstream exactly as the bilinear mv did. The rescue loop's candidate MVs keep their own
+    // texelFetch (they are already discrete) — only this primary fetch is bilateral.
+    //   Membership band: the push grows by ONLY mv_guided (40→44B). The band is carried IN that
+    //   one float by the host as mv_guided = 1.0 + sim_thresh (sim_thresh ∈ [0.02,0.5], so
+    //   mv_guided ∈ [1.02,1.5] > 0.5 satisfies the gate AND encodes the band) → the warp recovers
+    //   sim = mv_guided − 1.0, the SAME --mv-sim value the consensus pass uses (one membership
+    //   scale). OFF (mv_guided = 0.0) never enters the branch, so the encoding is irrelevant there.
+    vec2  mv             = (pc.mv_guided > 0.5)
+                         ? guided_mv(uv, pc.mv_guided - 1.0)
+                         : texture(u_motion_vectors, uv).xy;   // pixel units
+    // ── STAGE-57 GATE (b): no fast-corner lending into a static-history block ──────────────────────
+    // The bilateral fetch may select a FAST color-matched corner (the moving ball's MV bled into a slow
+    // rim pixel via color membership). For a static-history block (inertia_static) we REFUSE that fast
+    // corner and fall back to the plain LINEAR result — the interior cannot adopt exterior speed through
+    // the membership path. Only the GUIDED fetch is gated (the LINEAR path is the block's own bilinear
+    // MV, never restricted). Gated on inertia_static AND |mv_guided| > 2px → byte-identical when inertia
+    // is off (inertia_static is constant-false). One extra LINEAR tap only when the gate actually fires.
+    if (pc.mv_guided > 0.5 && inertia_static && length(mv) > 2.0) {
+        mv = texture(u_motion_vectors, uv).xy;   // the standard LINEAR (bilinear) result — no fast corner
+    }
+    // ── STAGE-73: the PHASE-ANCHORED primary MV (phase_anchor_on > 0.5) ──────────────────────────
+    // At this point `mv` is the PREV-anchored forward primary (the guided/linear fetch above, with the
+    // inertia gate applied) — the value EVERY consumer used pre-STAGE-73. The fwd field lives at the
+    // content's PREV positions; at high phase t the content has travelled 2-4 blocks past where its
+    // vectors live → stale-vector fetches (the operator's outdump damage that grows with t). The cure:
+    // anchor the field to the instant NEAREST t. mv_fwd = this prev-anchored primary (KEPT for the
+    // round-trip classification, which deliberately compares the raw fwd vs raw bwd fields — see below).
+    // mv_bwd = the cur-anchored backward field at uv (binding 5, the SAME linear fetch the classification
+    // uses on that binding), NEGATED: the bwd field maps cur→prev, the warp's forward convention wants
+    // mv_true ≈ −mv_bwd at cur-anchored positions. Blend by phase: w_b = smoothstep(0.35,0.65,t) → at
+    // t≤0.35 mv = mv_fwd EXACTLY (byte-identical to today), at t≥0.65 mv = −mv_bwd (the cur-anchored
+    // field, correct where the content NOW is), smooth centre (both near-valid there, no pop). Gated on
+    // phase_anchor_on>0.5 AND occl_thresh>0.0 (the bwd field is valid this generation — the host sets
+    // phase_anchor_on 1.0 only under use_bidir && bwd_ok, which is exactly the occl_thresh>0 condition;
+    // the redundant occl_thresh guard makes a stale push reading an unbuilt bwd field impossible). OFF
+    // (phase_anchor_on ≤ 0.5) leaves mv = mv_fwd untouched → BYTE-IDENTICAL. ONE extra bwd MV tap, armed
+    // only. The classification below keeps mv_fwd for its fwd leg (its semantics are UNCHANGED).
+    const vec2 mv_fwd = mv;   // the prev-anchored forward primary — the classification's raw fwd leg
+    if (pc.phase_anchor_on > 0.5 && pc.occl_thresh > 0.0) {
+        const vec2  mv_bwd = texture(u_motion_vectors_bwd, uv).xy;   // cur-anchored field (cur→prev), pixel units
+        // STAGE-74 (supervisor, outdump round 2): the pure phase blend BITES the t-silhouette's
+        // TRAILING band at high t — the cur field has no object knowledge there (it is background in
+        // cur) so −mv_bwd≈0 paints background INTO the object; symmetric at low t for the leading
+        // band (the operator's "the mechanism believes the new frame and contaminates the object").
+        // CLAIM modulation: the per-pixel SELF testimonies (mv-free → acyclic; the gathers need mv,
+        // the selves do not) pull the blend toward the anchor that CLAIMS this pixel's content:
+        // trailing band = prev claims (cfs high, cbs low) → fwd; leading = cur claims → −bwd; bulk =
+        // both claim → pure phase. Gated on matte_on (bindings 6/7 are placeholders without gme).
+        float claim = 0.0;
+        if (pc.matte_on > 0.5) {
+            const float cfs = smoothstep(0.5*pc.matte_thresh, 1.5*pc.matte_thresh, texture(u_dissidence,     uv).r);
+            const float cbs = smoothstep(0.5*pc.matte_thresh, 1.5*pc.matte_thresh, texture(u_dissidence_bwd, uv).r);
+            claim = 0.5 * (cbs - cfs);
+        }
+        const float w_b = clamp(smoothstep(0.35, 0.65, pc.t) + claim, 0.0, 1.0);
+        mv = mix(mv_fwd, -mv_bwd, w_b);                              // STAGE-73/74: phase+claim-anchored primary
+    }
+    const vec2  sad_pair = texture(u_sad_field,       uv).xy;  // R=sad_best, G=sad_zero
+    const float sad_best = sad_pair.r;
+    const float sad_zero = sad_pair.g;
+
+    // ── STAGE-77: the AMBIGUITY rule — runner-up arbitration of SAD ties (ambig_on > 0.5) ─────────
+    // Inserted HERE — right after the phase+claim-anchored primary `mv` is finalized AND `sad_pair` is
+    // sampled, but BEFORE Gate 2 consumes `mv` (t_mv_uv = mv·t, just below) — so the corrected mv
+    // propagates COHERENTLY to every downstream consumer (the A/B warp samples, the matte advection
+    // gathers, the crescent geometry), exactly like the STAGE-73 primary site one block up.
+    //
+    // THE CLASS: periodic textures (striped flags, concentric tunnels in the zoo). Their SAD landscape
+    // has near-tied minima ~one texture-period apart; the matcher picks one ARBITRARILY (no awareness of
+    // the runner-up) → the interior flickers between the two aliased vectors. B now ships the runner-up
+    // (binding 10): cand.xy = the second-best MV, cand.z = its pure SAD. A tile is ALIASED when:
+    //   aliased = (cand.z ≤ 1.15·sad_best)   — the runner-up is near-tied (a real SAD ambiguity, not noise),
+    //         AND (|cand.xy − mv| > 2px)     — and it is a genuinely DIFFERENT vector (a texture-period away).
+    //
+    // THE REFEREE — gme_model_mv(uv): the smooth global background-motion model the gme holon fit this pair.
+    // A periodic BACKGROUND interior has no true local structure to disambiguate it, so the correct vector is
+    // the one nearest the global expectation (the camera/scene motion the surrounding non-periodic content
+    // pinned). For NOT-matte_object pixels the referee is gme_model_mv(uv); for matte_object pixels we KEEP mv
+    // (their field is already holon-arbitrated by the matte / object-inheritance repair — re-refereeing them
+    // against the BACKGROUND model would be wrong, and the kickoff scopes v1 to the background/texture-interior
+    // class). The rule therefore fires ONLY on NOT-matte_object pixels, where the referee is always the model.
+    //
+    // matte_object is the binary matte decision computed DOWNSTREAM (after this site, it needs the mv-advected
+    // dissidence gathers). To stay acyclic AND conservative we use a mv-FREE OBJECT PROXY here: the per-pixel
+    // SELF dissidence of EITHER anchor exceeding the matte threshold (the same masks + threshold the real
+    // matte_object uses, minus the gathers). This OVER-covers object regions (it flags a pixel object wherever
+    // either anchor's silhouette self-testimony is high — a superset of the gathered decision), so the rule is
+    // SUPPRESSED on a superset of the true object pixels → it never re-refs a genuine object interior (the safe
+    // bias). The proxy reads bindings 6/7 (the dissidence masks), valid only under gme → the rule is gated on
+    // gme_on>0.5 too (which the host guarantees whenever ambig_on is set: use_ambig required the final use_gme).
+    //
+    // CONSERVATIVE v1: background/texture-interior aliasing is the class; object interiors are already repaired
+    // and stay EXEMPT. OFF (ambig_on ≤ 0.5) leaves mv untouched → BYTE-IDENTICAL. One candidate tap, one model
+    // eval, two dissidence taps, only when armed.
+    if (pc.ambig_on > 0.5 && pc.gme_on > 0.5) {
+        const vec4 cand    = texture(u_candidates, uv);                 // .xy = runner-up MV, .z = runner-up SAD
+        const bool aliased = (cand.z <= 1.15 * sad_best) && (length(cand.xy - mv) > 2.0);
+        // mv-free OBJECT proxy (a conservative superset of matte_object): either anchor's SELF dissidence
+        // over the matte threshold. matte_thresh is the SAME quantized cutoff the real matte decision uses
+        // (v = 16·r_px/255; both masks share it). Reads the dissidence masks only when matte_on is live;
+        // off-matte (matte_thresh would be 0) there is no silhouette → proxy is false → all interiors are
+        // background-eligible (the matcher had no object holon to protect them anyway).
+        bool object_proxy = false;
+        if (pc.matte_on > 0.5) {
+            const float self_f = texture(u_dissidence,     uv).r;
+            const float self_b = texture(u_dissidence_bwd, uv).r;
+            object_proxy = (max(self_f, self_b) > pc.matte_thresh);
+        }
+        if (aliased && !object_proxy) {
+            const vec2 referee = gme_model_mv(uv);                      // the smooth global background expectation
+            // pick whichever of {mv, cand.xy} sits nearer the referee — the periodic interior should follow
+            // the global motion the non-periodic surround pinned, not the matcher's arbitrary tie-break.
+            mv = (distance(cand.xy, referee) < distance(mv, referee)) ? cand.xy : mv;
+        }
+    }
+
+    // ── STAGE-90 (P2b): image-field-gated BACKGROUND SNAP — the disocclusion "gravity" fix ─────────
+    // The optical-flow disocclusion artifact (LSFG/FSR3 have it too): near a moving object's boundary the
+    // block-match assigns the OBJECT's MV to the fringe background pixels (bilinear bleed) → those bg pixels
+    // warp TOWARD the object = the "gravity" (the operator's 2026-06-15 finding). The cure: at the IMAGE
+    // boundary band (the iGPU Sobel field, binding 11 — the ground-truth edge LSFG has no access to), for the
+    // BACKGROUND-side pixels, snap mv to the global background model (gme_model_mv) so they take the BACKGROUND
+    // motion, then the A_samp/B_samp below re-sample COHERENTLY (no side-PICK like --fill-div → no flaming).
+    //   THE BAND: the field is the Sobel of cur@phase1; the present is the warp@phase t, which fetches cur at
+    //     uv+(1-t)·mv → the contour for present-p lives at p+(1-t)·mv. We ADVECT the field there (the SAME
+    //     advection P1's --afill validated by eye: the contour sits ON the warped object).
+    //   THE SIDE (photometric, matte-free): the object's own MV warps the object consistently (low d0); an
+    //     attracted-bg pixel warped by the object MV lands its two anchors on contradictory content (high d0).
+    //     bg = smoothstep(agree, 2·agree, d0). The dissidence/object_proxy is corrupted in exactly this band
+    //     (attracted bg has the object MV → high dissidence) so it can't discriminate; d0 can.
+    //   THE CONTINUUM (operator's holonic both-at-once): w = strength·band·bg; mv = mix(mv, gme_model_mv, w).
+    //     strength=1 + a sharp band = HARD snap; strength<1 / soft band = SOFT blend (snap = the blend's limit).
+    // HONEST WALL (dossier §10 F22/F23): holds the GLOBAL bg model → correct for static / camera-moving
+    // background (the Zoo: static bg, works); a moving background behind a moving object is the near-irreducible
+    // case (the model is wrong there — the snap is then a milder error than the gravity; dial strength down).
+    // Gated on bg_snap_on>0.5 AND gme_on>0.5 (the model must be valid). OFF (≤0.5) ⇒ not entered ⇒ mv untouched
+    // ⇒ BYTE-IDENTICAL. Cost when armed: 1 field imageLoad + 2 color taps, ONLY at band pixels (band==0 skips).
+    float bgs_w = 0.0;   // STAGE-90c (P2b): the snap weight, hoisted for the late disocclusion FILL (after stasis)
+    float bx_w  = 0.0;   // STAGE-95 (--band-xfade): the gravity-cancellation crossfade weight (bg-side band), hoisted to the final composite
+    if ((pc.bg_snap_on > 0.5 && pc.gme_on > 0.5) || pc.band_xfade > 0.0) {
+        const vec2  sz_s = vec2(out_size);
+        // STAGE-90b (operator eye, 2026-06-15): the single-point band (the thin Sobel edge) reduced the gravity
+        // DRASTICALLY but left a residual halo (~1 MV-block wide, from the block-MV bleed into the fringe
+        // background) and made the strength dial invisible (a region too thin to show a 0.5↔1.0 gradient — the
+        // residual halo dominates the view either way). The disocclusion halo is the region the object EDGE sweeps
+        // through THIS pixel's motion segment — from the trailing position p−t·mv to the leading p+(1−t)·mv. So
+        // sample the contour ALONG that segment and take the MAX → the band covers the full swept halo, not just
+        // the edge. Parameter-free: the width IS the motion extent |mv| (fast object → wider disocclusion → wider
+        // band), scale-correct by construction. ≤2px sample spacing, bounded to 12 taps (cheap on A's 4090).
+        const int NS = clamp(int(length(mv) * 0.5) + 2, 3, 12);
+        float band = 0.0;
+        for (int k = 0; k < NS; ++k) {
+            const float s  = mix(-pc.t, 1.0 - pc.t, float(k) / float(NS - 1));   // along the motion segment
+            const ivec2 fk = clamp(ivec2(vec2(coord) + s * mv + 0.5), ivec2(0), out_size - ivec2(1));
+            const uint  fl = imageLoad(u_field, fk).r;
+            const float dk = float(fl & 0xffu);                                  // STAGE-G1 Sobel contour 0..255
+            const float bk = (((fl >> 8u) & 0xffu) != 0u) ? clamp(dk * pc.bg_snap_norm, 0.0, 1.0) : 0.0;
+            band = max(band, bk);                                                // the swept-halo band
+        }
+        if (band > 0.0) {
+            // preliminary warp at the LOCAL (pre-snap) mv → the matte-free background discriminator d0.
+            const vec2  t_off  = (mv * pc.t)         / sz_s;
+            const vec2  it_off = (mv * (1.0 - pc.t)) / sz_s;
+            const vec3  A0     = texture(u_prev_real, uv - t_off).rgb;
+            const vec3  B0     = texture(u_cur_real,  uv + it_off).rgb;
+            const float d0     = length(A0 - B0);
+            const float bg     = smoothstep(pc.agreement_threshold, 2.0 * pc.agreement_threshold, d0);
+            if (pc.bg_snap_on > 0.5 && pc.gme_on > 0.5) {
+                const float w  = clamp(pc.bg_snap_strength * band * bg, 0.0, 1.0);
+                mv = mix(mv, gme_model_mv(uv), w);                         // snap toward the background model
+                bgs_w = w;                                                // hoist for the late disocclusion fill
+            }
+            // STAGE-95 (--band-xfade): the gravity-cancellation weight = band_xfade·band·bg. Hoisted to the
+            // final composite (after stasis), where result is blended toward blend_result (the un-warped
+            // cross-fade) on the bg-side band → the disocclusion "gravity" warp is replaced by the cancellation
+            // (= clean static bg). Independent of the gme model (no snap). bg-side via the same photometric d0.
+            if (pc.band_xfade > 0.0) bx_w = clamp(pc.band_xfade * band * bg, 0.0, 1.0);
+        }
+    }
+
+    // ── Gate 1: Confidence ─────────────────────────────────────────────────────
+    const bool good_match  = (sad_best < pc.residual_ceil);
+    const bool good_improv = (sad_zero * (1.0 - pc.improvement_frac) > sad_best);
+
+    // ── STAGE-94 (--vblend): velocity-continuity tilt of the A/B SAMPLE OFFSETS ─────────────────────
+    // Each pair warps at its OWN single average velocity (its mv); at every pair BOUNDARY the velocity
+    // STEPS from pair N's mv to pair N+1's mv → a perceived "pulse". Near the END of the pair (high phase
+    // t) tilt the effective MV toward the NEXT pair's MV (mv_target, u_mv_target = the next-fresher
+    // generation's forward field, available "for free" in the F→P ring) so the boundary velocity
+    // transitions SMOOTHLY instead of stepping. w ramps 0->strength over t in [vblend_t0, 1]. Endpoint
+    // PRESERVED: at t=1 the sample offsets are 0 regardless (t_mv_uv = mv·1·…, inv_t_mv_uv = mv·0·…), so
+    // the result is still exactly cur whatever mv_fwd_eff is. ONLY the two warp sample offsets below use
+    // mv_fwd_eff; EVERYTHING downstream (the occlusion-classification round-trip, the matte advection, the
+    // crescent geometry, the rescue, the commit) keeps reading the RAW mv (and the raw bwd field), so the
+    // classification's fwd↔bwd consistency test is UNCHANGED — only the displayed object position tilts.
+    // OFF (vblend_on ≤ 0.5) → vb_w = 0 → mv_fwd_eff == mv → BYTE-IDENTICAL (u_mv_target never sampled).
+    const float vb_w        = (pc.vblend_on > 0.5) ? (smoothstep(pc.vblend_t0, 1.0, pc.t) * pc.vblend_strength) : 0.0;
+    // PREDICT mode: u_mv_target holds the PREV pair's MV field. The predicted NEXT-pair velocity (for C1
+    // velocity continuity at the upcoming real frame) = mv_cur + (mv_cur − mv_prev) = 2·mv − mv_prev
+    // (constant-acceleration extrapolation; the true next pair is not yet built — see the host note). When
+    // there is no valid prev (ring edge), the host uploads mv itself → mv_prev==mv → target==mv → no tilt.
+    const vec2  mv_ut       = (pc.vblend_on > 0.5) ? texture(u_mv_target, uv).xy : mv;
+    const vec2  mv_target_s = (pc.vblend_exact > 0.5) ? mv_ut              // EXACT (STAGE-96): u_mv_target holds the REAL next-pair MV
+                                                  : (2.0 * mv - mv_ut); // PREDICT (default): u_mv_target holds the PREV pair MV → 2·mv − mv_prev
+    const vec2  mv_fwd_eff  = mix(mv, mv_target_s, vb_w);   // tilt the sample-offset MV toward it near the boundary (mv unchanged)
+
+    // ── Gate 2: Source agreement — fetch warp samples UNCONDITIONALLY ──────────
+    // (reused as the WARP result when both gates pass; the barrier below depends on them).
+    const vec2 t_mv_uv     = (mv_fwd_eff * pc.t)           / vec2(out_size);
+    const vec2 inv_t_mv_uv = (mv_fwd_eff * (1.0 - pc.t))   / vec2(out_size);
+    const vec4 A_samp      = texture(u_prev_real, uv - t_mv_uv);
+    const vec4 B_samp      = texture(u_cur_real,  uv + inv_t_mv_uv);
+    const float d_pixel    = length(A_samp.rgb - B_samp.rgb);
+
+    s_d[gl_LocalInvocationIndex] = valid ? d_pixel : 0.0;
+    barrier();
+    float d_sum = 0.0;
+    for (uint i = 0u; i < 64u; ++i) d_sum += s_d[i];
+    const float d_tile       = d_sum / 64.0;
+    const bool  sources_agree = (d_tile < pc.agreement_threshold);
+
+    // ── STAGE-53/53b: the fluid-matte — the DUAL-ANCHORED BINARY matte decision (matte_on > 0.5) ──
+    // The operator's fluid-in-vessel principle: decide the BOUNDARY first (a binary matte = the
+    // object vessel), then content can only fill its vessel — a rim pixel is pure object or pure
+    // background, never a half-weight mix. The decision is computed HERE (after the primary MV, the
+    // sad/gate quantities, and A_samp/B_samp are all known — all post-barrier, per-thread) and is
+    // APPLIED LATE (after all of 41..52, just before the soft/hard selection) so the override sees
+    // the finalized object-layer result. Gated wholly on matte_on > 0.5 (a uniform push value) →
+    // the default (matte_on == 0) is byte-identical: NEITHER dissidence mask is sampled and
+    // matte_object stays false (the override below never fires).
+    //
+    // STAGE-53b — the dual anchor (operator ball round 5): the prev-anchored mask alone advected
+    // forward arrives LATE at the object's LEADING edge (object pixels momentarily classed background
+    // → the model-layer bites). The cure is to anchor the silhouette at BOTH ends of the pair:
+    //   · dis_fwd (PREV-anchored, u_dissidence, |mv−model| on the fwd grid = prev's lattice):
+    //       dis_self   = the dissidence at this pixel's OWN cell (uv),
+    //       dis_gather = the dissidence at the prev-side gather position (uv − mv·t/sz, the same
+    //                    A-side displacement the warp uses → the advected silhouette covers both the
+    //                    object's destination and the cell it came from). dis_fwd = max of the two.
+    //   · dis_bwd (CUR-anchored, u_dissidence_bwd, |mv_bwd−model_bwd| on the bwd grid = cur's lattice):
+    //       the cur silhouette advected BACKWARD toward prev. dis_self_b at uv and dis_gather_b at the
+    //       cur-side position (uv + mv·(1−t)/sz, the B-side displacement). dis_bwd = max of the two.
+    // ── STAGE-59 — the OCCUPANCY LERP (replaces the STAGE-53b UNION) ─────────────────────────────
+    //   The union max(dis_fwd, dis_bwd) over-covers at large displacement (BOTH ends inflated) — the
+    //   extreme-motion hallucination the operator saw at x2@120. The phase-t silhouette is correctly
+    //   the t-WEIGHTED INTERPOLATION of the two anchored occupancies: at t~0 the prev-anchored wall
+    //   dominates, at t~1 the cur-anchored, between them the interpolated shape. Both masks share the
+    //   SAME R8 16x quantization, so matte_thresh (v = 16·r_px/255; 0.25 ↔ r ≈ 4 px) applies to the
+    //   blended occupancy. matte_occ = mix(dis_fwd, dis_bwd, t); matte_object = matte_occ > thr.
+    //   HONEST RISK (documented, the kickoff's "ship clean"): at mid-t with imperfect masks the lerp
+    //   can THIN the silhouette where the union never did (a sliver covered by exactly one anchor is
+    //   halved at t=0.5). The mass-conservation feedback (P-side, --mass-k>0) drops thr_effective when
+    //   the presented mass falls below the t-lerp of the anchored masses → the vessel refills; the ball
+    //   bench is the witness (mid-t fullness on; leading/trailing flex shrink vs the union).
+    // STAGE-62: dis_fwd/dis_bwd are HOISTED to this scope (were locals inside the matte `if`) so the
+    // crescent-directed background fetch (the matte BACKGROUND branch, far below) can REUSE the exact
+    // anchored-dissidence values this invocation already computed — no second mask sample. They are
+    // written ONLY inside `if (matte_on > 0.5)`; the crescent read is gated on the SAME matte_on>0.5,
+    // so the read is always a subset of the write condition (the values are live wherever read). When
+    // matte is off they keep these 0.0 defaults and nothing downstream reads them → byte-identical.
+    float dis_fwd = 0.0;   // prev-anchored advected dissidence (max of self + prev-side gather)
+    float dis_bwd = 0.0;   // cur-anchored  advected dissidence (max of self + cur-side gather)
+    bool matte_object = false;
+    // STAGE-71: the blended occupancy is HOISTED to this scope (was a local inside this `if`) so the
+    // contour-marriage composition site (far below, the matte BACKGROUND override) can REUSE the exact
+    // occupancy this invocation already computed for the boundary-band test |matte_occ − thr| < thr —
+    // no second mask read. Written ONLY inside `if (matte_on > 0.5)`; the band test is gated on the
+    // SAME matte_on>0.5 (via matte_push), so the read is always a subset of the write condition. When
+    // matte is off it keeps this 0.0 default and nothing downstream reads it → byte-identical.
+    float matte_occ = 0.0;
+    if (pc.matte_on > 0.5) {
+        const vec2  sz_m       = vec2(out_size);
+        const float dis_self   = texture(u_dissidence, uv).r;
+        const float dis_gather = texture(u_dissidence, uv - (mv * pc.t) / sz_m).r;
+        dis_fwd                = max(dis_self, dis_gather);                                   // prev-anchored (FULL — crescent evidence)
+        const float dis_self_b   = texture(u_dissidence_bwd, uv).r;
+        const float dis_gather_b = texture(u_dissidence_bwd, uv + (mv * (1.0 - pc.t)) / sz_m).r;
+        dis_bwd                = max(dis_self_b, dis_gather_b);                               // cur-anchored, advected back (FULL — crescent evidence)
+        // ── STAGE-67: the OCCUPANCY decision — traveling silhouette (travel_on>0.5) ──────────────────
+        //   The STAGE-59 lerp used the FULL anchored occupancies max(self,gather), but the SELF terms
+        //   anchor the silhouette at BOTH end positions for the WHOLE pair → the swept band (between
+        //   prev-pos and cur-pos) stays classified OBJECT until t≈0.75 (the residue/contamination the
+        //   operator photographed). The cure: FADE the self crutches with phase (fwd self by (1−t), bwd
+        //   self by t) so the phase-t silhouette TRAVELS; the gather terms — which carry the OBJECT's MV
+        //   after the STAGE-61/63 field repair (the advected silhouette) — are kept at FULL weight, so
+        //   the mask follows the object instead of smearing. Off (travel_on≤0.5) = the STAGE-59 lerp of
+        //   the FULL max(self,gather) occupancies (byte-identical). The dis_fwd/dis_bwd ABOVE are the FULL
+        //   testimonies and are UNCHANGED — only this occupancy reads the faded selves; the crescent below
+        //   reads dis_fwd/dis_bwd (the full contamination evidence, correct regardless of phase).
+        float occ_fwd; float occ_bwd;
+        if (pc.travel_on > 0.5) {
+            // ── STAGE-68: GATHER VALIDITY ─ a gather with no displacement is self in disguise. The
+            //   occupancy gather reads uv ∓ mv·(…)/sz; when |mv|≈0 (static background the scene-memory
+            //   kept) the gather lands on the OWN cell → gather ≡ self → the faded self crutch is
+            //   smuggled back at full weight through the gather term → the remembered wake never fades
+            //   (the yellow-ball trail the operator photographed). The cure: weight each gather by how
+            //   FAR it actually displaced. g_f = smoothstep(0.5, 1.5, |mv|) in px (mv already per-pixel,
+            //   pixel units): static blocks → g_f≈0 → the gather is faded to mix(1−t,1,0)=(1−t) (fwd) /
+            //   t (bwd) like its self, so the whole testimony decays with phase (the wake fades no matter
+            //   what the memory says); moving blocks (incl. the repair-armed cancellation interiors whose
+            //   inherited |mv_obj|≥2px → g_f=1) keep the FULL traveling gather → the silhouette still
+            //   follows the object. Constants are geometry (like the gather offsets), all inside travel_on
+            //   → --no-travel reverts everything to the STAGE-59 lerp below (byte-identical).
+            const float g_f = smoothstep(0.5, 1.5, length(mv));      // 0 = static gather (≡ self) → 1 = real travel
+            occ_fwd = max(dis_self   * (1.0 - pc.t), dis_gather   * mix(1.0 - pc.t, 1.0, g_f));   // prev self fades; gather valid by |mv|
+            occ_bwd = max(dis_self_b *        pc.t,  dis_gather_b * mix(       pc.t, 1.0, g_f));   // cur  self fades; gather valid by |mv|
+        } else {
+            occ_fwd = dis_fwd;                                         // STAGE-59: the full anchored occupancy
+            occ_bwd = dis_bwd;
+        }
+        matte_occ              = mix(occ_fwd, occ_bwd, pc.t);                                 // the occupancy lerp (faded selves under travel)
+        matte_object = (matte_occ > pc.matte_thresh);                                         // the t-interpolated traveling vessel
+        // COLOR CROSS-CHECK (only where mv-guided armed → a color membership reference exists): an
+        // OBJECT-matte pixel whose color matches NEITHER warped object sample is a matte false-
+        // positive over open background (the dissidence flagged the object's MV residual but this
+        // pixel actually shows background). c_pix = cur_real at uv (the pixel's own color — the same
+        // membership reference guided_mv uses); compare max-channel against BOTH warped samples
+        // A_samp/B_samp. If the NEARER of the two (min over the two distances) still exceeds
+        // 2·commit_thresh — i.e. it matches neither object sample even loosely — demote to background.
+        // Gated on commit_thresh > 0.0 (the color bar is expressed in commit_thresh units; with no
+        // commit threshold there is no scale, so the cross-check is inert and the demotion is skipped).
+        if (matte_object && pc.mv_guided > 0.5 && pc.commit_thresh > 0.0) {
+            const vec3  c_pix = texture(u_cur_real, uv).rgb;
+            const vec3  da    = abs(c_pix - A_samp.rgb);
+            const vec3  db    = abs(c_pix - B_samp.rgb);
+            const float d_a   = max(da.r, max(da.g, da.b));
+            const float d_b   = max(db.r, max(db.g, db.b));
+            if (min(d_a, d_b) > 2.0 * pc.commit_thresh) matte_object = false;
+        }
+    }
+
+    // ── STAGE-72: the OBJECT-layer anchored claims (the symmetric crescent piece) ─────────────────
+    // c_f/c_b are the EXACT STAGE-62 crescent weights — smoothstep(0.5·thr,1.5·thr,dis_fwd/dis_bwd),
+    // thr = matte_thresh, the SAME quantization both masks share. 62's c_f/c_b are scoped away (locals
+    // inside the matte BACKGROUND `if (pc.crescent_on>0.5)` block far below), so they are RECOMPUTED here,
+    // identically, from the dis_fwd/dis_bwd the matte block already wrote (no re-sample). c_f = "the PREV
+    // anchor claims this pixel as object"; c_b = the CUR anchor's claim. obj_cres gates BOTH consumers (the
+    // A/B blend just below AND the commit side-pick): obj_crescent_on>0.5 AND matte_on>0.5 AND matte_object
+    // (the OBJECT-classified pixels only). When off, obj_cres is false → c_f/c_b are 0 and unread → the
+    // blend below stays the plain (1−t,t) average → byte-identical.
+    const bool  obj_cres = (pc.obj_crescent_on > 0.5) && (pc.matte_on > 0.5) && matte_object;
+    const float oc_thr   = pc.matte_thresh;
+    const float c_f      = obj_cres ? smoothstep(0.5 * oc_thr, 1.5 * oc_thr, dis_fwd) : 0.0;   // prev anchor's object claim
+    const float c_b      = obj_cres ? smoothstep(0.5 * oc_thr, 1.5 * oc_thr, dis_bwd) : 0.0;   // cur  anchor's object claim
+
+    // ── WARP / BLEND ────────────────────────────────────────────────────────────
+    // Both candidates are computed unconditionally (no barrier between here and the store).
+    // Per-thread, post-barrier — no barrier between here and the store.
+    // STAGE-72: the OBJECT layer's A/B blend upgrades from (1−t,t) to anchored-claim side weighting
+    // (obj_cres only). w_A ∝ (1−t)·mix(1,c_f,k), w_B ∝ t·mix(1,c_b,k), k=1 (full claim gating), normalized;
+    // both claims ≈ 0 (w_sum < 1e-4, the pixel sits where NEITHER anchor claims object) → fall back to the
+    // plain (1−t,t) blend unchanged. Leading band (c_f≈0,c_b≈1): w_A≈0,w_B≈t → cur carries at ANY t; trailing
+    // (c_b≈0,c_f≈1): prev carries. DEEP-OBJECT (c_f≈c_b≈1): mix(1,1,1)=1 both → w_A=(1−t),w_B=t → normalized =
+    // (1−t,t) EXACTLY. blend_result (the soft-gate fallback cross-fade) is UNTOUCHED — only the warp side
+    // carries the object's two warped samples; the claim weighting belongs to that average.
+    // STAGE-81: the EFFECTIVE per-pixel A/B weights are materialized as a NORMALIZED (wa,wb) pair (wa+wb=1)
+    // regardless of which form is live — the plain (1−t,t) blend OR the STAGE-72 anchored-claim weighting. The
+    // disagreement collapse (just below) sharpens THIS pair toward winner-take-all where the two displaced
+    // samples disagree. wa is the prev(A)-side weight; the composition is warp_result = wa·A_samp + wb·B_samp.
+    float wa;
+    if (obj_cres) {
+        const float w_A   = (1.0 - pc.t) * mix(1.0, c_f, 1.0);   // k=1: mix(1,c_f,1) = c_f
+        const float w_B   =        pc.t  * mix(1.0, c_b, 1.0);   // k=1: mix(1,c_b,1) = c_b
+        const float w_sum = w_A + w_B;
+        if (w_sum < 1e-4) {
+            // ── STAGE-89: occlusion-aware one-sided commit at the OBJECT-layer disocclusion sliver ──────
+            // Both anchors' object CLAIMS are ~0 (neither cleanly carries the object) — the symmetric
+            // (1−t) fallback below averages two stale samples = the half-moon. The RAW dissidence
+            // asymmetry still encodes which edge this is (leading: dis_bwd>dis_fwd → cur owns → wa→0;
+            // trailing: dis_fwd>dis_bwd → prev owns → wa→1). asym ∈ [−1,1]; commit_w gates SOFTLY on its
+            // magnitude so a TRUE tie (dis_fwd≈dis_bwd) keeps (1−t) EXACTLY (no mis-pick on ambiguity).
+            // disoccl_commit_on ≤ 0.5 → commit_w forced 0 → wa = (1−t) → BYTE-IDENTICAL. dis_fwd/dis_bwd
+            // already in scope (matte block) — NO new tap.
+            const float wa_phase = (1.0 - pc.t);
+            float wa_commit = wa_phase;
+            if (pc.disoccl_commit_on > 0.5) {
+                const float denom    = dis_fwd + dis_bwd + 1e-4;
+                const float asym     = (dis_fwd - dis_bwd) / denom;   // >0 trailing (prev owns) / <0 leading (cur owns)
+                const float side     = (asym > 0.0) ? 1.0 : 0.0;      // prev(A)=1 / cur(B)=0
+                const float commit_w = smoothstep(0.05, 0.35, abs(asym)); // ambiguity-gated: tie → 0 → keep phase
+                wa_commit = mix(wa_phase, side, commit_w);
+            }
+            wa = wa_commit;
+        } else {
+            wa = (w_A / w_sum);                   // anchored-claim side weighting (normalized; wb = 1 − wa)
+        }
+    } else {
+        wa = (1.0 - pc.t);                        // the plain (1−t,t) blend (wb = t = 1 − wa)
+    }
+    // ── STAGE-81: DISAGREEMENT COLLAPSE — one position per pixel (onepos_on > 0.5) ────────────────
+    // warp_result is a two-sample blend; with imperfect/zero mv the two displaced samples land on
+    // DIFFERENT content = the double exposure (the ghost). When they AGREE (d_pixel small) blending is
+    // safe (identical content, averaging only sharpens); when they DISAGREE, blending IS the ghost, so
+    // the heavier side must paint ALONE. c = smoothstep(athr, 2·athr, d_pixel) is that evidence (0 =
+    // anchors agree → today's blend EXACTLY; 1 = disagree → winner-take-all). The effective weights
+    // sharpen: wa' = mix(wa, wa>wb?1:0, c); wb' = 1 − wa' (normalization preserved). d_pixel and
+    // agreement_threshold are already in scope (the A/B fetch + Gate 2). Gated on onepos_on>0.5 → OFF
+    // (≤0.5) leaves wa untouched (c never applied) → the composition is the plain two-sample blend,
+    // BYTE-IDENTICAL. NO new tap/binding/barrier.
+    if (pc.onepos_on > 0.5) {
+        // STAGE-82 (the operator's factor-of-2 dial): the collapse ONSET is now scaled by onepos_band
+        // (1.0 = the STAGE-81 behavior exactly). The residual faint crescents live in the SUB-THRESHOLD
+        // band (small-but-nonzero disagreement = partial blends); lowering the band halves the ghost
+        // each time — his "launch it toward infinity" — with the NOISE FLOOR as the honest limit
+        // (band→0 = winner-take-all on genuinely intermediate content → flicker). The optimum is the
+        // operator's camera's to find: --onepos-band F.
+        const float athr = pc.agreement_threshold * max(pc.onepos_band, 0.01);
+        const float c    = smoothstep(athr, 2.0 * athr, d_pixel);   // 0 = agree (blend) → 1 = disagree (collapse)
+        const float wb   = 1.0 - wa;
+        // STAGE-83 (the contour-static fix): the time-side winner (wa>wb) FLIPS at t≈0.5 — every
+        // disagreeing contour pixel switches source mid-pair → the per-tick shimmer ("estática") the
+        // operator sees on clean figures' edges. Where the anchors' testimonies DISPUTE ownership
+        // (|cfs−cbs| large — the contour bands; pair-STABLE values), the winner is chosen by the
+        // pixel's CLASS instead of the clock: an OBJECT pixel collapses toward the side that HAS the
+        // object (the claiming anchor); a BACKGROUND pixel toward the CLEAN side (the non-claiming
+        // anchor — the 62 non-contamination logic). Claim-less disagreement (the nameplate text — in
+        // neither mask) keeps the time-side winner (its accepted mid-pair step). dis_fwd/dis_bwd/
+        // matte_object are the hoisted matte-block values (0/false when matte off → pure time-side =
+        // STAGE-81/82 exactly; no push change, no new taps).
+        const float cfs83 = smoothstep(0.5*pc.matte_thresh, 1.5*pc.matte_thresh, dis_fwd);
+        const float cbs83 = smoothstep(0.5*pc.matte_thresh, 1.5*pc.matte_thresh, dis_bwd);
+        float winner;
+        if (abs(cfs83 - cbs83) > 0.2) {
+            winner = matte_object ? ((cfs83 > cbs83) ? 1.0 : 0.0)    // object: the claiming side has it
+                                  : ((cfs83 > cbs83) ? 0.0 : 1.0);   // background: the clean side shows it
+        } else {
+            winner = (wa > wb) ? 1.0 : 0.0;                          // claim-less: the time side (the step)
+        }
+        wa = mix(wa, winner, c);                                     // sharpen toward the stable winner
+    }
+    vec4 warp_result = wa * A_samp + (1.0 - wa) * B_samp;
+    vec4 blend_result = (1.0 - pc.t) * texture(u_prev_real, uv)
+                      + pc.t * texture(u_cur_real, uv);
+
+    // ── STAGE-48: bidirectional occlusion classification (occl_thresh > 0 selects) ────
+    // Gate the WHOLE block on occl_thresh > 0.0 (a uniform push value) — NOT on any per-pixel
+    // quantity — so the default (occl_thresh == 0, --bidir off) is byte-identical: the bwd
+    // sampler (binding 5) is never read and warp/blend stay the averages above. All per-thread,
+    // post-barrier; runs BEFORE the 47b/c commit machinery so an "inconsistent, NEITHER side
+    // round-trips" pixel falls through to that safety net unchanged.
+    if (pc.occl_thresh > 0.0) {
+        const vec2 sz = vec2(out_size);   // full-res; the same scale the warp uses for mv→uv
+        // Forward round-trip: follow mvf (prev→cur, px) to its landing in cur, read mvb there.
+        // mvf == mv_fwd, the RAW prev-anchored forward field at uv (binding 2). STAGE-73 EXEMPTS the
+        // classification from the phase-anchored blend: it deliberately compares the raw fwd vs raw bwd
+        // fields, so feeding it the (partly −bwd) blended primary would corrupt the round-trip landing
+        // at high t. mv_fwd is identical to the pre-STAGE-73 `mv` here (when phase_anchor_on==0, mv==mv_fwd
+        // anyway → byte-identical). A co-visible pixel: mvf + mvb ≈ 0.
+        const vec2  mvf      = mv_fwd;                          // MV_fwd at uv (pixel units, raw — pre-blend)
+        const vec2  uv_cur   = uv + mvf / sz;                   // where uv's content lands in cur
+        const vec2  mvb_fwd  = texture(u_motion_vectors_bwd, uv_cur).xy;
+        const float e_fwd    = length(mvf + mvb_fwd);           // forward round-trip residual (px)
+        // Backward round-trip: follow mvb0 (cur→prev) from uv to its landing in prev, read mvf2.
+        const vec2  mvb0     = texture(u_motion_vectors_bwd, uv).xy;  // MV_bwd at uv (pixel units)
+        const vec2  uv_prev  = uv + mvb0 / sz;                  // where uv's content came from in prev
+        const vec2  mvf_bwd  = texture(u_motion_vectors, uv_prev).xy;
+        const float e_bwd    = length(mvb0 + mvf_bwd);          // backward round-trip residual (px)
+
+        const bool fwd_ok = (e_fwd <= pc.occl_thresh);
+        const bool bwd_ok = (e_bwd <= pc.occl_thresh);
+        // Four-way classification (the kickoff semantics):
+        //   both round-trip  → consistent / co-visible → leave the average (sharp) untouched.
+        //   exactly one      → that side OWNS the content (one-sided sampling — the correct
+        //                       decision, not the temporally-nearest guess):
+        //                         fwd_ok only → prev (A) owns; bwd_ok only → cur (B) owns.
+        //   neither          → truly inconsistent → leave both as-is → fall through to the
+        //                       47b/c commit machinery below (the unchanged safety net).
+        if (fwd_ok != bwd_ok) {            // exactly one side is consistent → it owns the content
+            // ── STAGE-49: mask-WEIGHTED one-sided blend (replaces the STAGE-48 HARD pick) ──────
+            // The hard pick (warp_result = the winner sample outright) snapped at the e==occl_thresh
+            // boundary → a hard seam along disocclusion rims. FSR3's shipping practice (dossier F6:
+            // two disocclusion masks, mask-WEIGHTED blending; GPUOpen + the MIT shader source) blends
+            // BOTH reprojections by a continuous mask, discarding a direction fully only DEEP in the
+            // mask. We reproduce that with a weight from the round-trip-error RATIO: the winner is the
+            // side that round-trips (small e), the loser the side that does not (large e).
+            //   r = e_loser / (e_winner + 0.25)   (0.25-px floor avoids div-by-tiny when e_winner≈0)
+            //   w_side = smoothstep(1.0, 3.0, r)  → r≥3 (loser ≫ winner) = fully one-sided (the old
+            //   hard behavior); r≈1 (near-tie, the rim's soft edge) blends both sides ≈ the average.
+            // The 47c soft-band discipline (continuous, no flip-flop across ticks/neighbours) applies.
+            float e_winner; float e_loser;
+            vec4  winner_samp; vec4 winner_real;
+            if (fwd_ok) {                  // fwd round-trips, bwd does not → content lives in prev
+                e_winner = e_fwd; e_loser = e_bwd;
+                winner_samp = A_samp;                       // the prev-warped sample (one-sided)
+                winner_real = texture(u_prev_real, uv);
+            } else {                       // bwd round-trips, fwd does not → content lives in cur
+                e_winner = e_bwd; e_loser = e_fwd;
+                winner_samp = B_samp;                       // the cur-warped sample (one-sided)
+                winner_real = texture(u_cur_real, uv);
+            }
+            const float r      = e_loser / (e_winner + 0.25);   // round-trip-error ratio (≥1 by class)
+            const float w_side = smoothstep(1.0, 3.0, r);       // 0 near-tie → 1 deep in the mask
+            // ── STAGE-116 (--disoccl-hardpick): edge-gated HARD pick (convergent guide #1, with OUR image-edge gate) ──
+            // STAGE-49 SOFTENED the hard pick into this ratio-weighted blend to avoid a seam — but the soft blend at
+            // the reveal band IS the smear/step/crescent ("media luna"). The iGPU Sobel field lets the hard pick
+            // RETURN cleanly: at a TRUE contour the seam is invisible (it lands ON the real edge); in flat interior
+            // we keep the soft blend (no seam). 3 taps along the motion segment (the swept halo, like STAGE-90 bg-snap),
+            // max, occ-class-gated + bg_snap_norm-normalized — the SAME validated edge signal. 0 → not entered → identical.
+            float w_use = w_side;
+            if (pc.disoccl_hardpick > 0.0) {
+                float ed = 0.0;
+                for (int k = 0; k < 3; ++k) {
+                    const float s  = mix(-pc.t, 1.0 - pc.t, float(k) * 0.5);          // -t .. (1-t) along the segment
+                    const ivec2 fc = clamp(ivec2(vec2(coord) + s * mvf + 0.5), ivec2(0), out_size - ivec2(1));
+                    const uint  fv = imageLoad(u_field, fc).r;
+                    const float dk = (((fv >> 8u) & 0xffu) != 0u) ? float(fv & 0xffu) : 0.0;  // occ-class-gated Sobel 0..255
+                    ed = max(ed, dk);                                                          // the swept-halo edge
+                }
+                ed = clamp(ed * pc.bg_snap_norm, 0.0, 1.0);                            // contour → [0,1]
+                const float g = smoothstep(pc.disoccl_hardpick * 0.5, pc.disoccl_hardpick * 1.5, ed);
+                w_use = mix(w_side, 1.0, g);   // true edge → HARD commit to the winner; flat interior → soft blend
+            }
+            warp_result  = mix(warp_result,  winner_samp, w_use);   // existing average → winner sample (edge-gated hard)
+            blend_result = mix(blend_result, winner_real, w_use);   // existing cross-fade → winner real (edge-gated hard)
+        } else if (!fwd_ok && pc.div_eps > 0.0) {
+            // ── STAGE-50: NEITHER round-trips (genuine disocclusion sliver) + fill-div selected ──
+            // (the else here is the both-ok-or-neither branch; !fwd_ok ⇒ !bwd_ok ⇒ the neither case.
+            //  both-ok keeps the average untouched.) Pick the side by the sign of the forward-MV
+            // divergence: expansion (div>0) reveals background present in cur (B); contraction
+            // (div<0) occludes background present in prev (A). |div| within the band stays ambiguous
+            // → fall through to 47b/c unchanged. 4 extra MV taps, only in this already-rare branch.
+            const vec2  texel = 1.0 / vec2(textureSize(u_motion_vectors, 0));  // uv step = ±1 MV-grid texel
+            const float dmvx_dx = (texture(u_motion_vectors, uv + vec2(texel.x, 0.0)).x
+                                 - texture(u_motion_vectors, uv - vec2(texel.x, 0.0)).x) * 0.5;
+            const float dmvy_dy = (texture(u_motion_vectors, uv + vec2(0.0, texel.y)).y
+                                 - texture(u_motion_vectors, uv - vec2(0.0, texel.y)).y) * 0.5;
+            const float div = dmvx_dx + dmvy_dy;        // pixels per MV-grid texel
+            // ── STAGE-52: model-guided background MV for the disocclusion fill (gme_on > 0.5) ────────
+            // The revealed background is being uncovered by a moving object; its TRUE motion is the
+            // camera/background motion — the global affine model, NOT the local MV (which belongs to the
+            // occluding object). The documented MEMC background-extension (dossier F5): sample the owning
+            // real at the MODEL displacement instead of raw uv, so the fill carries the background's own
+            // motion (sharp, correctly-placed) rather than a frozen un-displaced copy. Same sign/scale
+            // the warp uses for the B/A side (B at +mv·(1−t)/sz, A at −mv·t/sz). Gated on gme_on>0.5
+            // (uniform push) AND inside the already-fill-div-only branch → fill-div alone (gme off) is
+            // byte-identical: the model offset collapses to zero and the raw-uv samples are kept.
+            const vec2 sz_g    = vec2(out_size);
+            const vec2 mv_g    = (pc.gme_on > 0.5) ? gme_model_mv(uv) : vec2(0.0);
+            const vec2 boff_g  = (mv_g * (1.0 - pc.t)) / sz_g;        // cur(B)-side model displacement
+            const vec2 aoff_g  = (mv_g * pc.t)         / sz_g;        // prev(A)-side model displacement
+            if (div > pc.div_eps) {                     // divergence/expansion → revealed → cur owns
+                warp_result  = (pc.gme_on > 0.5) ? texture(u_cur_real, uv + boff_g) : B_samp;
+                blend_result = (pc.gme_on > 0.5) ? texture(u_cur_real, uv + boff_g) : texture(u_cur_real, uv);
+            } else if (div < -pc.div_eps) {             // convergence/contraction → occluded → prev owns
+                warp_result  = (pc.gme_on > 0.5) ? texture(u_prev_real, uv - aoff_g) : A_samp;
+                blend_result = (pc.gme_on > 0.5) ? texture(u_prev_real, uv - aoff_g) : texture(u_prev_real, uv);
+            }
+            // |div| ≤ div_eps → ambiguous → leave both as-is → fall through to 47b/c.
+        }
+        // both-ok → average kept; neither-ok + fill-div off (or ambiguous) → fall through to 47b/c.
+    }
+
+    // ── STAGE-47: commit-don't-hedge (commit_thresh > 0 selects; 0 = averages above) ──
+    // Gate the WHOLE override on commit_thresh > 0.0 (a uniform push value) — NOT on
+    // d_ab — so the default (commit_thresh == 0) is byte-identical to the averages even
+    // though d_ab > 0.0 holds wherever the two warped samples differ at all.
+    if (pc.commit_thresh > 0.0) {
+        // d_ab = max-channel abs diff between the two warped samples (color units).
+        // Max-channel (not luminance): the ghost is a small high-contrast feature whose
+        // divergence can live in ONE channel (a coloured detail); luminance's 0.2/0.7/0.1
+        // weights would dilute a blue/red ghost. Max-channel catches any-channel split,
+        // matches commit_thresh's per-channel [0,1] units, and is cheaper than a dot.
+        const vec3  ab    = abs(A_samp.rgb - B_samp.rgb);
+        const float d_ab  = max(ab.r, max(ab.g, ab.b));
+
+        // ── STAGE-49: candidate-rescue (rescue_on > 0.5 selects; armed only with commit) ──────
+        // Before this pixel — whose PRIMARY (binding-2) MV failed the d_ab commit trigger — falls to
+        // the commit fallback, try the 8 NEIGHBOR block MVs as candidates (per-pixel MV by SELECTION,
+        // dossier F1/F0: the small high-contrast feature the block MV got wrong often has its TRUE
+        // vector in an adjacent block — the duck's eye carries the eye's MV). For each candidate mv_c
+        // we re-warp A and B EXACTLY as the primary warp does (A at uv − t·mv_c/sz, B at uv +
+        // (1−t)·mv_c/sz — the same sign/scale convention as t_mv_uv/inv_t_mv_uv above).
+        //   ── STAGE-49b CHANGE (the flat-content blind spot): the score is a 3x3 full-res WINDOW SAD
+        //     (window_sad above), not the single-pixel d_ab. A wrong MV that lands both samples on
+        //     identical FLAT content scores ~0 single-pixel (dossier F2) so the old per-pixel score
+        //     could not tell a wrong candidate from a right one inside a flat object → block stamps/
+        //     holes at the moving rim. The window — the pixel + its 8 neighbours — straddles the edge
+        //     and sees the disagreement. The PRIMARY is re-scored with the SAME window for a fair
+        //     comparison (s_primary). Acceptance: best windowed candidate ≤ the windowed primary AND
+        //     ≤ 9·commit_thresh (the per-position threshold scaled by the 9-position window sum — an
+        //     average-per-position bar of commit_thresh, the natural windowed generalisation of the
+        //     single-pixel `≤ commit_thresh` rule). The TRIGGER is unchanged: the single-pixel d_ab
+        //     band still decides WHETHER rescue runs; the window decides WHICH candidate wins.
+        // The whole loop runs ONLY here, inside `commit_thresh>0` AND only where d_ab already failed
+        // (the rare branch); cost = (1 primary + 8 candidates) × 9 positions × 2 color taps WORST case
+        // + 8 MV taps. We compute it BEFORE the 47c wc band so a rescued pixel skips the commit mix
+        // entirely — the rescued average IS the warp-side result; blend_result is untouched.
+        bool rescued = false;
+        if (pc.rescue_on > 0.5 && d_ab > 0.75 * pc.commit_thresh) {   // only where wc would mix (band start)
+            const vec2  out_sz    = vec2(out_size);
+            const vec2  mv_texel  = 1.0 / vec2(textureSize(u_motion_vectors, 0));  // 1 MV-grid cell in uv
+            const float s_primary = window_sad(uv, out_sz, mv);       // the primary MV, windowed (fair bar)
+            float  best_s    = s_primary;             // a candidate must BEAT the windowed primary to win
+            bool   have_best = false;
+            vec4   best_warp = warp_result;
+            for (int oy = -1; oy <= 1; ++oy) {
+                for (int ox = -1; ox <= 1; ++ox) {
+                    if (ox == 0 && oy == 0) continue;        // skip the center (the primary MV already failed)
+                    const vec2  off  = vec2(float(ox), float(oy)) * mv_texel;
+                    const vec2  mv_c = texture(u_motion_vectors, uv + off).xy;    // candidate MV (pixel units)
+                    // ── STAGE-57 GATE (a): a static-history block REJECTS fast neighbour candidates ──────
+                    // The interior cannot adopt an exterior neighbour's big MV via rescue (the 3rd-person
+                    // character's rim adopting the world's vectors — the operator's directional contamination).
+                    // Reject any candidate with |mv_c| > 2px for an inertia_static pixel. Gated on
+                    // inertia_static (constant-false when inertia is off) → byte-identical when off. The
+                    // primary MV — already in best_s as s_primary — is NEVER rejected here (own-match path).
+                    if (inertia_static && length(mv_c) > 2.0) continue;
+                    const float s_c  = window_sad(uv, out_sz, mv_c);             // candidate, same 3x3 window
+                    if (s_c < best_s) {                       // track the best (lowest windowed-SAD) candidate
+                        best_s    = s_c;
+                        const vec4 A_c = texture(u_prev_real, uv - (mv_c * pc.t)         / out_sz);
+                        const vec4 B_c = texture(u_cur_real,  uv + (mv_c * (1.0 - pc.t)) / out_sz);
+                        best_warp = (1.0 - pc.t) * A_c + pc.t * B_c;   // the candidate's average (standard warp)
+                        have_best = true;
+                    }
+                }
+            }
+            // ── STAGE-52: the GLOBAL MOTION MODEL as one extra rescue candidate (gme_on > 0.5) ───────
+            // A fast camera pan moves more than the block-match search window → the local MV (and every
+            // neighbour) is wrong, all scoring high. The global affine model — fitted from the WHOLE
+            // field, robust to the moving objects — recovers the camera/background MV for exactly that
+            // case. It is scored by the SAME windowed SAD and competes for best_s like any neighbour;
+            // gated on gme_on>0.5 (a uniform push value) so the OFF path is byte-identical (this candidate
+            // simply does not exist). The model MV is in the same pixel units / sign / scale as the field.
+            // ── STAGE-57 GATE (c): a static-history block SKIPS the global-model candidate ──────────────
+            // The global affine model IS the camera/background (exterior) motion by construction — exactly
+            // what a static-history interior block must not adopt. Skip it entirely for an inertia_static
+            // pixel (the && short-circuits the whole candidate). Byte-identical when inertia is off
+            // (inertia_static is constant-false → the original `pc.gme_on > 0.5` condition stands).
+            if (pc.gme_on > 0.5 && !inertia_static) {
+                const vec2  mv_g = gme_model_mv(uv);                  // the affine-model MV (pixel units)
+                const float s_g  = window_sad(uv, out_sz, mv_g);     // same 3x3 windowed SAD as the others
+                if (s_g < best_s) {
+                    best_s    = s_g;
+                    const vec4 A_g = texture(u_prev_real, uv - (mv_g * pc.t)         / out_sz);
+                    const vec4 B_g = texture(u_cur_real,  uv + (mv_g * (1.0 - pc.t)) / out_sz);
+                    best_warp = (1.0 - pc.t) * A_g + pc.t * B_g;     // the model candidate's average
+                    have_best = true;
+                }
+            }
+            // Accept iff the best candidate beats the windowed primary (best_s < s_primary, implied by
+            // have_best) AND clears the windowed acceptance bar 9·commit_thresh. The small feature found
+            // a neighbour vector whose 3x3 window agrees across the edge → use that candidate's average.
+            if (have_best && best_s <= 9.0 * pc.commit_thresh) {   // the small feature found its true vector
+                warp_result = best_warp;                      // use the candidate average; commit skipped
+                rescued     = true;
+            }
+        }
+
+        // STAGE-47c: SOFT commit band. A hard `if (d_ab > thresh)` made pixels at the
+        // boundary flip between average and commit across ticks/neighbours — the operator's
+        // "static" speckle class. Instead, blend average→committed across a smoothstep band
+        // [0.75·thresh, 1.25·thresh]: the boundary becomes a gradient, no flip-flop.
+        // STAGE-49: a RESCUED pixel forces wc→0 (skip the commit mix entirely — the rescued
+        // average is the warp-side result; blend_result is left as the soft-gate fallback).
+        const float wc = rescued ? 0.0
+                       : smoothstep(0.75 * pc.commit_thresh, 1.25 * pc.commit_thresh, d_ab);
+        if (wc > 0.0) {
+            // ── STAGE-72: the committed side RESPECTS the object claims (the bite cure, part 2) ─────────
+            // The commit's side pick is time-nearest by default: t<0.5 → A (prev), else B (cur). At the
+            // LEADING band (c_f≈0, c_b≈1) with t=0.25 the time-nearest pick is A (prev = BACKGROUND — the
+            // object has not arrived there), so the commit drags warp_result back to background = the bite,
+            // ERASING the part-1 A/B blend that correctly put cur. The fix: for an OBJECT pixel where one
+            // anchor clearly CLAIMS the pixel and the other clearly does NOT, the committed side becomes the
+            // CLAIMING anchor (commit_use_A reflects the claim, not the clock). Near-equal claims (incl.
+            // DEEP-OBJECT c_f≈c_b — both anchors hold the object) keep the time-nearest pick (commit_use_A =
+            // t<0.5), so the commit behavior of deep-object pixels is UNCHANGED. The decision is ONE boolean
+            // threaded through every side-selector in this block + the appearance re-blend below (all of which
+            // are side-selectors — the OTHER anchor / the committed fetch position — never phase weights; the
+            // (1−t),t multipliers stay literal). Off (obj_cres false) → commit_use_A = (t<0.5) → byte-identical.
+            //   The claim margin reuses the SAME c_f/c_b as part 1 (no new sample). |c_f − c_b| > 0.5 is a
+            //   clear one-sided claim (one anchor ≥ the smoothstep upper knee, the other below the lower);
+            //   then prefer the HIGHER-claim anchor: c_f > c_b → use A (prev claims), else use B (cur claims).
+            const bool commit_claim_clear = obj_cres && (abs(c_f - c_b) > 0.5);
+            const bool commit_use_A = commit_claim_clear ? (c_f > c_b) : (pc.t < 0.5);
+            // Committed fallback (gated path) → nearest REAL, not the cross-fade double exposure.
+            const vec4 near_real = commit_use_A ? texture(u_prev_real, uv) : texture(u_cur_real, uv);
+            // MV is wrong for THIS pixel. Two commit targets:
+            //  · warped (47):  nearest sample THROUGH the (bad) MV — keeps motion but fetches
+            //    from the wrong position → displaced-copy edge fringe ("overdrive" glow, the
+            //    operator's Predator-overshoot read; worse because subpixel misalignment at
+            //    hard edges fires d_ab even on healthy MVs, so every moving contour commits).
+            //  · real (47b):   nearest real UNWARPED at this uv — the pixel drops to source
+            //    cadence locally (honest step; no ghost, no fringe).
+            vec4 commit_target = (pc.commit_real > 0.5) ? near_real
+                                                        : (commit_use_A ? A_samp : B_samp);
+            // ── STAGE-64: appearance-band temporal re-blend on the committed value (appear_on > 0.5) ──
+            // The commit is a ONE-SIDED pick: it shows a single anchor's color un-interpolated. When the
+            // object's APPEARANCE (not position) changes between anchors — a brightness pulse, a shadow, a
+            // reflection — that one-sided color is the WRONG-TIME tone (the operator's stains-of-the-previous-
+            // tone on the pulsing zoo ball). If the two times agree on STRUCTURE but differ mildly in TONE
+            // the phase-correct color is the temporal blend; if they differ a LOT it is a real displacement
+            // (the reason commit exists) and the one-sided pick must stand. We measure that with ONE extra tap:
+            // S_o = the OTHER anchor sampled at the SAME committed fetch position as the committed value S_n.
+            //   commit-real  (commit_real>0.5): S_n is the unwarped near_real at uv → the other real at uv is
+            //     S_o, and the phase-t blend at uv = (1−t)·prev[uv] + t·cur[uv] (== blend_result's base form).
+            //   commit-warped(commit_real≤0.5): S_n is the warped nearest (A_samp@posA or B_samp@posB) → S_o is
+            //     the OTHER real sampled AT that same warped position; the phase-t blend at that one position.
+            // w_app = 1 − smoothstep(band, 2·band, dmax(S_n,S_o)): small tone gap → full temporal interp; large
+            // structural gap → 0 (commit stands). One extra texture tap, committed pixels only, no new binding.
+            // Gated on appear_on>0.5 (a uniform push value) → off = the committed value passes through unchanged
+            // (byte-identical). Composes with the wc mix below exactly as commit_target did.
+            if (pc.appear_on > 0.5) {
+                // STAGE-72: the appearance re-blend keys off the COMMITTED side (commit_use_A), not the clock,
+                // so it stays consistent when the claim overrode the time-nearest pick. s_n is always the
+                // committed sample; s_o the OTHER anchor at the same committed position; the phase-t blend
+                // reconstructs (1−t)·prev + t·cur with the right sample on each side regardless of which anchor
+                // committed. The (1−t),t multipliers are phase weights and stay literal. Off (obj_cres false →
+                // commit_use_A = t<0.5) → byte-identical to the pre-STAGE-72 appearance block.
+                vec3 s_n; vec3 s_o; vec3 t_blend;
+                if (pc.commit_real > 0.5) {
+                    // committed position is the unwarped uv; S_n = near_real, S_o = the OTHER real at uv.
+                    s_n     = commit_target.rgb;
+                    s_o     = commit_use_A ? texture(u_cur_real, uv).rgb : texture(u_prev_real, uv).rgb;
+                    t_blend = (1.0 - pc.t) * (commit_use_A ? s_n : s_o)
+                            +        pc.t  * (commit_use_A ? s_o : s_n);   // (1−t)·prev[uv] + t·cur[uv]
+                } else {
+                    // committed position is the warped nearest sample's fetch position; the OTHER real there.
+                    const vec2 pos = commit_use_A ? (uv - t_mv_uv) : (uv + inv_t_mv_uv);
+                    s_n     = commit_target.rgb;
+                    s_o     = commit_use_A ? texture(u_cur_real, pos).rgb : texture(u_prev_real, pos).rgb;
+                    t_blend = (1.0 - pc.t) * (commit_use_A ? s_n : s_o)
+                            +        pc.t  * (commit_use_A ? s_o : s_n);   // (1−t)·prev_pos + t·cur_pos
+                }
+                const vec3  ad_ap = abs(s_n - s_o);
+                const float dmx_ap = max(ad_ap.r, max(ad_ap.g, ad_ap.b));   // max-channel tone gap
+                const float w_app  = 1.0 - smoothstep(pc.appear_band, 2.0 * pc.appear_band, dmx_ap);
+                commit_target.rgb  = mix(s_n, t_blend, w_app);
+            }
+            warp_result  = mix(warp_result,  commit_target, wc);
+            blend_result = mix(blend_result, near_real,     wc);
+        }
+    }
+
+    // ── STAGE-53: the BACKGROUND-layer override (matte_on > 0.5, applied LATE) ───────────────────
+    // The matte decision (computed early, above) is APPLIED here — AFTER every existing machinery
+    // (48 occlusion, 50 fill-div, 49 rescue, 47b/c commit) has finalized warp_result/blend_result —
+    // and BEFORE the soft/hard selection below. For a matte=OBJECT pixel: nothing changes (the
+    // existing 41..52 result stands, the operator's "content fills its vessel"). For a
+    // matte=BACKGROUND pixel: BOTH warp_result and blend_result are overwritten with the SAME pure
+    // global-model layer sample, so whichever branch the gate selects — and the soft branch's
+    // mix(blend, warp, w) of two IDENTICAL values — yields that one value: no half-weight fringe can
+    // survive on a background-classified pixel. This is the boundary-first point: the binary matte IS
+    // the composite; there is NO blending between the two layers.
+    //   bg = (1−t)·prev[uv − model·t/sz] + t·cur[uv + model·(1−t)/sz]. The global affine model is
+    //   valid EVERYWHERE (including under/behind the object) and is sharp because it is exact for the
+    //   background by construction. Same sign/scale the warp uses for the A/B sides. matte_on is set
+    //   only when the model is valid for this generation, so gme_model_mv() always has live params.
+    // ── STAGE-71: capture the OBJECT-layer color BEFORE the override overwrites it ───────────────
+    // The matte composition is temporally split: the OBJECT layer is warp_result/blend_result built
+    // through all of 41..64 (above); the BACKGROUND layer is `bg` (computed below). The binary decision
+    // (!matte_object) overwrites both with bg for background pixels. The contour marriage (STAGE-71)
+    // arbitrates PER PIXEL in the boundary band, so it needs BOTH layer colors simultaneously — so we
+    // snapshot the object layer here, before the override can clobber it. (When matte is off these are
+    // unused.)
+    const vec4 obj_warp_71  = warp_result;
+    const vec4 obj_blend_71 = blend_result;
+    if (pc.matte_on > 0.5) {
+        const vec2 sz_bg = vec2(out_size);
+        const vec2 mv_bg = (pc.gme_on > 0.5) ? gme_model_mv(uv) : vec2(0.0);
+        const vec4 bg_prev = texture(u_prev_real, uv - (mv_bg * pc.t)         / sz_bg);
+        const vec4 bg_cur  = texture(u_cur_real,  uv + (mv_bg * (1.0 - pc.t)) / sz_bg);
+        // ── STAGE-62: crescent-directed mask-weighted background fetch (crescent_on > 0.5) ──────────
+        // A background-classified pixel sits in one of the two CRESCENTS where only ONE pair-side
+        // actually shows background. The TRAILING crescent (object covered it in PREV, gone in CUR) has
+        // a high prev-anchored dissidence dis_fwd → its prev-side model sample lands on OBJECT pixels =
+        // the trail; the LEADING crescent has a high cur-anchored dissidence dis_bwd → its cur-side
+        // sample is contaminated by the object not yet arrived at phase t. Re-weight each side by its
+        // NON-contamination (dis_fwd/dis_bwd are the SAME values the matte block computed above — reused,
+        // not re-sampled): c_f rises as the prev side becomes object, c_b as the cur side does; the side
+        // weights are the (1−t,t) interpolation weights TIMES the side's non-contamination factor. This
+        // is mask-WEIGHTED side fetch (FSR3's shipping form, dossier F6), NOT a hard one-sided pick.
+        //   thr = matte_thresh (the quantization both masks share). Both sides contaminated
+        //   (w_prev+w_cur < 1e-4, the ambiguous overlap) → fall back to the (1−t,t) blend unchanged.
+        // Gated on crescent_on>0.5 (a uniform push value); OFF (or both contaminated) ⇒ the EXACT
+        // (1−t)·bg_prev + t·bg_cur blend below → byte-identical to pre-STAGE-62.
+        // STAGE-71: `bg` (the BACKGROUND layer) is now computed whenever matte_on>0.5 — NOT only for
+        // background-classified pixels — because a band pixel classified OBJECT still needs bg as the
+        // arbitration's background candidate. For object non-band pixels (contour off, or outside the
+        // band) bg is DISCARDED below → byte-identical; the only added cost is its 2 fetches.
+        vec4 bg;
+        if (pc.crescent_on > 0.5) {
+            const float thr    = pc.matte_thresh;
+            const float c_f    = smoothstep(0.5 * thr, 1.5 * thr, dis_fwd);   // prev side → object-ness
+            const float c_b    = smoothstep(0.5 * thr, 1.5 * thr, dis_bwd);   // cur  side → object-ness
+            const float w_prev = (1.0 - pc.t) * (1.0 - c_f);
+            const float w_cur  =        pc.t  * (1.0 - c_b);
+            const float w_sum  = w_prev + w_cur;
+            if (w_sum < 1e-4) {
+                // ── STAGE-89: occlusion-aware one-sided commit at the BACKGROUND-layer crescent ─────────
+                // Both sides are object-CONTAMINATED — the symmetric (1−t)·bg_prev+t·bg_cur fallback
+                // averages two object-painted samples = the estela. Commit to the LESS contaminated side:
+                // dis_fwd<dis_bwd → prev carries less object → bg_prev; dis_bwd<dis_fwd → bg_cur. Soft in
+                // the asymmetry magnitude so a true tie keeps the phase blend EXACTLY (no mis-pick on a
+                // genuinely ambiguous band — the honest wall). disoccl_commit_on ≤ 0.5 → commit_w 0 → the
+                // EXACT (1−t,t) blend → BYTE-IDENTICAL. dis_fwd/dis_bwd already in scope — NO new tap.
+                const vec4 bg_phase = (1.0 - pc.t) * bg_prev + pc.t * bg_cur;
+                bg = bg_phase;
+                if (pc.disoccl_commit_on > 0.5) {
+                    const float denom_b  = dis_fwd + dis_bwd + 1e-4;
+                    const float asym_b   = (dis_bwd - dis_fwd) / denom_b;  // >0 prev cleaner / <0 cur cleaner
+                    const vec4  bg_side  = (asym_b > 0.0) ? bg_prev : bg_cur;
+                    const float commit_w = smoothstep(0.05, 0.35, abs(asym_b)); // ambiguity-gated: tie → 0
+                    bg = mix(bg_phase, bg_side, commit_w);
+                }
+            } else {
+                bg = (w_prev * bg_prev + w_cur * bg_cur) / w_sum; // mask-weighted side fetch
+            }
+        } else {
+            bg = (1.0 - pc.t) * bg_prev + pc.t * bg_cur;                      // the unchanged background blend
+        }
+        // ── STAGE-90: BROAD disocclusion commit — the crescent is the bg BASE blend (mask-weighted OR plain),
+        // which the --no-matte localize pins HERE, not the rare w_sum<1e-4 fallback STAGE-89 caught. Under
+        // --disoccl-commit, commit the WHOLE band to the LESS-contaminated side so the TRUE revealed background
+        // shows: kills the crescent AND keeps the matte (so the background fills the band → no gravity, the
+        // object does not stretch). asym from the same dis_fwd/dis_bwd; soft-gated so a genuine tie keeps the
+        // blend EXACTLY (the honest wall). disoccl_commit_on ≤ 0.5 → cw 0 → bg untouched → BYTE-IDENTICAL. No new tap.
+        if (pc.disoccl_commit_on > 0.5) {
+            const float denom_w = dis_fwd + dis_bwd + 1e-4;
+            const float asym_w  = (dis_bwd - dis_fwd) / denom_w;   // >0 prev cleaner → bg_prev / <0 cur cleaner → bg_cur
+            const vec4  side_w  = (asym_w > 0.0) ? bg_prev : bg_cur;
+            bg = mix(bg, side_w, smoothstep(0.05, 0.35, abs(asym_w)));
+        }
+        // ── STAGE-71: the CONTOUR MARRIAGE — per-pixel boundary arbitration by color affinity ───────
+        // The masks are TIGHT (STAGE-70) yet the remaining bites/chunks survive: they live in the
+        // CONTOUR BAND at block scale, where an 8px-block MV straddling the edge drags the wrong side's
+        // content (background into the object = bites; object onto background = residue) regardless of
+        // the binary classification. The error is SUB-BLOCK; no block-level mechanism can fix it. The
+        // cure is appearance: in the boundary band — where the block-level occupancy is UNCERTAIN
+        // (|matte_occ − thr| < thr, i.e. matte_occ ∈ (0, 2·thr), covering the bilinear transition zone
+        // of the R8 masks) — arbitrate PER PIXEL between the two layer colors by which one the pixel's
+        // OWN real color resembles. ref = the time-nearest real at uv (the same near_real the commit
+        // machinery uses — re-tapped here since near_real is scoped inside the commit branch above and
+        // not live at this site; ONE tap, band pixels only). d_o = maxch|ref − obj_c|, d_b = maxch|ref
+        // − bg_c|; alpha_obj = (d_b + eps)/(d_o + d_b + 2·eps): closer to the object color ⇒ more object.
+        // result = mix(bg, obj, alpha_obj). OUTSIDE the band: the EXACT binary decision as today
+        // (!matte_object → bg; object → untouched). Gated on contour_on>0.5 (a uniform push value) →
+        // off ⇒ the band test is never entered, the binary `else if (!matte_object)` below is the EXACT
+        // pre-STAGE-71 override → byte-identical.
+        // HONEST LIMIT: near_real's geometry is anchored at one end (the nearest pair frame) — the
+        // arbitration reference carries a phase-distance bias bounded by t to the nearest anchor (worst
+        // at t=0.5). The arbitration is still PER-PIXEL where the current failure is PER-BLOCK (8px
+        // chunks) → it can only ever reduce the fringe to ≤ sub-block scale, not invent geometry.
+        const float thr71 = pc.matte_thresh;
+        if (pc.contour_on > 0.5 && abs(matte_occ - thr71) < thr71) {
+            const vec3  ref71  = ((pc.t < 0.5) ? texture(u_prev_real, uv) : texture(u_cur_real, uv)).rgb;  // time-nearest real
+            const vec3  dov    = abs(ref71 - obj_warp_71.rgb);   // affinity to the OBJECT layer (warp side)
+            const vec3  dbv    = abs(ref71 - bg.rgb);            // affinity to the BACKGROUND layer
+            const float d_o    = max(dov.r, max(dov.g, dov.b));
+            const float d_b    = max(dbv.r, max(dbv.g, dbv.b));
+            const float eps71  = 1e-3;
+            const float alpha_obj = (d_b + eps71) / (d_o + d_b + 2.0 * eps71);   // 1 ⇒ pure object, 0 ⇒ pure bg
+            warp_result  = mix(bg, obj_warp_71,  alpha_obj);
+            blend_result = mix(bg, obj_blend_71, alpha_obj);
+        } else if (!matte_object) {
+            warp_result  = bg;   // outside the band, background-classified → the EXACT pre-STAGE-71 override
+            blend_result = bg;
+        }
+        // outside the band, object-classified → warp_result/blend_result untouched (the 41..64 result).
+    }
+
+    // ── STAGE-56: the stasis decision (computed here, applied as the FINAL select below) ─────────
+    // stz is sad_zero (the .g of u_sad_field) — ALREADY read above for Gate 1 (sad_zero), so this
+    // costs ZERO extra taps (no new texture sample, no new binding, no shared array). A block with
+    // stz ≤ stasis_thresh is identical in both pair frames → its interpolation at any t is that same
+    // content. The `> 0.0` short-circuit makes `stasis` constant-false when off → byte-identical.
+    const float stz    = sad_zero;                                          // == texture(u_sad_field, uv).g
+    const bool  stasis = (pc.stasis_thresh > 0.0) && (stz <= pc.stasis_thresh);
+
+    // ── STAGE-79: MEMBERSHIP BEATS THE BLEND — the member-commit boost (member_commit_on > 0.5) ──
+    // The warp-vs-blend selection (just below) falls back to blend_result on object INTERIORS whose
+    // photometric gates fail: a low-texture interior (the flat-content blind spot) has weak gate
+    // margins, so Gate 1/Gate 2 hedge to the (1−t,t) cross-fade = the operator's GHOST-STEP (the
+    // object materializes at its new position while a trace lingers at the old). But post-STAGE-61/63
+    // the field INSIDE a tracked silhouette is holon-repaired — the motion is KNOWN there, the blend
+    // hedge is obsolete timidity. member_strength scales the blend-fallback pressure DOWN for a
+    // confident member. The OBJECT proxy is mv-free (acyclic) — the per-pixel SELF dissidence of either
+    // anchor (the SAME proxy STAGE-77b uses for the ambiguity exemption, NO gathers), gated on the same
+    // matte_on>0.5 that makes bindings 6/7 a valid silhouette. member_strength =
+    // smoothstep(thr, 2·thr, max(self_fwd, self_bwd)), thr = matte_thresh (the SAME R8 quantization the
+    // masks share). EXTREME escape: where the two warped samples disagree wildly (d_pixel >
+    // 3·agreement_threshold — a real ambiguity, not the flat blind spot) the boost is SUPPRESSED so the
+    // normal gate stands and genuine garbage still blends. Two dissidence taps, only when armed.
+    // Gated on member_commit_on>0.5 AND matte_on>0.5 → OFF leaves member_strength = 0.0 → the soft mix
+    // and the hard branch below are UNCHANGED → BYTE-IDENTICAL.
+    float member_strength = 0.0;
+    if (pc.member_commit_on > 0.5 && pc.matte_on > 0.5) {
+        const float self_f = texture(u_dissidence,     uv).r;     // prev-anchored SELF dissidence (mv-free)
+        const float self_b = texture(u_dissidence_bwd, uv).r;     // cur-anchored  SELF dissidence (mv-free)
+        const float self_m = max(self_f, self_b);
+        const bool  extreme = (d_pixel > 3.0 * pc.agreement_threshold);   // wild disagreement → real ambiguity
+        member_strength = extreme ? 0.0 : smoothstep(pc.matte_thresh, 2.0 * pc.matte_thresh, self_m);
+    }
+
+    vec4 result;
+    // ── STAGE-98 (--multicand): scored MULTI-CANDIDATE selection — "generate + discriminate + SELECT" ─────
+    // SOTA-grounded (FG_VFI_PRIOR_ART §11). The field cannot recover GROUND TRUTH from two frames (VFI
+    // ill-posed, F37) — this REDUCES artifacts by picking the most self-consistent candidate, it does NOT
+    // recover the true motion. Mechanism = the MEDOID (F27 Apple nearest-to-consensus, robust to ONE
+    // hallucinating outlier; no per-channel sort, no temperature to tune) over a candidate set we already
+    // compute (no new bindings): the cascade-refined WARP, the two SINGLE-anchor warps (A-only=conceal side,
+    // B-only=reveal side — F40 ASTRI half-length), plus speed-perturbed warps (generate-more, F44/F37). A
+    // DISPERSION guard (open problem 6) falls to the safe crossfade where the candidates have no consensus —
+    // EXCEPT on a true image edge, where the iGPU Sobel field (our differentiator vs LSFG/FidelityFX, F29/F43)
+    // keeps the HARD pick so a linear-blend ghost is never painted across a real boundary. OFF (mc_on≤0.5) →
+    // this whole branch is skipped → the existing soft_gate/hard path runs → BYTE-IDENTICAL.
+    if (pc.mc_on > 0.5) {
+        vec3 cand[7];
+        int  K = 0;
+        cand[K++] = warp_result.rgb;                  // 0: cascade-refined primary warp (sharp on co-visible)
+        cand[K++] = A_samp.rgb;                        // 1: prev-only single anchor (the CONCEAL side, F40)
+        cand[K++] = B_samp.rgb;                        // 2: cur-only  single anchor (the REVEAL  side, F40)
+        if (pc.mc_nperturb >= 2.0) {                   // generate-more: speed-perturbed warps (F44/F37 speed ambiguity)
+            const float p = pc.mc_perturb;
+            cand[K++] = (wa * texture(u_prev_real, uv - (1.0 - p) * t_mv_uv) + (1.0 - wa) * texture(u_cur_real, uv + (1.0 - p) * inv_t_mv_uv)).rgb;
+            cand[K++] = (wa * texture(u_prev_real, uv - (1.0 + p) * t_mv_uv) + (1.0 - wa) * texture(u_cur_real, uv + (1.0 + p) * inv_t_mv_uv)).rgb;
+        }
+        if (pc.mc_nperturb >= 4.0) {
+            const float p2 = 2.0 * pc.mc_perturb;
+            cand[K++] = (wa * texture(u_prev_real, uv - (1.0 - p2) * t_mv_uv) + (1.0 - wa) * texture(u_cur_real, uv + (1.0 - p2) * inv_t_mv_uv)).rgb;
+            cand[K++] = (wa * texture(u_prev_real, uv - (1.0 + p2) * t_mv_uv) + (1.0 - wa) * texture(u_cur_real, uv + (1.0 + p2) * inv_t_mv_uv)).rgb;
+        }
+        // MEDOID: the candidate minimizing total L1 distance to the others = the robust consensus member.
+        // O(K²) L1 (K≤7 → ≤49), no sort. The lone hallucinating candidate is the far outlier → never chosen.
+        int   best    = 0;
+        float bestTot = 1e30;
+        for (int k = 0; k < K; ++k) {
+            float tot = 0.0;
+            for (int j = 0; j < K; ++j) tot += length(cand[k] - cand[j]);
+            if (tot < bestTot) { bestTot = tot; best = k; }
+        }
+        vec3  sel  = cand[best];
+        const float disp = bestTot / float(max(K - 1, 1));   // mean L1 of the medoid to the others = dispersion
+        // EDGE GATE (our differentiator): the iGPU Sobel boundary at this pixel (low byte, 0..255 → 0..1).
+        const float edge = float(imageLoad(u_field, clamp(coord, ivec2(0), out_size - ivec2(1))).r & 0xffu) / 255.0;
+        // No consensus AND not a true edge → the crossfade is the safe degenerate (blur tolerable, geometry
+        // jarring). On a true edge (edge ≥ mc_edge) keep the HARD medoid pick — never the linear-blend ghost.
+        if (disp > pc.mc_disp && edge < pc.mc_edge) sel = blend_result.rgb;
+        result = vec4(sel, warp_result.a);
+    } else if (pc.soft_gate > 0.5) {
+        // ── STAGE-46 soft mode: continuous gate weights (uniform push branch) ──────
+        // Confidence: keep the hard sad_best ceiling (a true tolerance, not a margin),
+        // soften the relative-improvement gate. Actual relative improvement of the match:
+        //   improv = (sad_zero − sad_best) / sad_zero   (passes hard iff improv > improvement_frac)
+        // Smoothstep centred on improvement_frac, half-width = improvement_frac/2 (clamped sane).
+        const float improv     = (sad_zero - sad_best) / max(sad_zero, 1e-6);
+        const float ci_mid     = pc.improvement_frac;
+        const float ci_w       = clamp(0.5 * ci_mid, 0.01, 0.49);
+        const float w_improv   = smoothstep(ci_mid - ci_w, ci_mid + ci_w, improv);
+        const float w_conf     = good_match ? w_improv : 0.0;
+
+        // Agreement: high weight when the tile mean d is well below the threshold; fades to 0
+        // as d_tile crosses it. Smoothstep centred on agreement_threshold, half-width = thr/2.
+        const float ag_mid     = pc.agreement_threshold;
+        const float ag_w       = clamp(0.5 * ag_mid, 0.005, ag_mid);
+        const float w_agree    = smoothstep(ag_mid + ag_w, ag_mid - ag_w, d_tile);
+
+        // Isolated-block suppression: a pixel whose OWN source-disagreement d_pixel far
+        // exceeds the TILE mean disagrees with all its tile neighbours → an isolated wrong-MV
+        // stamp → fade toward freeze. Uses only the existing per-thread d_pixel + s_d-derived
+        // d_tile (no new shared array). Tolerance band scaled off the agreement threshold.
+        const float iso_band   = max(pc.agreement_threshold, 1e-3);
+        const float w_neigh    = 1.0 - smoothstep(d_tile + iso_band, d_tile + 2.0 * iso_band, d_pixel);
+
+        float w                = w_conf * w_agree * w_neigh;
+        // STAGE-79: a confident member pulls w toward 1 (pure warp) — the blend-fallback pressure is
+        // scaled down by (1 − member_strength): w' = mix(w, 1.0, member_strength). member_strength = 0
+        // (off, or a non-member, or the extreme-disagreement escape) → w unchanged → byte-identical.
+        w = mix(w, 1.0, member_strength);
+        // ── STAGE-80: the COMMIT-DEFAULT flip — WARP IS THE DEFAULT (commit_default_on > 0.5) ──────────
+        // Applied AFTER the mbb boost (which it composes with: mbb only RAISES w, the floor only raises it
+        // further — neither lowers it). Post-STAGE-79 the cross-fade is the operator's dominant residual:
+        // wherever w<1 (silhouette fringes, sub-mask text, unclustered detail the member boost does not
+        // cover) the photometric gates still hedge to blend_result = (1−t)·prev[uv] + t·cur[uv] at FIXED
+        // positions, so moving nameplate TEXT doubles (two phantom copies fading). The flip floors w at the
+        // warp UNLESS the post-warp source disagreement d_pixel is genuinely large — the only honest evidence
+        // the warp is wrong (the two warped anchors land on contradictory content). g = smoothstep(2·athr,
+        // 4·athr, d_pixel): 0 where the anchors agree (trust the warp) → w floored to 1; 1 where they disagree
+        // wildly (the warp IS wrong) → no floor, the photometric gate stands → blend. athr = agreement_threshold
+        // (already in scope); d_pixel (already in scope, line ~709). NO new tap/binding/barrier. OFF (≤0.5) →
+        // the floor never applies → w is exactly the STAGE-79 value → byte-identical.
+        if (pc.commit_default_on > 0.5) {
+            const float athr = pc.agreement_threshold;
+            const float g    = smoothstep(2.0 * athr, 4.0 * athr, d_pixel);
+            w = max(w, 1.0 - g);
+        }
+        result = mix(blend_result, warp_result, w);
+    } else {
+        // ── Hard mode: original binary path (default), or the STAGE-80 flip when armed ─────────────────
+        // STAGE-79: a confident member (member_strength > 0.5, i.e. self-mask past the smoothstep
+        // midpoint AND not the extreme-disagreement escape) selects warp_result even when a gate fails
+        // — the holon-repaired interior commits to motion rather than hedging to the cross-fade. The
+        // 0.5 cutoff is the binary analogue of the soft pull (member_strength = 0 when off → the
+        // original binary path stands → byte-identical).
+        // STAGE-80: under the COMMIT-DEFAULT flip the hard test inverts — WARP is the default, blend is
+        // selected ONLY when the post-warp source disagreement is genuinely large (d_pixel > 2·athr, the
+        // honest evidence the warp is wrong); the photometric AND (good_match&&good_improv&&sources_agree)
+        // no longer FORCES the choice on its own. The mbb member escape composes unchanged (a confident
+        // member still selects warp). OFF (commit_default_on ≤ 0.5) → the original binary path, byte-identical.
+        bool pick_warp;
+        if (pc.commit_default_on > 0.5) {
+            pick_warp = (d_pixel <= 2.0 * pc.agreement_threshold) || (member_strength > 0.5);
+        } else {
+            pick_warp = (good_match && good_improv && sources_agree) || (member_strength > 0.5);
+        }
+        result = pick_warp ? warp_result : blend_result;
+    }
+    // ── STAGE-56: stasis override — the FINAL word, dominates everything above ───────────────────
+    // After warp/commit/matte/soft have produced `result`, a stasis pixel (identical block in both
+    // pair frames) is overwritten with the current real frame's content directly — immune to the
+    // vector-lending every motion layer would otherwise apply. Off (stasis_thresh==0) → never fires.
+    if (stasis) result = texture(u_cur_real, uv);
+
+    // ── STAGE-90c (P2b, operator eye 2026-06-15): the disocclusion FILL — reconstruct the static
+    // background the snap EXPOSED. The mv-snap (STAGE-90/90b) killed the gravity (the band MV becomes the
+    // static background model), but at the disocclusion CORE the two anchors prev[uv]/cur[uv] differ — one
+    // is the occluding object — and the downstream commit/onepos picks the TIME-nearest side → shows the
+    // object half the phases → the static grid reads as ERASED (the operator's finding). For the REVEAL
+    // (trailing) side the revealed content is the STATIC background, fully known in CUR. Reveal vs conceal
+    // is the dissidence ASYMMETRY (the STAGE-89 signal, matte-free, valid under gme+bidir): dis_fwd>dis_bwd
+    // ⇒ the object was in PREV here ⇒ REVEAL ⇒ the background is cur[uv] (cur at the snapped ≈static MV);
+    // commit to it, strength-weighted by bgs_w. CONCEAL (db>df, object ARRIVING) is LEFT to the object's
+    // own warp — filling it would erase the object's leading edge. Gated on bgs_w>0 (a snapped band pixel)
+    // AND occl_thresh>0 (bidir ⇒ both dissidence masks are valid this generation). OFF (bg-snap off ⇒
+    // bgs_w=0) ⇒ never fires ⇒ BYTE-IDENTICAL. 3 taps, only at the snapped band pixels.
+    if ((bgs_w > 0.0 || bx_w > 0.0) && pc.occl_thresh > 0.0) {   // STAGE-95: bx_w also arms it (the --band-xfade HARD reveal-fill, standalone of bg-snap)
+        const vec3  bgp   = texture(u_prev_real, uv).rgb;   // background candidate (prev, at the snapped ≈static MV)
+        const vec3  bgc   = texture(u_cur_real,  uv).rgb;   // background candidate (cur,  at the snapped ≈static MV)
+        const vec3  ad    = abs(bgp - bgc);
+        const float disag = max(ad.r, max(ad.g, ad.b));
+        // PIXEL-PRECISE disocclusion gate (operator eye, 2026-06-15): fill ONLY where the two static-MV
+        // anchors DIFFER → a genuine disocclusion (one anchor is the occluding object, one is the revealed
+        // background). This REJECTS the disc OVERLAP (object in BOTH frames: bgp≈bgc → no fill) so the fill
+        // can NEVER paint the OBJECT's colour (the operator's "lines recover but in the object's colour"
+        // bug — the block-res dissidence alone misclassified overlap pixels as reveal). It also rejects the
+        // untouched static grid (bgp≈bgc background). The dissidence asymmetry then only chooses the SIDE.
+        if (disag > pc.agreement_threshold) {
+            const float df = texture(u_dissidence,     uv).r;   // prev-anchored object silhouette
+            const float db = texture(u_dissidence_bwd, uv).r;   // cur-anchored  object silhouette
+            // REVEAL (object was in PREV here) → bg = the CUR anchor. STAGE-95: under --band-xfade HARD-commit
+            // cur bg (no blend → no color-deform, the operator's "lever b"); under --bg-snap legacy partial mix.
+            if (df > db + 0.02) result.rgb = (bx_w > 0.0) ? bgc : mix(result.rgb, bgc, bgs_w);
+        }
+    }
+
+    // STAGE-95 (--band-xfade): the band treatment is the one-sided HARD reveal-fill in the STAGE-90c block
+    // ABOVE (gated on bx_w too) — NOT a symmetric crossfade. (The crossfade toward blend_result was a design
+    // error: at the disocclusion CORE prev[uv]=object ≠ cur[uv]=bg, so (1−t)A+tB SMEARS object+bg = "arcs", and
+    // a symmetric gate dirtied both the reveal AND the conceal side. The reveal-fill commits the CLEAN cur bg on
+    // the reveal side and leaves the conceal to the object's warp.)
+
+    // ── STAGE-59: the presented-mass workgroup reduction (unconditional barriers, OOB participates) ──
+    // The PRESENTED mass = the count of OBJECT-classified pixels this dispatch (matte_object). We reduce
+    // it per workgroup into the shared accumulator, then ONE atomicAdd into the host-visible counter at
+    // local index 0 — never per pixel. The TWO barriers below are TOP-LEVEL and UNCONDITIONAL, exactly
+    // like the s_d reduction barrier above: every invocation (incl. OOB, which contributes 0 because the
+    // matte block ran with valid=false's coord but is gated below by `valid`) reaches both, so the
+    // shared init→accumulate→flush ordering holds without uniform-control-flow violation. The whole
+    // contribution is gated on matte_on>0.5 (a uniform push value): when matte is OFF nothing is added
+    // (matte_object is constant-false anyway, and the flush is skipped) → the counter is untouched and
+    // P's --mass-k feedback stays inert → byte-IDENTICAL output to pre-STAGE-59. atomicAdd on a `shared`
+    // uint and on an SSBO member are core GLSL — no extension, no memory_order args.
+    if (gl_LocalInvocationIndex == 0u) s_matte_cnt = 0u;
+    barrier();
+    if (valid && matte_object) atomicAdd(s_matte_cnt, 1u);
+    barrier();
+    if (gl_LocalInvocationIndex == 0u && pc.matte_on > 0.5)
+        atomicAdd(u_matte_counter.matte_count, s_matte_cnt);
+
+    // ── STAGE-91 (ASW): bounded forward EXTRAPOLATION — fill the throughput deficit instead of freezing ──
+    // When B (the flow producer) falls behind, the sync-clock would HOLD the pair at phase 1 (a frozen
+    // re-present = the stutter, the operator's deficit artifact). Instead, with --asw the present loop lets the
+    // content_clock phase OVERSHOOT past 1 by `extrap` (bounded by --asw-max) and the object KEEPS MOVING: the
+    // warp output above is the phase-1 result (≈ cur), and here we project the LATEST real (cur) FORWARD along
+    // THIS pixel's own MV — the content now at uv came from uv-extrap*mv in cur. So motion continues smoothly
+    // through the deficit (ASW / Oculus async space-warp). NO look-ahead: extrapolation projects forward from the
+    // HELD pair, never reads an unpublished future generation (NG-3 safe; it is not a second interpolation). bg
+    // pixels carry mv≈0 (especially under --bg-snap) so the static background does NOT move. Gated on pc.extrap>0
+    // (host sends >0 only under --asw when the phase overshot) → OFF = BYTE-IDENTICAL. One cur tap when armed.
+    if (pc.extrap > 0.0) {
+        const vec2 euv = clamp(uv - pc.extrap * mv / vec2(out_size), vec2(0.0), vec2(1.0));
+        result.rgb = texture(u_cur_real, euv).rgb;
+    }
+
+    // STAGE-97 (--ts-smooth): adaptive temporal smoothing — blend toward the PREVIOUS output frame ONLY on
+    // low-confidence/garbage pixels (high source-disagreement = disocclusion/gravity), keeping clean pixels
+    // sharp+fast (asymmetric). prev_output[uv] is the previous final frame (same uv; no motion-comp → it
+    // trails on moving content, hence the garbage-gate to confine it to artifact pixels). garbage_w is built
+    // from d_pixel (the post-warp source disagreement, already in scope: 0 = the two warped anchors agree =
+    // clean → no blend; high = they disagree = flow failure/disocclusion = garbage → full blend). MUST be the
+    // LAST modification of result (after the stasis/reveal-fill/extrap overrides). OFF (ts_smooth==0) → no
+    // blend → BYTE-IDENTICAL.
+    if (pc.ts_smooth > 0.0) {
+        const float garbage_w = clamp(smoothstep(pc.agreement_threshold, 3.0*pc.agreement_threshold, d_pixel), 0.0, 1.0);
+        result = mix(result, texture(u_prev_out, uv), pc.ts_smooth * garbage_w);
+    }
+    if (valid) imageStore(u_output, coord, result);
+}
+// Made with my soul - Swately <3
