@@ -8,9 +8,9 @@
 //   4. slot_copy_fixed64()  — copia inline de exactamente 64 B (1 slot compact).
 //   5. payload_copy_fixed32() — copia inline de exactamente 32 B (1 payload).
 //
-// NOTA: pick_slot_copy() y slot_copy_fn pertenecen al pilar transport
-// (pillars/transport/include/phyriad/transport/SlotCopy.hpp) porque dependen
-// de PerformanceProfile y del dispatch table de transport. No están aquí.
+// NOTA: pick_slot_copy() y slot_copy_fn pertenecen a la capa transport porque
+// dependen de PerformanceProfile y de su dispatch table. El dispatch dinámico
+// no vive aquí.
 //
 // Uso:
 //   const auto& caps = hal::simd_caps();
@@ -25,7 +25,7 @@
 #include <cstdint>
 #include <cstring>
 
-// x86 SIMD intrinsics (AVX2 copy kernels + the FR-HAL-1 F16C batch decode). Header is
+// x86 SIMD intrinsics (AVX2 copy kernels + the F16C batch decode). Header is
 // safe to include without -mavx2/-mf16c; the intrinsic USES are guarded on __AVX2__/__F16C__.
 #if PHYRIAD_ARCH_X86_64
 #  include <immintrin.h>
@@ -69,7 +69,7 @@ struct SimdCaps {
     bool neon    : 1;   // ARM NEON (obligatorio en aarch64)
     bool sve     : 1;   // ARM SVE (Graviton 3+, no Apple)
     bool has_crc : 1;   // SSE4.2 CRC32C (x86) / ARM CRC32 extension
-    bool f16c    : 1;   // FR-HAL-1: x86 half-precision convert (vcvtph2ps/vcvtps2ph); Ivy Bridge+/Zen
+    bool f16c    : 1;   // x86 half-precision convert (vcvtph2ps/vcvtps2ph); Ivy Bridge+/Zen
 };
 
 [[nodiscard]] inline SimdCaps detect_simd_caps() noexcept {
@@ -98,7 +98,7 @@ struct SimdCaps {
     caps.has_crc = (l1_ecx & (1u << 20)) != 0u;                      // SSE4.2 CRC32 (no VEX → ungated)
     caps.avx2    = ((l7_ebx & (1u << 5))  != 0u) && avx_os;          // EBX[5]  = AVX2
     caps.avx512f = ((l7_ebx & (1u << 16)) != 0u) && avx512_os;       // EBX[16] = AVX-512F
-    caps.f16c    = ((l1_ecx & (1u << 29)) != 0u) && avx_os;          // ECX[29] = F16C (FR-HAL-1)
+    caps.f16c    = ((l1_ecx & (1u << 29)) != 0u) && avx_os;          // ECX[29] = F16C
 
 #elif PHYRIAD_ARCH_AARCH64
     caps.neon = true;   // NEON es obligatorio en aarch64 (parte del ISA base).
@@ -132,7 +132,7 @@ struct SimdCaps {
 // ── Copia de tamaño fijo: 64 B (1 slot compact) ──────────────────────────────
 // Inlineado en el caller: cero overhead de dispatch.
 // Compile-time dispatch según capabilities del translation unit.
-// Para dispatch dinámico, usar pillars/transport/SlotCopy.hpp.
+// Para dispatch dinámico, usar la capa de dispatch de transport.
 PHYRIAD_ALWAYS_INLINE void slot_copy_fixed64(void* dst, const void* src) noexcept {
 #if PHYRIAD_ARCH_X86_64 && defined(__AVX2__)
     // 2 × vmovdqu de 32 B = 64 B en una sola pasada.
@@ -181,17 +181,17 @@ PHYRIAD_ALWAYS_INLINE void payload_copy_fixed32(void* dst, const void* src) noex
 #endif
 }
 
-// ── FR-HAL-1: half-precision (binary16) ⇄ float, scalar + F16C-batch ──────────
-// The canonical fp16 codec for the substrate. Consumers (render_assistant's optical-flow MV
-// grids, any fp16 sensor/telemetry stream) were hand-rolling this per-element bit-math; it now
-// lives here once. f16_to_f32 / f32_to_f16 are PORTABLE bit math (no -mf16c needed, no UB —
+// ── half-precision (binary16) ⇄ float, scalar + F16C-batch ───────────────────
+// The canonical fp16 codec. Consumers such as optical-flow MV grids and any fp16
+// sensor/telemetry stream use it instead of hand-rolling per-element bit math.
+// f16_to_f32 / f32_to_f16 are PORTABLE bit math (no -mf16c needed, no UB —
 // pure integer reinterpretation per the binary16 spec, full subnormal + Inf/NaN handling).
 // f16_to_f32_batch is the perf primitive: F16C 8-wide (vcvtph2ps) when the running CPU has it
 // AND the calling TU was compiled with -mf16c/-march (so the intrinsic is emitted), else the
 // scalar path — runtime-dispatched on simd_caps().f16c, BYTE-IDENTICAL to the scalar result.
-// Ease-of-consumption note: to get the F16C path, compile the ONE TU that calls this batch with
-// the SIMD flag (set_source_files_properties(... "/arch:AVX2"|"-mavx2 -mf16c")) — the same
-// pattern transport/SlotCopy.cpp uses; the rest of the consumer needs no flags.
+// To get the F16C path, compile the ONE TU that calls this batch with the SIMD flag
+// (set_source_files_properties(... "/arch:AVX2"|"-mavx2 -mf16c")); the rest of the consumer
+// needs no flags.
 [[nodiscard]] PHYRIAD_ALWAYS_INLINE float f16_to_f32(uint16_t h) noexcept {
     const uint32_t sign = (uint32_t)(h & 0x8000u) << 16;
     const uint32_t exp  = (h >> 10) & 0x1Fu;
@@ -240,8 +240,7 @@ PHYRIAD_ALWAYS_INLINE void payload_copy_fixed32(void* dst, const void* src) noex
 
 // Batch decode n binary16 → n float. Runtime-dispatched: F16C 8-wide when available (and the TU
 // has -mf16c), scalar otherwise; the two paths are bit-identical (F16C vcvtph2ps is IEEE-correct,
-// matching the scalar bit-math on every normal/subnormal/Inf/NaN — verified 0/64800 mismatches in
-// apps/render_assistant/bench/gme_fit_bench). dst/src may not alias.
+// matching the scalar bit-math on every normal/subnormal/Inf/NaN). dst/src may not alias.
 PHYRIAD_ALWAYS_INLINE void f16_to_f32_batch(const uint16_t* src, float* dst, std::size_t n) noexcept {
     std::size_t i = 0;
 #if PHYRIAD_ARCH_X86_64 && defined(__F16C__)

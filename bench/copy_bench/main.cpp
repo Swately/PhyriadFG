@@ -1,12 +1,11 @@
-// apps/render_assistant/bench/copy_bench/main.cpp
-// STAGE-37c — copy-path bench (1080p, 256 reps, median).
+// copy_bench — copy-path microbenchmark (1080p, 256 reps, median).
 //
 // Matrix: rows = {std::memcpy, SlotCopy auto, row-strided (WGC Map RowPitch)}
 //         sizes = {8.3 MB BGRA, 6.2 MB RGB8 packed}
 //         cols  = {_aligned_malloc 4KB, hal::aligned_alloc_hint hugepage}
 //
 // Prints a markdown table: GB/s | ms/frame | ms/s@125fps.
-// If SlotCopy or hugepages gain <10% on the strided real-shape row: says do not integrate.
+// If SlotCopy or hugepages gain <10% on the strided real-shape row, reports do-not-integrate.
 //
 // Build (standalone):
 //   MSVC:  cmake -B build -G "NMake Makefiles" && cmake --build build
@@ -217,7 +216,7 @@ int main() {
     Row st_hp       = have_huge ? bench_strided(true) : Row{};
 
     // ── Table ─────────────────────────────────────────────────────────────────
-    std::puts("## STAGE-37c copy-path bench — 1080p, 256 reps, median\n");
+    std::puts("## copy-path bench — 1080p, 256 reps, median\n");
     print_header();
     print_row("std::memcpy",       "8.3MB", "_aligned_malloc", mc_bgra_4k);
     if (have_huge) print_row("std::memcpy",    "8.3MB", "hugepage",       mc_bgra_hp);
@@ -252,3 +251,4 @@ int main() {
     std::puts("");
     return 0;
 }
+// Made with my soul - Swately <3

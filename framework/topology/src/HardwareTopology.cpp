@@ -1,7 +1,7 @@
 // framework/topology/src/HardwareTopology.cpp
-// Hardware topology detection implementation — pillar version.
+// Hardware topology detection implementation.
 //
-// Covers lines 1-1099 of the original core/HardwareTopology.cpp:
+// Provides:
 //   - probe_gpus (CUDA + DRM fallback)
 //   - HardwareTopology::probe() for Linux and Windows
 //   - HardwareTopology member helpers (physical_core_count, allocate_cores, …)
@@ -9,9 +9,8 @@
 //     v_cache_cores, p_cores, e_cores, ccd_cores, numa_cores, numa_node_count,
 //     optimal_producer_consumer_pair, detect_system_memory_mb
 //
-// Excluded (moved to pillars/runtime/):
-//   - hw::make_auto_profile()   — depends on PerformanceProfile
-//   - hw::apply_profile_hints() — depends on PerformanceProfile
+// PerformanceProfile helpers (make_auto_profile, apply_profile_hints) live in the
+// runtime layer, which depends on both topology and the profile schema.
 //
 
 #include <phyriad/topology/HardwareTopology.hpp>
@@ -39,14 +38,14 @@
   #include <windows.h>
   #include <sysinfoapi.h>
   #include <intrin.h>          // __cpuid, __cpuidex
-  #include <avrt.h>            // THREAD_PROTECTION S2: MMCSS (AvSetMmThreadCharacteristics / AvSetMmThreadPriority / AvRevert)
+  #include <avrt.h>            // MMCSS: AvSetMmThreadCharacteristics / AvSetMmThreadPriority / AvRevert
   #ifdef _MSC_VER
-    #pragma comment(lib, "Avrt.lib")  // link the AVRT (MMCSS) import lib for direct-source consumers (render_assistant)
+    #pragma comment(lib, "Avrt.lib")  // link the AVRT (MMCSS) import lib for direct-source consumers
   #endif
 #else
   #include <sched.h>
   #include <pthread.h>
-  #include <sys/resource.h>   // getpriority / setpriority (FR-9)
+  #include <sys/resource.h>   // getpriority / setpriority
   #include <sys/sysinfo.h>
   #include <unistd.h>
   #include <cpuid.h>           // __get_cpuid / __cpuid_count (GCC/Clang)
@@ -163,9 +162,8 @@ std::vector<GpuInfo> probe_gpus() {
 
 namespace {
 
-// (probe_cores_linux removed — core enumeration is unified through
-//  hw::enumerate_cores(); the old inline builder also mis-set is_ht_sibling,
-//  marking BOTH siblings as siblings.)
+// Core enumeration is unified through hw::enumerate_cores(); there is no
+// separate Linux core builder here.
 
 std::vector<NumaNode> probe_numa_linux() {
     std::vector<NumaNode> result;
@@ -235,7 +233,7 @@ std::vector<NumaNode> probe_numa_linux() {
 std::expected<HardwareTopology, std::string>
 HardwareTopology::probe() noexcept {
     HardwareTopology t;
-    t.cores      = hw::enumerate_cores();   // single source of truth (see Windows note)
+    t.cores      = hw::enumerate_cores();   // single source of truth for core enumeration
     t.numa_nodes = probe_numa_linux();
     t.gpus       = probe_gpus();
     t.cache      = CacheInfo::probe();
@@ -248,13 +246,13 @@ HardwareTopology::probe() noexcept {
     if (t.cores.empty())
         return std::unexpected("No se encontraron cores en /sys/devices/system/cpu");
 
-    // ── [BLOQUE A] Topology Extensions ──────────────────────────
+    // ── Topology Extensions ─────────────────────────────────────
     t.cpu_features      = topology::detect_x86_features();
     t.vcache_cores      = topology::VCacheDetector::vcache_logical_ids();
     t.core_types        = topology::HybridCoreDetector::detect().core_types;
     t.pcie_affinity_map = topology::PCIeAffinityProbe::probe();
 
-    // ── FR-2: ccd_count_ ────────────────────────────────────────
+    // ── ccd_count_ ──────────────────────────────────────────────
     {
         uint32_t max_ccd = 0u;
         for (const auto& c : t.cores)
@@ -274,12 +272,8 @@ HardwareTopology::probe() noexcept {
     // ── Cores: SINGLE SOURCE OF TRUTH ───────────────────────────────
     // Delegate to hw::enumerate_cores() (probe_cores_platform_ + fill_cache_topology),
     // the complete enumeration that correctly detects SMT siblings, physical
-    // V-Cache cores, CCD, and hybrid P/E classes. The previous inline builder here
-    // mis-computed is_ht_sibling (it compared each bit against the lowest bit of a
-    // mask it was MUTATING in the loop → always false, so every logical thread was
-    // counted as a physical core) and never assigned CCD — a legacy duplicate from
-    // before the topology pillar matured. Converging on one path fixes every
-    // probe()/topology() consumer (PlacementPlanner included) at once.
+    // V-Cache cores, CCD, and hybrid P/E classes. Using one enumeration path keeps
+    // every probe()/topology() consumer consistent.
     t.cores = hw::enumerate_cores();
     if (t.cores.empty())
         return std::unexpected("hw::enumerate_cores() returned no cores");
@@ -323,23 +317,21 @@ HardwareTopology::probe() noexcept {
     // ── Cache topology (CPUID x86) ───────────────────────────────
     t.cache = CacheInfo::probe();
 
-    // ── [BLOQUE A] Topology Extensions ──────────────────────────
+    // ── Topology Extensions ─────────────────────────────────────
     t.cpu_features      = topology::detect_x86_features();
     t.vcache_cores      = topology::VCacheDetector::vcache_logical_ids();
     t.core_types        = topology::HybridCoreDetector::detect().core_types;
     t.pcie_affinity_map = topology::PCIeAffinityProbe::probe();
 
-    // Back-fill CoreInfo::has_v_cache from the vcache_cores list.
-    // The inline core builder above does not call fill_cache_topology(), so
-    // has_v_cache defaults to false for all cores.  Sync it here so that
-    // Scheduler::score_core() and any other CoreInfo consumer can use the
-    // flag directly without consulting topology.vcache_cores separately.
+    // Mirror the authoritative vcache_cores list (from VCacheDetector) into the
+    // per-core has_v_cache flag so any CoreInfo consumer can read it directly
+    // without consulting topology.vcache_cores separately.
     for (uint32_t vcid : t.vcache_cores) {
         for (auto& c : t.cores)
             if (c.logical_id == vcid) { c.has_v_cache = true; break; }
     }
 
-    // ── FR-2: ccd_count_ ────────────────────────────────────────
+    // ── ccd_count_ ──────────────────────────────────────────────
     {
         uint32_t max_ccd = 0u;
         for (const auto& c : t.cores)
@@ -395,7 +387,7 @@ HardwareTopology::allocate_cores(uint32_t count, uint32_t prefer_numa) const noe
 }
 
 // ──────────────────────────────────────────────────────────────────
-// hw:: — implementaciones reales (Fase E0)
+// hw:: — implementaciones reales
 // ──────────────────────────────────────────────────────────────────
 namespace hw {
 
@@ -415,7 +407,7 @@ namespace {
 //   - V-Cache  : l3_cache_kb > 64 MB (solo AMD 3D V-Cache; false para todo lo demás)
 //
 // Limitación conocida: sistemas con >64 cores lógicos por grupo de procesador
-// (Group > 0) necesitan lógica multi-group. Phyriad actualmente opera en Group 0;
+// (Group > 0) necesitan lógica multi-group. Esta implementación opera en Group 0;
 // en sistemas de más de 64 cores se usa solo los primeros 64 lógicos para el mapeo
 // de máscara, lo que es correcto para la gran mayoría de workstations/servidores.
 void fill_cache_topology(std::vector<CoreInfo>& cores) noexcept {
@@ -554,7 +546,7 @@ static std::vector<CoreInfo> probe_cores_platform_() noexcept {
             buf.data() + offset);
         if (entry->Relationship == RelationProcessorCore) {
             const KAFFINITY mask = entry->Processor.GroupMask[0].Mask;
-            // G8: EfficiencyClass — Intel hybrid (Alder Lake+): 0=E-core, 1+=P-core.
+            // EfficiencyClass — Intel hybrid (Alder Lake+): 0=E-core, 1+=P-core.
             // En CPUs no-hybrid TODOS reportan 0; post-procesamos para distinguir.
             const uint8_t eff_class = entry->Processor.EfficiencyClass;
             // Extraer logical IDs del bitmask.
@@ -587,7 +579,7 @@ static std::vector<CoreInfo> probe_cores_platform_() noexcept {
             return a.logical_id < b.logical_id;
         });
 
-    // G8: Post-proceso EfficiencyClass para Intel hybrid.
+    // Post-proceso EfficiencyClass para Intel hybrid.
     // En CPUs no-hybrid (Intel pre-ADL, AMD, ARM64-W) TODOS los cores reportan
     // EfficiencyClass==0 → no marcamos is_efficiency_core (todos son P-cores).
     // Solo si hay al menos un core con EfficiencyClass>0 confirmamos CPU hybrid.
@@ -800,15 +792,13 @@ static std::vector<CoreInfo> probe_cores_platform_() noexcept {
         }
     }
 
-    // G8: P/E-core detection via cpufreq (Intel hybrid: Alder Lake+, Meteor Lake).
+    // P/E-core detection via cpufreq (Intel hybrid: Alder Lake+, Meteor Lake).
     // Heurística: E-cores tienen frecuencia máxima significativamente menor que
     // P-cores. Threshold: < 75% de la freq máxima del sistema → E-core.
     //
-    // §F-04 fix: parallel freq_khz[] vector for clarity (previously, kHz values
-    // were stored temporarily in the max_freq_mhz field, which was confusing
-    // and prone to misreading — comparisons were correct but the unit mismatch
-    // between the field NAME and the field CONTENT during the comparison phase
-    // led at least one audit pass to mis-classify this as a bug).
+    // A parallel freq_khz[] vector keeps the units explicit (kHz), separate from
+    // the CoreInfo::max_freq_mhz field (MHz), so the classification comparisons
+    // are unambiguously kHz-vs-kHz.
     {
         // Pass 1: read max_freq into a parallel kHz vector (units explicit).
         std::vector<uint32_t> freq_khz(cores.size(), 0u);
@@ -864,11 +854,10 @@ std::vector<CoreInfo> enumerate_cores() noexcept {
 // ── pin_current_thread ────────────────────────────────────────────
 bool pin_current_thread(uint32_t logical_id) noexcept {
 #ifdef _WIN32
-    // R6 (THREAD_PROTECTION_RISK_REGISTER): on > 64-logical-CPU Windows (multi-processor-group
-    // systems), `1ULL << logical_id` with logical_id >= 64 is undefined behaviour and a silent
-    // mis-pin. Guard it — skip the pin (run unpinned, the caller logs + continues) rather than
-    // shift out of range. Single-group consumer CPUs (logical_id < 64) are byte-identical; a
-    // SetThreadSelectedCpuSetMasks route for > 64 groups is left as a future hardening.
+    // On > 64-logical-CPU Windows (multi-processor-group systems), `1ULL << logical_id`
+    // with logical_id >= 64 is undefined behaviour and a silent mis-pin. Guard it —
+    // skip the pin (run unpinned; the caller logs and continues) rather than shift out
+    // of range. A SetThreadSelectedCpuSetMasks route for > 64 groups is a future hardening.
     if (logical_id >= 64u) return false;
     const DWORD_PTR mask = static_cast<DWORD_PTR>(1ULL << logical_id);
     return SetThreadAffinityMask(GetCurrentThread(), mask) != 0;
@@ -881,8 +870,7 @@ bool pin_current_thread(uint32_t logical_id) noexcept {
 }
 
 // ── current_core_id ──────────────────────────────────────────────
-// Used by SubmitterRegistry + TaskClassifier for CCD-local
-// scheduling. Hot path: must be cheap (< 50 ns).
+// Used by CCD-local scheduling paths. Hot path: must be cheap (< 50 ns).
 uint32_t current_core_id() noexcept {
 #ifdef _WIN32
     // GetCurrentProcessorNumber is a CPUID + syscall on older Windows but
@@ -951,7 +939,7 @@ std::vector<uint32_t> v_cache_cores() noexcept {
     return result;
 }
 
-// ── p_cores (G8) ─────────────────────────────────────────────────
+// ── p_cores ──────────────────────────────────────────────────────
 // P-cores físicos (efficiency_class >= 1, alto rendimiento).
 // En CPUs no-hybrid (Intel pre-ADL, AMD, ARM) retorna todos los cores
 // físicos porque el default es efficiency_class=1 (P-core).
@@ -965,7 +953,7 @@ std::vector<uint32_t> p_cores() noexcept {
     return result;
 }
 
-// ── e_cores (G8) ─────────────────────────────────────────────────
+// ── e_cores ──────────────────────────────────────────────────────
 // E-cores físicos (is_efficiency_core == true, bajo consumo/latencia).
 // Vector vacío en CPUs no-hybrid (Intel pre-ADL, AMD, ARM, Apple Silicon).
 std::vector<uint32_t> e_cores() noexcept {
@@ -1031,7 +1019,7 @@ optimal_producer_consumer_pair(bool prefer_v_cache_ccd) noexcept {
     auto cores = enumerate_cores();
     if (cores.empty()) return {0u, 1u};
 
-    // ── Paso 0 (G8): P-core priority pool — Intel hybrid (Alder Lake+) ──
+    // ── Paso 0: P-core priority pool — Intel hybrid (Alder Lake+) ──
     // Si hay E-cores detectados, restringir el pool de búsqueda a P-cores
     // físicos. Los E-cores tienen ~50% IPC de los P-cores y mayor latencia
     // de coherencia inter-core → son subóptimos para SPSC de baja latencia.
@@ -1193,7 +1181,7 @@ double system_busy_fraction(uint32_t window_ms) noexcept {
 #endif
 }
 
-// ── FR-1: topology() singleton ──────────────────────────────────────────────
+// ── topology() singleton ────────────────────────────────────────────────────
 // TopologyCache holds the result of a single probe() attempt.
 // Constructed once via C++11 function-local static (thread-safe init).
 namespace {
@@ -1222,7 +1210,7 @@ std::string_view last_probe_error() noexcept {
     return topo_cache_().err;
 }
 
-// ── FR-3: set_process_affinity / get_process_affinity ───────────────────────
+// ── set_process_affinity / get_process_affinity ─────────────────────────────
 #ifdef _WIN32
 
 std::expected<uint64_t, phyriad::Error>
@@ -1320,7 +1308,7 @@ set_process_affinity(uint32_t pid, uint64_t mask) noexcept {
 
 #endif // _WIN32 / POSIX
 
-// ── FR-9: set_process_priority / get_process_priority ──────────────────────
+// ── set_process_priority / get_process_priority ────────────────────────────
 #ifdef _WIN32
 
 std::expected<uint32_t, phyriad::Error>
@@ -1342,7 +1330,7 @@ get_process_priority(uint32_t pid) noexcept {
 
 std::expected<uint32_t, phyriad::Error>
 set_process_priority(uint32_t pid, uint32_t priority_class) noexcept {
-    // GetPriorityClass returns 0 on failure; reject 0 as sentinel per FR-9 spec.
+    // GetPriorityClass returns 0 on failure; reject 0 as sentinel.
     if (priority_class == 0u)
         return std::unexpected(phyriad::Error{phyriad::ErrorCode::InvalidArgument});
 
@@ -1413,12 +1401,11 @@ set_process_priority(uint32_t pid, uint32_t priority_class) noexcept {
 
 #endif // _WIN32 / POSIX
 
-// ── GFR-Ayama-2: set_thread_affinity / get_thread_affinity ─────────────────
-// Thread-level affinity (per-TID). Symmetric to FR-3 process-level.
+// ── set_thread_affinity / get_thread_affinity ──────────────────────────────
+// Thread-level affinity (per-TID). Symmetric to the process-level variant.
 // Enables differential thread pinning: place the critical-path thread on
 // one core cluster (e.g. V-Cache CCD, P-cores) while leaving the worker
-// threads on the secondary cluster. See apps/ayama/ for a concrete
-// consumer of this primitive.
+// threads on the secondary cluster.
 #ifdef _WIN32
 
 std::expected<uint64_t, phyriad::Error>
@@ -1535,7 +1522,7 @@ set_thread_affinity(uint32_t tid, uint64_t mask) noexcept {
 
 #endif // _WIN32 / POSIX
 
-// ── GFR-Ayama-4: set_thread_ideal_processor / get_thread_ideal_processor ───
+// ── set_thread_ideal_processor / get_thread_ideal_processor ────────────────
 // Soft scheduling hint (preferred core) — complements set_thread_affinity
 // for "pin to CCD + prefer specific core within CCD" patterns.
 #ifdef _WIN32
@@ -1629,10 +1616,10 @@ set_thread_ideal_processor(uint32_t /*tid*/, uint32_t /*logical_id*/) noexcept {
 
 #endif // _WIN32 / POSIX
 
-// ── THREAD_PROTECTION S2: MMCSS (Multimedia Class Scheduler Service) ──────────
+// ── MMCSS (Multimedia Class Scheduler Service) ───────────────────────────────
 // Per-thread, OS-sanctioned bounded priority boost via the AVRT API. ONLY the
 // per-thread API is used — NEVER the global SystemResponsiveness registry value,
-// NEVER REALTIME_PRIORITY_CLASS, NEVER the "Games" task (master-plan §2.1).
+// NEVER REALTIME_PRIORITY_CLASS, NEVER the "Games" task.
 #ifdef _WIN32
 
 void MmcssToken::leave() noexcept {

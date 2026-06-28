@@ -43,13 +43,13 @@ enum class ErrorCode : uint32_t {
     ShuttingDown      = 15,
     WindowClosed      = 16,
     ResourceInitFailed = 17,
-    // ── Phase 5 additions (daemon pillar) ─────────────────────────────────────
+    // ── daemon pillar codes ───────────────────────────────────────────────────
     PermissionDenied   = 18,  // insufficient OS privileges (ETW, affinity)
     InvalidArgument    = 19,  // caller passed an invalid argument
     Unavailable        = 20,  // service not available (daemon not running)
     AlreadyConnected   = 21,  // client already has an active connection
     ResourceExhausted  = 22,  // no free slots / capacity exhausted
-    // ── FR-8: extended error codes (added for downstream consumer needs) ──
+    // ── extended error codes ──
     SystemError        = 23,  // OS/Win32/POSIX call returned an unexpected error
     BufferFull         = 24,  // fixed-capacity buffer is at capacity
     OutOfMemory        = 25,  // operator new / malloc returned null

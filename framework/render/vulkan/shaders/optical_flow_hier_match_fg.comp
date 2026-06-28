@@ -1,29 +1,26 @@
 // framework/render/vulkan/shaders/optical_flow_hier_match_fg.comp
-// FG-LOCAL FORK of optical_flow_hier_match.comp — the runner-up (second-best / STAGE-77 candidate)
-// tracking COMPILED OUT for the render_assistant's DEFAULT flow path (the matcher consumed with
-// emit_second=false AND use_ambig OFF — verify apps/render_assistant/src/main.cpp:4355 / :3766: the
-// candidate field is created only under use_ambig=cfg.ambig&&use_gme, default OFF, and the runner-up
-// field is never read on that path). This is the CANON #12 app-local fork + PERFECTION_TRADEOFF_DOCTRINE
-// §2 (perf bought with scalability for an app): the CANONICAL optical_flow_hier_match.comp stays
-// BYTE-IDENTICAL for the gme/ambig consumers that DO arm binding 5; this variant is ADDITIVE and selected
-// by OpticalFlowPipeline ONLY when fg_variant is armed AND emit_second_best is OFF.
+// FG-LOCAL FORK of optical_flow_hier_match.comp — the runner-up (second-best / candidate) tracking
+// COMPILED OUT for the frame-generation DEFAULT flow path (the matcher consumed with emit_second=false
+// AND candidate-ambiguity OFF; the candidate field is neither created nor read on that path). This is an
+// app-local fork that buys performance at the cost of scalability: the CANONICAL
+// optical_flow_hier_match.comp stays BYTE-IDENTICAL for the consumers that DO arm binding 5; this variant
+// is ADDITIVE and selected by OpticalFlowPipeline ONLY when fg_variant is armed AND emit_second_best is OFF.
 //
-// WHAT IS REMOVED vs the canonical (the ONLY difference — see optical_flow_hier_match.comp:167-178,199,
-// 201-203,262-267): the second_cost / second_sad / second_mv runner-up accumulators and their per-candidate
-// demote/insert compares inside the search scan, plus the binding-5 imageStore. The canonical's own comment
-// (:173-175) records that those extra comparisons "run at EVERY level regardless of emit_second" — i.e. they
-// run unconditionally on the default path with NO consumer; this variant strips them. Everything else — the
-// SAME descriptor layout (binding 5 still declared so the pipeline layout / descriptor sets are reused
-// unchanged), the SAME 24-byte push constant block, the SAD math, sad_zero, the candsel + subpel finest-level
-// levers, the dual-centre prior — is IDENTICAL to the canonical, so the MV (binding 3) + SAD (binding 4)
-// outputs this variant writes are byte-for-byte the same the canonical writes on the emit_second=0 path.
+// WHAT IS REMOVED vs the canonical (the ONLY difference): the second_cost / second_sad / second_mv
+// runner-up accumulators and their per-candidate demote/insert compares inside the search scan, plus the
+// binding-5 imageStore. Those extra comparisons run unconditionally in the canonical (at every level,
+// regardless of emit_second) with NO consumer on the default path; this variant strips them. Everything
+// else — the SAME descriptor layout (binding 5 still declared so the pipeline layout / descriptor sets are
+// reused unchanged), the SAME 24-byte push constant block, the SAD math, sad_zero, the candsel + subpel
+// finest-level levers, the dual-centre prior — is IDENTICAL to the canonical, so the MV (binding 3) + SAD
+// (binding 4) outputs this variant writes are byte-for-byte the same the canonical writes on the
+// emit_second=0 path.
 //
-// G2 HONESTY CAVEAT (the supervisor will measure before claiming a win): the SAD texelFetch loop dominates
-// the matcher cost, so removing the handful of runner-up float compares per candidate may be a low-single-digit
-// % saving or lost in fg_perf_bench's `flow ms` jitter. UNCONFIRMED until the bench reads variant vs canonical.
+// PERF NOTE: the SAD texelFetch loop dominates the matcher cost, so removing the handful of runner-up
+// float compares per candidate is a small saving — measure variant vs canonical before claiming a win.
 //
-// Bindings (IDENTICAL to the canonical — the layout is shared so OpticalFlowPipeline reuses match_dsl_/
-// match_pipeline_layout_/descriptor sets unchanged):
+// Bindings (IDENTICAL to the canonical — the layout is shared so OpticalFlowPipeline reuses the match
+// descriptor-set layout / pipeline layout / descriptor sets unchanged):
 //   set=0 binding=0  combined image sampler — this level's frame A
 //   set=0 binding=1  combined image sampler — this level's frame B
 //   set=0 binding=2  combined image sampler — coarser MV field (RG16F), in coarser-level pixels
@@ -37,11 +34,11 @@
 // Push constants (24 bytes — IDENTICAL to the canonical):
 //   int   search_radius   ± window for THIS level
 //   float pred_scale      predictor multiplier (0 at the coarsest level, 2.0 when refining)
-//   int   dual_centre     STAGE-42 temporal MV prior (coarsest level: search both (0,0) and the prior centre)
+//   int   dual_centre     temporal MV prior (coarsest level: search both (0,0) and the prior centre)
 //   int   emit_second     ALWAYS 0 on this variant's path (the runner-up field is not produced here); kept in
 //     the push block so the push-constant range is byte-identical to the canonical pipeline layout.
-//   int   subpel          ARC-A LEVER-1b sub-pixel refinement (finest level only when armed) — IDENTICAL.
-//   int   candsel         ARC-A holonic candidate-selection (finest level only when armed) — IDENTICAL.
+//   int   subpel          sub-pixel refinement (finest level only when armed) — IDENTICAL.
+//   int   candsel         candidate-selection (finest level only when armed) — IDENTICAL.
 #version 450
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(set = 0, binding = 0) uniform sampler2D u_frame_a;
@@ -54,7 +51,7 @@ layout(push_constant) uniform PushConsts { int search_radius; float pred_scale; 
 
 const int kBlockSize = 8;
 
-// ARC-A LEVER-1b sub-pixel helper: PURE SAD (no lambda) at a candidate MV — IDENTICAL to the canonical.
+// Sub-pixel helper: PURE SAD (no lambda) at a candidate MV — IDENTICAL to the canonical.
 float pure_sad(vec3 ref_block[kBlockSize * kBlockSize], ivec2 tile_origin, ivec2 frame_size, ivec2 mv) {
     float sad = 0.0;
     for (int py = 0; py < kBlockSize; ++py)
@@ -106,10 +103,10 @@ void main() {
     float best_sad  = 0.0;   // pure SAD at the winning MV (no lambda)
     ivec2 best_mv   = centre0;
     // THE FORK: the second_cost / second_sad / second_mv runner-up accumulators and their per-candidate
-    // demote/insert branch (canonical :176-178,199,201-203) are REMOVED — the default FG path never reads
-    // the runner-up, so it is not tracked. The scan keeps ONLY the best-so-far, exactly as a single-winner
-    // block-match. The MV/SAD this produces is byte-identical to the canonical's emit_second=0 output (the
-    // runner-up tracking never influenced best_*; it only fed the binding-5 store the canonical gated off).
+    // demote/insert branch are REMOVED — the default FG path never reads the runner-up, so it is not
+    // tracked. The scan keeps ONLY the best-so-far, exactly as a single-winner block-match. The MV/SAD
+    // this produces is byte-identical to the canonical's emit_second=0 output (the runner-up tracking
+    // never influenced best_*; it only fed the binding-5 store the canonical gated off).
     for (int c = 0; c < 2; ++c) {
         if (c == 1 && !do_two) break;
         const ivec2 ctr = (c == 0) ? centre0 : centre1;
@@ -130,8 +127,8 @@ void main() {
                 }
             }
     }
-    // ARC-A LEVER (holonic CANDIDATE-SELECTION) — IDENTICAL to the canonical. At the FINEST level when armed,
-    // give an AMBIGUOUS interior tile the COHERENT region-scale motion instead of its noisy local best.
+    // CANDIDATE-SELECTION — IDENTICAL to the canonical. At the FINEST level when armed, give an AMBIGUOUS
+    // interior tile the COHERENT region-scale motion instead of its noisy local best.
     const float kCandSelMargin = 0.12;   // the local match must beat the region model's SAD by ≥12% to win.
     if (pc.candsel != 0) {
         const ivec2 pred_c = ivec2(round(pred));
@@ -145,7 +142,7 @@ void main() {
             }
         }
     }
-    // ARC-A LEVER-1b: sub-pixel MV at the finest level when armed — IDENTICAL to the canonical.
+    // Sub-pixel MV at the finest level when armed — IDENTICAL to the canonical.
     vec2 mv_out = vec2(float(best_mv.x), float(best_mv.y));
     if (pc.subpel != 0) {
         const float s0  = best_sad;                                              // PURE SAD at best_mv

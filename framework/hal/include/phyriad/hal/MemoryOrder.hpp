@@ -1,7 +1,7 @@
 // framework/hal/include/phyriad/hal/MemoryOrder.hpp
 // Barreras de memoria semánticas, portables a weak-memory architectures.
 //
-// REGLA GLOBAL (enforced por scripts/lint_hal.sh):
+// REGLA GLOBAL (convención del pilar hal):
 //   El código fuera de framework/hal/ NUNCA usa memory_order_* directamente.
 //   Toda operación atómica con semántica de sincronización pasa por
 //   las funciones de este header.
@@ -78,7 +78,6 @@ template <class T>
 // del pilar holons: cada worker escribe su partial_results[f] (stores planos)
 // y luego suma su avance con este RMW; el último en salir (el que observa
 // new_total == total) lee todos los partials con garantía de happens-before.
-// Ver HOLON_IMPLEMENTATION_STRATEGIES.md §5.3.
 // x86: LOCK XADD (ya es una barrera completa). ARM: LDAXR/STLXR con acq+rel.
 template <class T, class U = T>
 PHYRIAD_ALWAYS_INLINE T ctrl_fetch_add_acqrel(std::atomic<T>& a, U delta) noexcept {
@@ -90,7 +89,6 @@ PHYRIAD_ALWAYS_INLINE T ctrl_fetch_add_acqrel(std::atomic<T>& a, U delta) noexce
 // usa esto en su contador "tasks_active" — la última claim-task en salir (la
 // que lleva el contador a 0) resuelve al waiter padre y libera la unidad, con
 // garantía de que ya observa el reduce de la última que completó el trabajo.
-// Ver HOLON_IMPLEMENTATION_STRATEGIES.md §8 / lifetime.
 template <class T, class U = T>
 PHYRIAD_ALWAYS_INLINE T ctrl_fetch_sub_acqrel(std::atomic<T>& a, U delta) noexcept {
     return a.fetch_sub(static_cast<T>(delta), std::memory_order_acq_rel);
@@ -130,8 +128,7 @@ PHYRIAD_ALWAYS_INLINE T stat_fetch_sub_relaxed(std::atomic<T>& a, U delta) noexc
 // 4. FULL FENCE: barrera completa (paths fríos).
 // ─────────────────────────────────────────────────────────────────────────────
 // Barrera seq_cst completa. x86: GCC emite `lock or $0,(%rsp)` (un no-op con prefijo
-// lock = barrera completa, verificado por scripts/verify_hal_codegen.sh; NO MFENCE en
-// GCC), MSVC mfence/__faststorefence. ARM: DMB ISH.
+// lock = barrera completa; NO MFENCE en GCC), MSVC mfence/__faststorefence. ARM: DMB ISH.
 // Coste: ~20-100 ciclos. NO usar en hot path.
 PHYRIAD_ALWAYS_INLINE void full_fence() noexcept {
     std::atomic_thread_fence(std::memory_order_seq_cst);
@@ -179,7 +176,7 @@ PHYRIAD_ALWAYS_INLINE void compiler_fence() noexcept {
 // están prohibidos por el hardware); en ARM emiten el DMB necesario. El odd-bump
 // relajado reemplaza un `lock xadd` serializante — el único escritor es el dueño
 // de la secuencia, así que el bump es un store plano, no un RMW. Forma canónica
-// Rigtorp/Boehm; ver CPU_SUBSTRATE_PRIOR_ART.md Apéndice A.
+// Rigtorp/Boehm.
 PHYRIAD_ALWAYS_INLINE void seq_fence_acquire() noexcept {
     std::atomic_thread_fence(std::memory_order_acquire);
 }

@@ -1,32 +1,27 @@
-// apps/render_assistant/tools/capture_dump/main.cpp
-// capture_dump — standalone Windows screen-capture tap for the PhyriadFG FG-quality test-field.
+// capture_dump — standalone Windows screen-capture tap for the FG-quality test-field.
 //
-// WHY: the FG-quality scorer (framework/render/vulkan/bench/fg_quality_scorer/) needs RGBA8
-// `.rgba` frames + a manifest of a captured target. The canonical use is to capture LSFG's
-// OUTPUT window — a black-box external FG tool — so we can score *its* presented frames
-// (including its interpolated ones) without any access to its code or metrics. This is the
-// "digital capture tap" that replaces the operator's manual 240fps camera-of-the-screen method
-// (HSR120_THROUGHPUT_DIAGNOSIS.md §11: the test-field; this tool feeds layer-2 the scorer).
+// WHY: the FG-quality scorer needs RGBA8 `.rgba` frames + a manifest of a captured target. The
+// canonical use is to capture the OUTPUT window of an external, black-box frame-generation tool
+// (e.g. LSFG) so its presented frames — including its interpolated ones — can be scored without
+// any access to its code or metrics. This is the digital capture tap that feeds the scorer.
 //
 // WHAT: capture N frames of a window (by title substring) or a monitor, write each as an
 // RGBA8 `.rgba` file `<dir>/cap_%06d.rgba` + a `manifest.txt` in the fg_quality_scorer format
 // (`size W H` line + one line per frame: capture index, a high-res QPC timestamp in ms, the
 // filename). Capture is the source's PRESENT cadence — every presented frame, NO de-duplication
-// (we want LSFG's interpolated frames too). Then exit cleanly.
+// (so an external tool's interpolated frames are kept too). Then exit cleanly.
 //
-// CAPTURE BACKENDS (mirror render_assistant/src/main.cpp, verified first-hand):
+// CAPTURE BACKENDS:
 //   --api wgc  (default)  Windows.Graphics.Capture — handles flip-model / borderless / overlay
-//                         present paths (the LSFG-output case). MSVC + C++/WinRT only.
+//                         present paths. MSVC + C++/WinRT only.
 //   --api dd              DXGI Desktop Duplication — captures a whole monitor output.
 //
-// CRITICAL HONESTY (the whole point of the first-run capturability test): WGC/DXGI cannot
-// capture some exclusive-fullscreen / protected (WDA_MONITOR) present paths — the frame comes
-// back ALL-BLACK or the call fails. This tool DETECTS that: if the first ~10 captured frames are
-// all near-zero variance it prints a LOUD warning and still writes what it got — it does NOT
-// silently dump black frames as if they were valid.
+// CAPTURABILITY: WGC/DXGI cannot capture some exclusive-fullscreen / protected (WDA_MONITOR)
+// present paths — the frame comes back ALL-BLACK or the call fails. This tool DETECTS that: if the
+// first ~10 captured frames are all near-zero variance it prints a LOUD warning and still writes
+// what it got — it does NOT silently dump black frames as if they were valid.
 //
 // Standalone (own CMake project). Windows-only. D3D11 + DXGI + (MSVC) WGC/WinRT. NO Vulkan.
-// Author: protocol-loaded build for Swately. Supervisor integrates + builds + verifies first-hand.
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -46,9 +41,8 @@
 #include <vector>
 
 // ─── WGC / WinRT (MSVC + Windows SDK only) ───────────────────────────────────
-// Mirrors render_assistant/src/main.cpp:71-91 — the same include set + the inline
-// IDirect3DDxgiInterfaceAccess declaration (the interop header does NOT surface it under
-// cppwinrt include order on Windows SDK 10.0.2610x → C2065 without this).
+// The include set plus an inline IDirect3DDxgiInterfaceAccess declaration: the interop header does
+// NOT surface it under the cppwinrt include order on recent Windows SDKs, giving C2065 without this.
 #ifdef _MSC_VER
 #define WINRT_LEAN_AND_MEAN
 #include <winrt/base.h>
@@ -80,7 +74,7 @@ static double qpc_now_ms(){ LARGE_INTEGER c; QueryPerformanceCounter(&c); return
 // ─── config ──────────────────────────────────────────────────────────────────
 enum CaptureApi { CA_WGC, CA_DD };
 struct Config {
-    CaptureApi  api = CA_WGC;          // default wgc (flip-model/borderless — the LSFG-output case)
+    CaptureApi  api = CA_WGC;          // default wgc (flip-model/borderless present paths)
     char        window_substr[256]={}; // --window: capture window by title substring
     char        class_substr[256]={};  // --class: capture window by window-CLASS substring (for title-less surfaces, e.g. LSFG's output)
     int         monitor = 0;           // --monitor: DXGI output index (DD captures a display)
@@ -141,7 +135,7 @@ static bool parse_args(int argc, char** argv, Config& c){
     return true;
 }
 
-// ─── D3D11 / DXGI (mirror render_assistant d3d_init / d3d_staging) ─────────────
+// ─── D3D11 / DXGI device + output enumeration ────────────────────────────────
 struct OutInfo { char name[40]={}; RECT coords{}; bool attached=false; HMONITOR hmon=nullptr; int hz=0; };
 struct D3D {
     ID3D11Device* dev=nullptr; ID3D11DeviceContext* ctx=nullptr;
@@ -153,13 +147,12 @@ struct D3D {
 
 // want_dup=false (WGC path): create the D3D11 device only, take dims from the output rect / window
 // client rect. want_dup=true (DD path): also DuplicateOutput on output `ci`.
-// (verbatim shape of render_assistant/src/main.cpp:1253-1285.)
 static bool d3d_init(D3D& d,int ci,bool want_dup){
     D3D_FEATURE_LEVEL fl;
     if(FAILED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,
             D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&d.dev,&fl,&d.ctx))) return false;
     // Enable D3D11 multithread protection so the WGC FrameArrived callback (CopyResource) and the
-    // main loop (Map/Unmap) can share the immediate context safely. (main.cpp:1256-1260.)
+    // main loop (Map/Unmap) can share the immediate context safely.
 #ifdef _MSC_VER
     { ID3D11Multithread* mt=nullptr;
       if(SUCCEEDED(d.ctx->QueryInterface(__uuidof(ID3D11Multithread),(void**)&mt))&&mt){ mt->SetMultithreadProtected(TRUE); mt->Release(); } }
@@ -192,7 +185,6 @@ static bool d3d_init(D3D& d,int ci,bool want_dup){
 static void d3d_shutdown(D3D& d){ rel(d.dup); rel(d.ctx); rel(d.dev); }
 
 // A CPU-readable staging texture of the capture format (D3D11_USAGE_STAGING + CPU_READ).
-// (main.cpp:1302.)
 static ID3D11Texture2D* d3d_staging(D3D& d,uint32_t w,uint32_t h){
     D3D11_TEXTURE2D_DESC td{}; td.Width=w; td.Height=h; td.MipLevels=1; td.ArraySize=1; td.Format=d.fmt;
     td.SampleDesc.Count=1; td.Usage=D3D11_USAGE_STAGING; td.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
@@ -200,7 +192,7 @@ static ID3D11Texture2D* d3d_staging(D3D& d,uint32_t w,uint32_t h){
 }
 
 #ifdef _MSC_VER
-// Find the first visible window whose title contains substr (mirror main.cpp:1287-1299).
+// Find the first visible window whose title contains substr.
 struct WndFind { const char* substr; bool byClass; HWND found; };
 static BOOL CALLBACK enum_wnd_cb(HWND h,LPARAM lp){
     WndFind* f=reinterpret_cast<WndFind*>(lp);
@@ -220,8 +212,8 @@ static HWND find_window_by_class(const char* substr){
 #endif // _MSC_VER
 
 // ─── BGRA8 → RGBA8 .rgba writer ──────────────────────────────────────────────
-// Mapped BGRA8 rows (capture is DXGI_FORMAT_B8G8R8A8_UNORM) → RGBA8 on disk (the scorer's stage11
-// loader expects RGBA8, row-major, W*H*4, no header). Swap B/R per pixel, force A=255. Handles
+// Mapped BGRA8 rows (capture is DXGI_FORMAT_B8G8R8A8_UNORM) → RGBA8 on disk (the scorer's loader
+// expects RGBA8, row-major, W*H*4, no header). Swap B/R per pixel, force A=255. Handles
 // RowPitch != W*4 (DXGI staging rows are pitch-aligned). Returns false on file error.
 //
 // While converting, accumulate a cheap luma sum/sumsq over a subsampled grid so the caller can
@@ -364,7 +356,7 @@ int main(int argc,char** argv){
     int captured=0;
 
     if(cfg.api==CA_DD){
-        // ── DXGI Desktop Duplication path (mirror main.cpp:3095-3107) ──────────
+        // ── DXGI Desktop Duplication path ──────────────────────────────────────
         ID3D11Texture2D* stage=d3d_staging(d,W,H);
         if(!stage){ std::printf("[capture_dump] staging texture alloc failed\n"); std::fclose(mf); d3d_shutdown(d); return 1; }
         int empty_streak=0;
@@ -393,7 +385,7 @@ int main(int argc,char** argv){
     }
 #ifdef _MSC_VER
     else { // CA_WGC
-        // ── Windows.Graphics.Capture path (mirror main.cpp:2440-2521) ──────────
+        // ── Windows.Graphics.Capture path ─────────────────────────────────────
         winrt::init_apartment();   // WinRT MTA — required before any WinRT call; matches CreateFreeThreaded
 
         winrt::com_ptr<IDXGIDevice> dxgi_dev;
@@ -432,7 +424,7 @@ int main(int argc,char** argv){
             d3d_winrt, wgdx::DirectXPixelFormat::B8G8R8A8UIntNormalized, RING_N+2, pool_sz);
 
         // FrameArrived: CopyResource the new BGRA8 surface to the next ring slot. NO de-dup —
-        // every presented frame (incl. LSFG's interpolated ones) is forwarded. (main.cpp:2479-2498.)
+        // every presented frame (incl. an external tool's interpolated ones) is forwarded.
         WgcCtx* raw=&wctx;
         wctx.pool.FrameArrived([raw](auto& p,auto&){
             if(!raw->running.load()) return;
@@ -451,9 +443,9 @@ int main(int argc,char** argv){
         wctx.session=wctx.pool.CreateCaptureSession(item);
         try { wctx.session.IsBorderRequired(false); } catch(...) {}        // Win11 22621+
         try { wctx.session.IsCursorCaptureEnabled(false); } catch(...) {}  // don't bake the cursor in
-        // NOTE: unlike render_assistant we do NOT set MinUpdateInterval — the test-field WANTS every
-        // presented frame at the source's full present cadence (240Hz → ~240 distinct frames/s,
-        // incl. interpolated). The default (no throttle) delivers the source's present rate.
+        // NOTE: we deliberately do NOT set MinUpdateInterval — the test-field WANTS every presented
+        // frame at the source's full present cadence (240Hz → ~240 distinct frames/s, incl.
+        // interpolated). The default (no throttle) delivers the source's present rate.
         wctx.session.StartCapture();
 
         // ── drain the ring → write ────────────────────────────────────────────

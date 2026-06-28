@@ -497,7 +497,7 @@ int main(int argc, char** argv) {
     // The in-order INGEST backlog cap is DECOUPLED from the ring depth. It governs LATENCY (how far behind newest F drains in order before jumping), NOT real-persistence — keep it small so latency stays low while the deep ring keeps the reals valid.
     static constexpr int kIngestBacklog=3;
     static constexpr int kCapSlotsMin=4;   // the minimum viable ring (kGenRing=3 + 1) AND the torn-read floor.
-    static_assert(kCapSlotsMin >= kIngestBacklog + 1, "torn-read safety (STAGE-84/92b): the in-order ingest write head and the present read slot must never collide; the non-collision margin (cap_slots - kIngestBacklog) >= 1 is guaranteed by cap_slots >= kCapSlotsMin >= kIngestBacklog+1. Enforced against the live constants, not a frozen mod-4 example.");
+    static_assert(kCapSlotsMin >= kIngestBacklog + 1, "torn-read safety: the in-order ingest write head and the present read slot must never collide; the non-collision margin (cap_slots - kIngestBacklog) >= 1 is guaranteed by cap_slots >= kCapSlotsMin >= kIngestBacklog+1.");
     int cap_slots=kCapSlotsMin;   // the ACTIVE ring depth (<= kCapSlots max). Auto-sized at init (just before the host-bridge alloc) from the source/flow/resolution regime, or --cap-slots N override. All ring LOOPS + INDEX MATH + validity gates use this runtime value; the static arrays are sized to kCapSlots (the max).
     void* hostR[kCapSlots]={}, *hostI[kGenRing][kMaxInterp]={}, *hostG=nullptr;
     void* hostA=nullptr, *hostRP[kCapSlots]={};          // hostRP × kCapSlots

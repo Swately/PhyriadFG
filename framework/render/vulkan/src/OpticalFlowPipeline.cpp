@@ -1,90 +1,46 @@
 // framework/render/vulkan/src/OpticalFlowPipeline.cpp
-// Implementation — see header for the contract.
+// Implementation — see the header for the contract.
 //
-// STAGE-15: the motion estimator is now HIERARCHICAL (pyramid coarse-to-fine), promoted from
-// bench/stage14_hierarchical (measured: D=16/32/64 tracked at ~38–41 dB, beating the flat search on
-// BOTH quality and cost, and lifting the old R≤32 cap). The public API (init / record_optical_flow /
-// motion_image) is unchanged — this is an internal algorithm swap. The warp pass (corrected, 9b509d7)
-// is untouched.
+// The motion estimator is HIERARCHICAL (pyramid coarse-to-fine): build a small image pyramid of A and B
+// (2x box downsample per level), search a small ±R window at the COARSEST level (a ±R window at scale
+// 2^L reaches ±R·2^L full-res pixels → large motion with a small radius), then propagate the winning MV
+// up and refine with a small ±R at each finer level. This tracks large displacement at O(R²·levels) cost
+// instead of a flat O(D²) search, and is more accurate than a flat search (the pyramid imposes a
+// multi-scale smoothness prior; a huge flat window finds more spurious SAD minima).
 //
-// STAGE-20: confidence gate promoted from bench/stage19_confidence into the pillar, replacing the
-// STAGE-18 per-tile static lock (static_lock_thresh absolute threshold). Changes:
-//   optical_flow_hier_match.comp: +binding 4 (rg16f SAD field: R=sad_best, G=sad_zero); push constant
-//     reverts 12→8 bytes (static_thresh removed); sad_zero always computed; best_sad tracked without
-//     lambda bias; static-lock block removed.
-//   optical_flow_warp.comp: +binding 3 (sampler2D SAD field); output C moves to binding 4; +8-byte
-//     push constants {residual_ceil, improvement_frac}; per-tile WARP/BLEND confidence gate.
-//   init() API: static_lock_thresh → residual_ceil=32.0f + improvement_frac=0.5f.
-//   New sad_field image (RG16F, mv_w×mv_h, STORAGE|SAMPLED), destroyed in shutdown().
+// The matcher emits, per 8x8 tile, the best translational MV (mv_image_, RG16F) plus a SAD field
+// (sad_img_: R=sad_best at the winning MV, G=sad_zero for the in-place residual) that the warp uses as a
+// per-tile confidence gate. The warp samples A and B at the t-weighted motion-vector offset and blends to
+// produce the temporal-phase frame C — result (1−t)*A + t*B, with t∈(0,1) (default 0.5 = midpoint).
 //
-// STAGE-24: post-warp source-agreement gate promoted from bench/stage23_agreement, extending the
-// warp shader. Changes:
-//   optical_flow_warp.comp: push constant 8→12 bytes (+float agreement_threshold); added shared float
-//     s_d[64] + unconditional per-tile d-reduction with barrier(); warp samples A_samp/B_samp fetched
-//     unconditionally (barrier must be in uniform control flow); WARP only when confidence AND
-//     d_tile < agreement_threshold; BLEND otherwise.
-//   init() API: +agreement_thresh=0.20f (default, optimal from bench sweep).
-//   Measured (bench/stage23_agreement, 256×256, GTX 1080 Ti): per-tile thresh=0.20 →
-//     hud_fine +39 dB vs texelFetch conf_only, blob_edge/large_uni/two_vel delta=0;
-//     warp-only cost +12% vs conf_only (barrier + unconditional warp-sample fetch).
-//
-// STAGE-29: Nx present pacing — warp generalised from hardcoded t=0.5 to parametric t∈(0,1).
-//   optical_flow_warp.comp: push constant 12→16 bytes (+float t); half_mv_uv split into
-//     t_mv_uv (= mv*t / out_size) and inv_t_mv_uv (= mv*(1−t) / out_size); result changed
-//     from 0.5*(A+B) to (1−t)*A + t*B for both WARP and BLEND paths.
-//   record_optical_flow(): +float t=0.5f parameter; stores last_slot_ for record_warp_only.
-//   record_warp_only(): new — re-dispatches the warp at a different t, reusing the MV/SAD
-//     from the last record_optical_flow call; enables N-1 intermediate presents per source
-//     frame (Nx pacing in apps/render_assistant/) without re-running the block-match.
-//
-// STAGE-42: temporal MV prior (dual-centre coarsest search) — opt-in, default OFF, every existing
-//   consumer byte-identical with it off. set_temporal_prior(bool) arms it. When armed and a previous
-//   record has run, record_optical_flow copies the previous pair's coarsest MV (mvl_img_[coarsest])
-//   into the predictor image (renamed zero_mv_ → prior_mv_) at record START — before the matcher
-//   overwrites that source — and dispatches the coarsest match with pred_scale=1 + dual_centre=1.
-//   optical_flow_hier_match.comp: push 8→12 bytes (+int dual_centre); the coarsest level evaluates the
-//     ±R window around BOTH (0,0) AND round(prior) and keeps the lower-cost winner (self-healing on
-//     scene cuts — the zero centre wins a poisoned prior by construction; no detector). dual_centre=0
-//     (finer levels + the whole prior-off path) is byte-identical to the pre-STAGE-42 single-centre body.
-//   First armed pair (no seed yet) and frames with a single-level pyramid fall back to the zero-clear.
-//
-// STAGE-77: candidate (second-best / runner-up) field — opt-in via init(emit_second_best=true), default
-//   OFF, every existing consumer byte-identical with it off. A second RGBA16F image (cand_img_, same size
-//   as mv_image_) is created when armed; the FINEST match level emits, per tile, the runner-up MV (.xy,
-//   pixel units) + its pure SAD (.z, .w=0). The matcher (optical_flow_hier_match.comp) gains binding 5
-//   (rgba16f, writeonly) and a 4th push int emit_second (push 12→16 bytes). The binding is ALWAYS in the
-//   layout — when off (and at non-finest levels) a 1×1 RGBA16F placeholder (cand_ph_*) is bound and
-//   emit_second=0, so the shader writes NOTHING there → MV/SAD outputs byte-identical. Purpose: ambiguity
-//   awareness for periodic textures (striped flags, concentric tunnels) where the matcher resolves SAD
-//   ties arbitrarily — the runner-up is the other plausible vector ~one texture period away.
-//
-// ARC-A LEVER-1 (per-tile PARAMETRIC MV refinement — `--mv-affine`, opt-in via init(mv_affine=true),
-//   default OFF, every existing consumer byte-identical with it off): the block-match emits ONE
-//   translational MV per 8x8 tile; on NON-translational motion (zoom/rotation/scale) a single MV cannot
-//   represent the intra-tile divergence/curl → wrong MVs → the warp samples wrong content → the
-//   crossfade the operator sees on real combat (proven held-out: zoom flowdsc 0.599, orbit 0.834, mixed
-//   1.211 — step-INVARIANT, NOT reducible by search radius). The fix adds a per-tile LINEAR model
-//   WITHOUT bloating the hot match kernel: a NEW post-pass dispatch (optical_flow_affine_fit.comp) runs
-//   AFTER the finest match level, READS the full-res MV field, fits — per tile — the local 2x2 linear
-//   part M over the 3x3 neighbourhood of best_mv samples (fp32 separable LS), and EMITS M into a
-//   COMPANION per-tile affine field (aff_img_, RGBA16F, same size as mv_image_). The full per-pixel flow
-//   a consumer reconstructs is flow(p) = best_mv(tile) + M·(p − tile_centre) [p in tile units]. On pure
-//   translation M≈0 → flow(p)=best_mv exactly = byte-identical. Ill-conditioned (flat interior / aperture
-//   / grid border / outlier-slope) gates M→0 via the SAME confidence test the warp uses (sad_best vs
-//   residual_ceil, sad_zero·(1−improvement_frac)>sad_best) — a tile the warp would BLEND never gets a
-//   fabricated gradient. When OFF: aff_img_ is NOT created, the post-pass is NOT recorded, the layout/
-//   bindings of the existing passes are UNCHANGED → MV/SAD outputs byte-identical. When ON, kCoarseR is
-//   also raised 6→8 (the cheap large-motion/fast-pan reach rider, gated on the same arm). Phase 1 (this):
-//   matcher emits M; the in-pillar warp does NOT yet consume it (phase 2 = the output/PSNR win) — the
-//   scorer measures whether M reduces the flow discrepancy BEFORE warp integration.
+// Optional, additive outputs — each opt-in, default OFF, and byte-identical to the canonical path when
+// off (the off binding/push is the exact integer best_mv; placeholder images keep the layout valid):
+//   - second-best / candidate field (emit_second_best): the finest match level also emits, per tile, the
+//     runner-up MV (.xy, pixel units) + its pure SAD (.z, .w=0) into a companion RGBA16F image. Ambiguity
+//     awareness for periodic textures (striped flags, concentric tunnels) where the matcher resolves SAD
+//     ties arbitrarily — the runner-up is the other plausible vector ~one texture period away.
+//   - per-tile affine refinement (mv_affine): a post-pass after the finest match reads the full-res MV
+//     field and fits, per tile, the local 2x2 linear part M over the 3x3 neighbourhood of best_mv
+//     samples (fp32 separable LS), emitting M into a companion RGBA16F field. Full per-pixel flow is then
+//     flow(p) = best_mv(tile) + M·(p − tile_centre) [p in tile units]; on pure translation M≈0. M is
+//     gated to 0 on ill-conditioned tiles (flat interior / aperture / grid border / outlier slope) via
+//     the same confidence test the warp uses, so a tile the warp would BLEND never gets a fabricated
+//     gradient.
+//   - sub-pixel MV (mv_subpel), wider coarse radius (coarse_wide), candidate-selection (mv_candsel):
+//     finest-level refinements that only move push constants or image content, never bindings.
+//   - temporal MV prior (set_temporal_prior): seeds the coarsest search with the previous pair's coarse
+//     MV via a dual-centre search (self-healing on scene cuts — the zero centre wins a poisoned prior).
+//   - FG-variant matcher (fg_variant): an app-local matcher fork with the runner-up tracking compiled
+//     out, used on the default path where the second-best field is unused; shares the canonical
+//     descriptor-set + push-constant layout.
 //
 #include <phyriad/render/vulkan/OpticalFlowPipeline.hpp>
 
 #include "optical_flow_pyr_down_spv.hpp"
 #include "optical_flow_hier_match_spv.hpp"
-#include "optical_flow_hier_match_fg_spv.hpp"  // CANON #12 fork: FG-variant matcher (runner-up tracking out)
+#include "optical_flow_hier_match_fg_spv.hpp"  // FG-variant matcher (runner-up tracking compiled out)
 #include "optical_flow_warp_spv.hpp"
-#include "optical_flow_affine_fit_spv.hpp"   // ARC-A LEVER-1: per-tile affine companion-field post-pass
+#include "optical_flow_affine_fit_spv.hpp"   // per-tile affine companion-field post-pass
 
 #include <algorithm>
 #include <cstdio>
@@ -190,17 +146,13 @@ void compute_membar(VkCommandBuffer cmd) noexcept {   // shader-write → shader
 }
 
 constexpr uint32_t kBlockSize = 8u;   // matches the shaders' hard-coded value
-constexpr int32_t  kCoarseR   = 6;    // coarsest-level radius (±6 at scale 2^(n-1) full-res → ±48 px
-                                      //   at the 4090-spare operating size, covers D≤48). STAGE-17
-                                      //   measured Rc6/Rf2 as near-lossless at 0.41× the Rc10/Rf3 cost.
-constexpr int32_t  kCoarseRAffine = 8; // ARC-A LEVER-1b rider (DECOUPLED): raise the coarsest radius 6→8
-                                      //   (±8·2^(n-1) full-res reach) for the secondary large-motion/
-                                      //   fast-pan reach mode. Behind its OWN default-OFF switch
-                                      //   (coarse_wide_) — it NO LONGER rides on --mv-affine, which the
-                                      //   supervisor measured as net-negative (47 worse / 8 better). When
-                                      //   coarse_wide_ is OFF the coarsest radius keeps kCoarseR=6
-                                      //   (byte-identical). The name is kept for the decoupled rider.
-constexpr int32_t  kRefineR   = 2;    // intermediate-level refinement radius (STAGE-17: Rf2)
+constexpr int32_t  kCoarseR   = 6;    // coarsest-level search radius (±6 at scale 2^(n-1) reaches ±48
+                                      //   full-res px → covers D≤48; near-lossless at low cost)
+constexpr int32_t  kCoarseRAffine = 8; // wider coarsest-level radius (6→8, ±8·2^(n-1) full-res reach) for
+                                      //   the large-motion / fast-pan reach mode, gated on coarse_wide_.
+                                      //   When coarse_wide_ is OFF the coarsest radius stays kCoarseR=6
+                                      //   (byte-identical).
+constexpr int32_t  kRefineR   = 2;    // intermediate-level refinement radius
 constexpr uint32_t kMinCoarse = 32u;  // coarsest level keeps ≥ this many px/axis (small objects survive)
 
 } // anonymous
@@ -224,19 +176,18 @@ bool OpticalFlowPipeline::create_mv_image(VkPhysicalDevice phys_dev,
 bool OpticalFlowPipeline::create_sad_field_image(VkPhysicalDevice phys_dev,
                                                  VkDevice         device) noexcept
 {
-    // Same dimensions as the level-0 MV image.  STORAGE (written by hier_match) +
-    // SAMPLED (read by confidence warp).  TRANSFER_SRC: the field is now copy-able to a host
-    // bridge so a downstream presenter can re-warp at an arbitrary phase off-device (STAGE-41
-    // warp-at-presenter ships MV+SAD instead of pre-warped frames); mirrors the MV image's
-    // existing TRANSFER_SRC. Additive — no behavioural change to the in-pillar warp path.
+    // Same dimensions as the level-0 MV image. STORAGE (written by the block-match) + SAMPLED (read by
+    // the confidence warp). TRANSFER_SRC: the field is copy-able to a host bridge so a downstream
+    // presenter can re-warp at an arbitrary phase off-device (ships MV+SAD instead of pre-warped frames);
+    // mirrors the MV image's TRANSFER_SRC. Additive — no behavioural change to the in-pillar warp path.
     return create_image_2d(phys_dev, device, mv_w_, mv_h_, VK_FORMAT_R16G16_SFLOAT,
         VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         sad_img_, sad_view_, sad_memory_);
 }
 
-// STAGE-77 candidate (second-best) field: same dimensions as the level-0 MV/SAD images, RGBA16F.
-// STORAGE (written by the finest hier_match level), SAMPLED (a downstream warp samples it), TRANSFER_SRC
-// (copy-able to a host bridge, mirroring mv_image_/sad_img_ — the warp-at-presenter ships it off-device).
+// Candidate (second-best) field: same dimensions as the level-0 MV/SAD images, RGBA16F. STORAGE (written
+// by the finest block-match level), SAMPLED (a downstream warp samples it), TRANSFER_SRC (copy-able to a
+// host bridge, mirroring mv_image_/sad_img_ — shipped off-device for warp-at-presenter).
 bool OpticalFlowPipeline::create_cand_image(VkPhysicalDevice phys_dev,
                                             VkDevice         device) noexcept
 {
@@ -245,10 +196,10 @@ bool OpticalFlowPipeline::create_cand_image(VkPhysicalDevice phys_dev,
         cand_img_, cand_view_, cand_memory_);
 }
 
-// STAGE-77 1×1 RGBA16F STORAGE placeholder bound at match binding 5 whenever a level must NOT write the
-// candidate field (every non-finest level, and every level when emit_second_best_ is OFF). The shader's
-// emit_second push is 0 in those cases → no imageStore touches this image; it exists only to keep the
-// descriptor layout valid (the established placeholder discipline). Always created (negligible — one texel).
+// 1×1 RGBA16F STORAGE placeholder bound at match binding 5 whenever a level must NOT write the candidate
+// field (every non-finest level, and every level when emit_second_best_ is OFF). The shader's emit_second
+// push is 0 in those cases → no imageStore touches this image; it exists only to keep the descriptor
+// layout valid. Always created (negligible — one texel).
 bool OpticalFlowPipeline::create_cand_placeholder(VkPhysicalDevice phys_dev,
                                                   VkDevice         device) noexcept
 {
@@ -257,11 +208,11 @@ bool OpticalFlowPipeline::create_cand_placeholder(VkPhysicalDevice phys_dev,
         cand_ph_img_, cand_ph_view_, cand_ph_memory_);
 }
 
-// ARC-A LEVER-1 affine companion field: same dimensions as the level-0 MV/SAD images, RGBA16F.
-// STORAGE (written by the affine-fit post-pass), SAMPLED (a downstream warp samples it — phase 2),
-// TRANSFER_SRC (copy-able to a host bridge, mirroring mv_image_/sad_img_). Created ONLY when armed.
-// Holds the per-tile 2x2 linear part M = (a,b,c,d) of the local affine; the translational part is the
-// tile's own best_mv in mv_image_.
+// Affine companion field: same dimensions as the level-0 MV/SAD images, RGBA16F. STORAGE (written by the
+// affine-fit post-pass), SAMPLED (a downstream warp samples it), TRANSFER_SRC (copy-able to a host
+// bridge, mirroring mv_image_/sad_img_). Created ONLY when mv_affine_ is armed. Holds the per-tile 2x2
+// linear part M = (a,b,c,d) of the local affine; the translational part is the tile's own best_mv in
+// mv_image_.
 bool OpticalFlowPipeline::create_affine_image(VkPhysicalDevice phys_dev,
                                               VkDevice         device) noexcept
 {
@@ -283,17 +234,16 @@ bool OpticalFlowPipeline::create_pyramid_resources(VkPhysicalDevice phys_dev,
         if (!create_image_2d(phys_dev, device, lvl_w_[i], lvl_h_[i], VK_FORMAT_R8G8B8A8_UNORM,
                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
                 pyr_b_img_[i], pyr_b_view_[i], pyr_b_mem_[i])) return false;
-        // +TRANSFER_SRC (STAGE-42): the coarsest level's MV is copied into the predictor image at
-        // the start of the NEXT record when the temporal prior is armed. Additive — the flag does
-        // not change the prior-off path (no copy is recorded). Applied to all intermediate levels
-        // for symmetry; only n_levels_-1 is ever a copy source.
+        // +TRANSFER_SRC: when the temporal prior is armed, the coarsest level's MV is copied into the
+        // predictor image at the start of the NEXT record. Additive — the prior-off path records no
+        // copy. Applied to all intermediate levels for symmetry; only n_levels_-1 is ever a copy source.
         if (!create_image_2d(phys_dev, device, mvl_w_[i], mvl_h_[i], VK_FORMAT_R16G16_SFLOAT,
                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                 mvl_img_[i], mvl_view_[i], mvl_mem_[i])) return false;
     }
-    // Coarsest-level predictor (STAGE-42, renamed from zero_mv_): cleared to (0,0) when the prior is
-    // off or on the first armed pair (pred_scale=0 nullifies it = old zero predictor); else the prior
-    // pair's coarse MV is copied in (TRANSFER_DST) then sampled (dual_centre=1, pred_scale=1).
+    // Coarsest-level predictor: cleared to (0,0) when the prior is off or on the first armed pair
+    // (pred_scale=0 nullifies it = a zero predictor); else the prior pair's coarse MV is copied in
+    // (TRANSFER_DST) then sampled (dual_centre=1, pred_scale=1).
     return create_image_2d(phys_dev, device, mvl_w_[n_levels_ - 1u], mvl_h_[n_levels_ - 1u],
         VK_FORMAT_R16G16_SFLOAT,
         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -343,8 +293,8 @@ bool OpticalFlowPipeline::create_downsample_pipeline(VkDevice device) noexcept
 bool OpticalFlowPipeline::create_block_match_pipeline(VkDevice device) noexcept
 {
     const VkSampler immutable[3] = { sampler_, sampler_, sampler_ };
-    // STAGE-77: +binding 5 (rgba16f storage — the second-best/candidate field). Always present in the
-    // layout (the placeholder discipline) — the matcher's emit_second push gates the actual write.
+    // Binding 5 (rgba16f storage) = the second-best/candidate field. Always present in the layout (bound
+    // to the placeholder when not in use) — the matcher's emit_second push gates the actual write.
     const VkDescriptorSetLayoutBinding bindings[6] = {
         { 0u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, &immutable[0] },
         { 1u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, &immutable[1] },
@@ -359,11 +309,10 @@ bool OpticalFlowPipeline::create_block_match_pipeline(VkDevice device) noexcept
     if (vkCreateDescriptorSetLayout(device, &dsl_ci, nullptr, &match_dsl_) != VK_SUCCESS) return false;
 
     // Push constants (24 bytes): { int search_radius; float pred_scale; int dual_centre; int emit_second; int subpel; int candsel; }
-    // static_thresh removed (STAGE-20 — confidence gate in warp replaces the static lock).
-    // +int dual_centre (STAGE-42 — temporal MV prior; 0 = single-centre, byte-identical default).
-    // +int emit_second (STAGE-77 — 1 at the finest level when armed, 0 everywhere else / when off).
-    // +int subpel (ARC-A LEVER-1b — 1 at the finest level when mv_subpel armed, 0 everywhere else / off).
-    // +int candsel (ARC-A holonic candidate-selection — 1 at the finest level when mv_candsel armed, 0 else).
+    //   dual_centre: temporal MV prior; 0 = single-centre (default).
+    //   emit_second: 1 at the finest level when the candidate field is armed, 0 everywhere else.
+    //   subpel:      1 at the finest level when sub-pixel MV is armed, 0 everywhere else.
+    //   candsel:     1 at the finest level when candidate-selection is armed, 0 everywhere else.
     VkPushConstantRange pc{};
     pc.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     pc.size       = 5u * sizeof(int32_t) + sizeof(float);
@@ -392,13 +341,13 @@ bool OpticalFlowPipeline::create_block_match_pipeline(VkDevice device) noexcept
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// create_block_match_fg_pipeline  (CANON #12 APP-LOCAL FORK: the FG-variant matcher with the runner-up /
-//   STAGE-77 second-best tracking compiled out — optical_flow_hier_match_fg.comp). It REUSES the canonical
-//   matcher's descriptor-set layout (match_dsl_) and pipeline layout (match_pipeline_layout_), because the
-//   variant shader declares the SAME 6 bindings and the SAME 24-byte push block — only the SPV module
-//   differs. So this builds ONLY a second VkPipeline; the descriptor sets allocated for the canonical are
-//   bound to it unchanged. Called by init() ONLY when fg_variant_ is armed AND emit_second_best_ is OFF,
-//   AFTER create_block_match_pipeline() (which builds match_pipeline_layout_ this depends on).
+// create_block_match_fg_pipeline  (app-local FG-variant matcher with the runner-up / second-best tracking
+//   compiled out — optical_flow_hier_match_fg.comp). REUSES the canonical matcher's descriptor-set layout
+//   (match_dsl_) and pipeline layout (match_pipeline_layout_), because the variant shader declares the
+//   SAME 6 bindings and the SAME 24-byte push block — only the SPV module differs. So this builds ONLY a
+//   second VkPipeline; the descriptor sets allocated for the canonical are bound to it unchanged. Called
+//   by init() ONLY when fg_variant_ is armed AND emit_second_best_ is OFF, AFTER
+//   create_block_match_pipeline() (which builds the match_pipeline_layout_ this depends on).
 // ─────────────────────────────────────────────────────────────────────────────
 bool OpticalFlowPipeline::create_block_match_fg_pipeline(VkDevice device) noexcept
 {
@@ -420,7 +369,7 @@ bool OpticalFlowPipeline::create_block_match_fg_pipeline(VkDevice device) noexce
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// create_warp_pipeline  (confidence warp — STAGE-20: +SAD field sampler, 8-byte push)
+// create_warp_pipeline  (confidence+agreement warp: A, B, MV, SAD field samplers + C storage out)
 // ─────────────────────────────────────────────────────────────────────────────
 bool OpticalFlowPipeline::create_warp_pipeline(VkDevice device) noexcept
 {
@@ -466,7 +415,7 @@ bool OpticalFlowPipeline::create_warp_pipeline(VkDevice device) noexcept
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// create_affine_pipeline  (ARC-A LEVER-1: per-tile affine-fit post-pass)
+// create_affine_pipeline  (per-tile affine-fit post-pass)
 //   bindings: 0 = MV field sampler, 1 = affine-params storage out, 2 = SAD field sampler (the gate)
 //   8-byte push { float residual_ceil; float improvement_frac; }
 //   Created ONLY when armed (mv_affine_); the whole post-pass is opt-in.
@@ -519,14 +468,14 @@ bool OpticalFlowPipeline::allocate_descriptor_sets(VkDevice device,
 {
     // Per slot:
     //   downsample: 2·(kLevels-1) sets  (1 CIS + 1 STO each)
-    //   match:      kLevels sets         (3 CIS + 3 STO each — +1 STO sad_field STAGE-20, +1 STO cand STAGE-77)
-    //   warp:       1 set               (4 CIS + 1 STO     — +1 CIS for sad_field, STAGE-20)
-    // ARC-A LEVER-1: +1 set/slot for the affine post-pass when armed (2 CIS + 1 STO each).
+    //   match:      kLevels sets         (3 CIS + 3 STO each — MV out, SAD field out, candidate field out)
+    //   warp:       1 set               (4 CIS + 1 STO     — A, B, MV, SAD samplers + C storage)
+    //   affine:     +1 set/slot for the post-pass when armed (2 CIS + 1 STO each).
     const uint32_t aff_sets   = mv_affine_ ? 1u : 0u;
     const uint32_t down_sets  = 2u * (n_levels_ - 1u);
     const uint32_t per_slot   = down_sets + n_levels_ + 1u + aff_sets;
     const uint32_t samplers   = (down_sets * 1u) + (n_levels_ * 3u) + 4u + (aff_sets * 2u);
-    const uint32_t storages   = (down_sets * 1u) + (n_levels_ * 3u) + 1u + (aff_sets * 1u);   // STAGE-77: 3 STO per match set
+    const uint32_t storages   = (down_sets * 1u) + (n_levels_ * 3u) + 1u + (aff_sets * 1u);   // 3 STO per match set
     const VkDescriptorPoolSize sizes[2] = {
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, samplers * max_in_flight },
         { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          storages * max_in_flight },
@@ -551,7 +500,7 @@ bool OpticalFlowPipeline::allocate_descriptor_sets(VkDevice device,
         for (uint32_t i = 0u; i < n_levels_; ++i)
             if (!alloc_one(match_dsl_, match_set_[s][i])) return false;
         if (!alloc_one(warp_dsl_, warp_sets_[s])) return false;
-        if (mv_affine_ && !alloc_one(affine_dsl_, affine_set_[s])) return false;   // ARC-A LEVER-1
+        if (mv_affine_ && !alloc_one(affine_dsl_, affine_set_[s])) return false;   // affine post-pass set
     }
     n_sets_ = max_in_flight;
     next_set_ = 0u;
@@ -590,21 +539,21 @@ bool OpticalFlowPipeline::init(VkPhysicalDevice phys_dev,
     residual_ceil_     = residual_ceil;
     improvement_frac_  = improvement_frac;
     agreement_thresh_  = agreement_thresh;
-    emit_second_best_  = emit_second_best;   // STAGE-77 candidate field arm switch
-    mv_affine_         = mv_affine;          // ARC-A LEVER-1 affine post-pass arm switch
-    mv_subpel_         = mv_subpel;          // ARC-A LEVER-1b sub-pixel-MV arm switch (finest level only)
-    coarse_wide_       = coarse_wide;        // ARC-A LEVER-1b decoupled coarse-radius rider (6→8)
-    mv_candsel_        = mv_candsel;         // ARC-A holonic candidate-selection arm switch (finest level only)
-    // CANON #12 app-local fork: the FG-variant matcher applies ONLY on the default path (emit_second_best
-    // OFF). When emit_second_best is ON the runner-up field IS consumed → the canonical matcher must run; we
-    // fold that here so match_fg_active() reflects the actual binding decision, not just the request.
+    emit_second_best_  = emit_second_best;   // candidate field arm switch
+    mv_affine_         = mv_affine;          // affine post-pass arm switch
+    mv_subpel_         = mv_subpel;          // sub-pixel-MV arm switch (finest level only)
+    coarse_wide_       = coarse_wide;        // decoupled coarse-radius rider (6→8)
+    mv_candsel_        = mv_candsel;         // candidate-selection arm switch (finest level only)
+    // The app-local FG-variant matcher applies ONLY on the default path (emit_second_best OFF). When
+    // emit_second_best is ON the runner-up field IS consumed → the canonical matcher must run; fold that
+    // here so match_fg_active() reflects the actual binding decision, not just the request.
     fg_variant_        = fg_variant && !emit_second_best;
     frame_w_           = width;
     frame_h_           = height;
 
-    // Choose pyramid depth so the COARSEST level keeps ≥ kMinCoarse px/axis — over-downsampling
-    // makes small objects vanish (the STAGE-14 caveat) and the coarse estimate becomes garbage that
-    // the propagation amplifies. Big frames get the full kLevels (large-D reach); tiny frames fewer.
+    // Choose pyramid depth so the COARSEST level keeps ≥ kMinCoarse px/axis — over-downsampling makes
+    // small objects vanish and the coarse estimate becomes garbage that the propagation amplifies. Big
+    // frames get the full kLevels (large-D reach); tiny frames fewer.
     n_levels_ = 1u;
     while (n_levels_ < kLevels &&
            (width  >> n_levels_) >= kMinCoarse &&
@@ -636,19 +585,19 @@ bool OpticalFlowPipeline::init(VkPhysicalDevice phys_dev,
 
     if (!create_mv_image(phys_dev, device, width, height))   { shutdown(device); return false; }
     if (!create_sad_field_image(phys_dev, device))           { shutdown(device); return false; }
-    // STAGE-77: always create the 1×1 placeholder (the off-path / non-finest-level binding); create the
-    // full-size candidate field only when armed.
+    // Always create the 1×1 placeholder (the off-path / non-finest-level binding); create the full-size
+    // candidate field only when armed.
     if (!create_cand_placeholder(phys_dev, device))          { shutdown(device); return false; }
     if (emit_second_best_ && !create_cand_image(phys_dev, device)) { shutdown(device); return false; }
-    // ARC-A LEVER-1: the affine companion field + its fit pipeline exist only when armed.
+    // The affine companion field + its fit pipeline exist only when armed.
     if (mv_affine_ && !create_affine_image(phys_dev, device)) { shutdown(device); return false; }
     if (!create_pyramid_resources(phys_dev, device))         { shutdown(device); return false; }
     if (!create_downsample_pipeline(device))                 { shutdown(device); return false; }
     if (!create_block_match_pipeline(device))                { shutdown(device); return false; }
-    // CANON #12 app-local fork: build the FG-variant matcher (runner-up tracking compiled out) ONLY when
-    // armed for the default path (fg_variant_ already AND-folds !emit_second_best above). Reuses the
-    // canonical's match_pipeline_layout_, so it MUST follow create_block_match_pipeline. When off, no extra
-    // pipeline exists → byte-identical to the canonical-only matcher.
+    // Build the FG-variant matcher (runner-up tracking compiled out) ONLY when armed for the default path
+    // (fg_variant_ already AND-folds !emit_second_best above). It reuses the canonical's
+    // match_pipeline_layout_, so it MUST follow create_block_match_pipeline. When off, no extra pipeline
+    // exists → byte-identical to the canonical-only matcher.
     if (fg_variant_ && !create_block_match_fg_pipeline(device)) { shutdown(device); return false; }
     if (!create_warp_pipeline(device))                       { shutdown(device); return false; }
     if (mv_affine_ && !create_affine_pipeline(device))       { shutdown(device); return false; }
@@ -665,15 +614,15 @@ void OpticalFlowPipeline::shutdown(VkDevice device) noexcept {
 
     if (desc_pool_ != VK_NULL_HANDLE) { vkDestroyDescriptorPool(device, desc_pool_, nullptr); desc_pool_ = VK_NULL_HANDLE; }
 
-    // ARC-A LEVER-1 affine post-pass (created only when armed; guards are no-ops when off).
+    // Affine post-pass (created only when armed; guards are no-ops when off).
     if (affine_pipeline_        != VK_NULL_HANDLE) { vkDestroyPipeline(device, affine_pipeline_, nullptr); affine_pipeline_ = VK_NULL_HANDLE; }
     if (affine_pipeline_layout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device, affine_pipeline_layout_, nullptr); affine_pipeline_layout_ = VK_NULL_HANDLE; }
     if (affine_dsl_             != VK_NULL_HANDLE) { vkDestroyDescriptorSetLayout(device, affine_dsl_, nullptr); affine_dsl_ = VK_NULL_HANDLE; }
     if (warp_pipeline_         != VK_NULL_HANDLE) { vkDestroyPipeline(device, warp_pipeline_, nullptr); warp_pipeline_ = VK_NULL_HANDLE; }
     if (warp_pipeline_layout_  != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device, warp_pipeline_layout_, nullptr); warp_pipeline_layout_ = VK_NULL_HANDLE; }
     if (warp_dsl_              != VK_NULL_HANDLE) { vkDestroyDescriptorSetLayout(device, warp_dsl_, nullptr); warp_dsl_ = VK_NULL_HANDLE; }
-    // CANON #12 app-local fork: the FG-variant matcher pipeline (shares match_pipeline_layout_ — destroyed
-    // separately below; this destroys only the variant VkPipeline). No-op when the fork was off.
+    // The FG-variant matcher pipeline (shares match_pipeline_layout_ — destroyed separately below; this
+    // destroys only the variant VkPipeline). No-op when the fork was off.
     if (match_pipeline_fg_     != VK_NULL_HANDLE) { vkDestroyPipeline(device, match_pipeline_fg_, nullptr); match_pipeline_fg_ = VK_NULL_HANDLE; }
     if (match_pipeline_        != VK_NULL_HANDLE) { vkDestroyPipeline(device, match_pipeline_, nullptr); match_pipeline_ = VK_NULL_HANDLE; }
     if (match_pipeline_layout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device, match_pipeline_layout_, nullptr); match_pipeline_layout_ = VK_NULL_HANDLE; }
@@ -683,21 +632,21 @@ void OpticalFlowPipeline::shutdown(VkDevice device) noexcept {
     if (down_dsl_             != VK_NULL_HANDLE) { vkDestroyDescriptorSetLayout(device, down_dsl_, nullptr); down_dsl_ = VK_NULL_HANDLE; }
     if (sampler_              != VK_NULL_HANDLE) { vkDestroySampler(device, sampler_, nullptr); sampler_ = VK_NULL_HANDLE; }
 
-    // Level-0 MV (the public field) and the SAD field (STAGE-20).
+    // Level-0 MV (the public field) and the SAD field.
     if (mv_view_    != VK_NULL_HANDLE) { vkDestroyImageView(device, mv_view_,   nullptr); mv_view_    = VK_NULL_HANDLE; }
     if (mv_image_   != VK_NULL_HANDLE) { vkDestroyImage(device, mv_image_,      nullptr); mv_image_   = VK_NULL_HANDLE; }
     if (mv_memory_  != VK_NULL_HANDLE) { vkFreeMemory(device, mv_memory_,       nullptr); mv_memory_  = VK_NULL_HANDLE; }
     if (sad_view_   != VK_NULL_HANDLE) { vkDestroyImageView(device, sad_view_,  nullptr); sad_view_   = VK_NULL_HANDLE; }
     if (sad_img_    != VK_NULL_HANDLE) { vkDestroyImage(device, sad_img_,       nullptr); sad_img_    = VK_NULL_HANDLE; }
     if (sad_memory_ != VK_NULL_HANDLE) { vkFreeMemory(device, sad_memory_,      nullptr); sad_memory_ = VK_NULL_HANDLE; }
-    // STAGE-77 candidate field + its placeholder.
+    // Candidate field + its placeholder.
     if (cand_view_     != VK_NULL_HANDLE) { vkDestroyImageView(device, cand_view_,    nullptr); cand_view_     = VK_NULL_HANDLE; }
     if (cand_img_      != VK_NULL_HANDLE) { vkDestroyImage(device, cand_img_,         nullptr); cand_img_      = VK_NULL_HANDLE; }
     if (cand_memory_   != VK_NULL_HANDLE) { vkFreeMemory(device, cand_memory_,        nullptr); cand_memory_   = VK_NULL_HANDLE; }
     if (cand_ph_view_  != VK_NULL_HANDLE) { vkDestroyImageView(device, cand_ph_view_, nullptr); cand_ph_view_  = VK_NULL_HANDLE; }
     if (cand_ph_img_   != VK_NULL_HANDLE) { vkDestroyImage(device, cand_ph_img_,      nullptr); cand_ph_img_   = VK_NULL_HANDLE; }
     if (cand_ph_memory_!= VK_NULL_HANDLE) { vkFreeMemory(device, cand_ph_memory_,     nullptr); cand_ph_memory_= VK_NULL_HANDLE; }
-    // ARC-A LEVER-1 affine companion field.
+    // Affine companion field.
     if (aff_view_   != VK_NULL_HANDLE) { vkDestroyImageView(device, aff_view_,  nullptr); aff_view_   = VK_NULL_HANDLE; }
     if (aff_img_    != VK_NULL_HANDLE) { vkDestroyImage(device, aff_img_,       nullptr); aff_img_    = VK_NULL_HANDLE; }
     if (aff_memory_ != VK_NULL_HANDLE) { vkFreeMemory(device, aff_memory_,      nullptr); aff_memory_ = VK_NULL_HANDLE; }
@@ -721,14 +670,14 @@ void OpticalFlowPipeline::shutdown(VkDevice device) noexcept {
     for (auto& row : down_b_set_) for (auto& s : row) s = VK_NULL_HANDLE;
     for (auto& row : match_set_)  for (auto& s : row) s = VK_NULL_HANDLE;
     for (auto& s : warp_sets_)    s = VK_NULL_HANDLE;
-    for (auto& s : affine_set_)   s = VK_NULL_HANDLE;   // ARC-A LEVER-1
+    for (auto& s : affine_set_)   s = VK_NULL_HANDLE;   // affine post-pass sets
     n_sets_ = 0u; next_set_ = 0u; n_levels_ = 0u;
     mv_w_ = mv_h_ = frame_w_ = frame_h_ = 0u;
-    have_prev_mv_ = false;   // STAGE-42: a re-armed pipeline must re-seed (no stale prior). temporal_prior_ kept (the arm switch).
-    fg_variant_   = false;    // CANON #12 fork: a re-init re-decides the variant from its own args (match_pipeline_fg_ already freed above).
-    // CANON #12 fork (descriptor prebake): a re-init must re-bake from its own inputs — clear the arm + the
-    // baked parity views (the sets they pointed at are invalidated with the pool above). desc_update_calls_
-    // is NOT reset here — it is a lifetime instrument; a test/bench reads it across a record, not across init.
+    have_prev_mv_ = false;   // a re-armed pipeline must re-seed (no stale prior); temporal_prior_ kept (the arm switch).
+    fg_variant_   = false;    // a re-init re-decides the variant from its own args (match_pipeline_fg_ already freed above).
+    // Descriptor prebake: a re-init must re-bake from its own inputs — clear the arm + the baked parity
+    // views (the sets they pointed at are invalidated with the pool above). desc_update_calls_ is NOT
+    // reset here — it is a lifetime instrument, read across a record, not across init.
     fg_prebake_ = false;
     fg_pb_a_[0] = fg_pb_b_[0] = fg_pb_a_[1] = fg_pb_b_[1] = fg_pb_c_ = VK_NULL_HANDLE;
     device_ = VK_NULL_HANDLE;
@@ -736,9 +685,9 @@ void OpticalFlowPipeline::shutdown(VkDevice device) noexcept {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // write_slot_descriptors  (the per-slot descriptor-update block, shared by the per-record path AND the
-//   CANON #12 prebake). Writes EVERY binding of this slot's down/match/warp sets from the level-0 (a,b)
+//   descriptor prebake). Writes EVERY binding of this slot's down/match/warp sets from the level-0 (a,b)
 //   input views + the pipeline's own constant images. Each vkUpdateDescriptorSets is counted in
-//   desc_update_calls_ (the G2 instrument). This is the BURST the prebake fork moves off the F-thread.
+//   desc_update_calls_. This call burst is what the prebake fork moves off the per-record path.
 // ─────────────────────────────────────────────────────────────────────────────
 void OpticalFlowPipeline::write_slot_descriptors(uint32_t    slot,
                                                  VkImageView a_view,
@@ -782,7 +731,7 @@ void OpticalFlowPipeline::write_slot_descriptors(uint32_t    slot,
         write_storage(match_set_[slot][i], 3u, mv_level(i));
         write_storage(match_set_[slot][i], 4u, sad_view_);   // SAD field output (finest level wins)
         const VkImageView cand_v = (emit_cand && i == 0u) ? cand_view_ : cand_ph_view_;
-        write_storage(match_set_[slot][i], 5u, cand_v);      // STAGE-77 candidate field (finest level only)
+        write_storage(match_set_[slot][i], 5u, cand_v);      // candidate field (finest level only)
     }
     write_sampler(warp_sets_[slot], 0u, a_view,    RO);
     write_sampler(warp_sets_[slot], 1u, b_view,    RO);
@@ -792,8 +741,8 @@ void OpticalFlowPipeline::write_slot_descriptors(uint32_t    slot,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// prebake_fg_descriptors  (CANON #12 APP-LOCAL FORK — render_assistant; see header contract). Cold-bakes
-//   the two ping-pong parities into ring slots 0/1 so the per-record vkUpdateDescriptorSets burst is gone.
+// prebake_fg_descriptors  (app-local descriptor prebake; see the header contract). Cold-bakes the two
+//   ping-pong parities into ring slots 0/1 so the per-record vkUpdateDescriptorSets burst is gone.
 // ─────────────────────────────────────────────────────────────────────────────
 bool OpticalFlowPipeline::prebake_fg_descriptors(VkImageView a0, VkImageView b0,
                                                  VkImageView a1, VkImageView b1,
@@ -804,7 +753,7 @@ bool OpticalFlowPipeline::prebake_fg_descriptors(VkImageView a0, VkImageView b0,
     //     placeholder — the baked pin is correct). emit_second_best_ ON would make binding 5 the real cand
     //     image at the finest level → it could not be pre-baked statically. mv_affine_ adds a per-record
     //     affine set write → also non-prebakeable. Both are excluded here.
-    //   - need ≥ 2 ring slots (the two parities). The render_assistant inits with max_in_flight=2u.
+    //   - need ≥ 2 ring slots (the two parities).
     if (!initialized() || !match_fg_active() || emit_second_best_ || mv_affine_ || n_sets_ < 2u)
         return false;
     if (a0 == VK_NULL_HANDLE || b0 == VK_NULL_HANDLE || a1 == VK_NULL_HANDLE || b1 == VK_NULL_HANDLE ||
@@ -812,13 +761,13 @@ bool OpticalFlowPipeline::prebake_fg_descriptors(VkImageView a0, VkImageView b0,
         return false;
 
     // emit_cand is FALSE on this path (emit_second_best_ off) → binding 5 baked to the placeholder, matching
-    // the default record exactly. c_view (warp binding 4) is Cinterp — CONSTANT across the FG run; baked into
-    // both warp sets here. Bake parity 0 → slot 0, parity 1 → slot 1 (one cold update burst per slot).
-    // NOTE on the flow_div>1 case: the app passes the SAME (Bflow[0],Bflow[1]) for both parities, so fwd AND
-    // bwd records both select slot 0 — they bind the SAME read-only baked set from two in-flight cmd buffers.
-    // That is legal (a descriptor set is externally-synchronized for UPDATE, not for bind/read; prebake never
-    // updates after init), and the GPU output is identical to the per-record path (same views, same dispatch;
-    // image hazards are governed by the unchanged image barriers, not by which set object is bound).
+    // the default record exactly. c_view (warp binding 4) is the warp-output target — CONSTANT across the
+    // run; baked into both warp sets here. Bake parity 0 → slot 0, parity 1 → slot 1 (one cold burst/slot).
+    // If the caller passes the SAME (a,b) pair for both parities, both records select slot 0 — they bind
+    // the SAME read-only baked set from two in-flight command buffers. That is legal (a descriptor set is
+    // externally-synchronized for UPDATE, not for bind/read; the prebake never updates after init), and the
+    // GPU output is identical to the per-record path (same views, same dispatch; image hazards are governed
+    // by the unchanged image barriers, not by which set object is bound).
     write_slot_descriptors(0u, a0, b0, c_view, /*emit_cand*/ false);
     write_slot_descriptors(1u, a1, b1, c_view, /*emit_cand*/ false);
     fg_pb_a_[0] = a0; fg_pb_b_[0] = b0;
@@ -842,14 +791,14 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
         return false;
     if (n_sets_ == 0u) return false;
 
-    // CANON #12 app-local fork (descriptor prebake): when armed, SELECT the ring slot whose pre-baked
-    // parity matches the passed (a,b,c) inputs and SKIP the per-record vkUpdateDescriptorSets burst entirely
-    // (the host-CPU relief — survey `widpumzly`). The match is by VkImageView handle equality against the two
-    // baked parities + the baked c_view; if NOTHING matches (an unexpected input, or c_view changed), fall
-    // back to the canonical per-record update path on the round-robin slot (safety — never bind a stale set).
-    // When NOT armed (default), fg_prebake_ is false → the canonical path runs EXACTLY as before (the burst
-    // executes, byte-identical). next_set_ is advanced ONLY on the per-record path, so the prebaked slots 0/1
-    // are never clobbered by a fallback record between prebaked records (a fallback uses next_set_'s slot).
+    // Descriptor prebake: when armed, SELECT the ring slot whose pre-baked parity matches the passed
+    // (a,b,c) inputs and SKIP the per-record vkUpdateDescriptorSets burst entirely (the host-CPU relief).
+    // The match is by VkImageView handle equality against the two baked parities + the baked c_view; if
+    // NOTHING matches (an unexpected input, or c_view changed), fall back to the canonical per-record
+    // update path on the round-robin slot (safety — never bind a stale set). When NOT armed (default),
+    // fg_prebake_ is false → the canonical path runs EXACTLY as before (the burst executes,
+    // byte-identical). next_set_ is advanced ONLY on the per-record path, so the prebaked slots 0/1 are
+    // never clobbered by a fallback record between prebaked records (a fallback uses next_set_'s slot).
     int prebaked_parity = -1;
     if (fg_prebake_ && c_view == fg_pb_c_) {
         if (a_view == fg_pb_a_[0] && b_view == fg_pb_b_[0]) prebaked_parity = 0;
@@ -863,22 +812,21 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
     constexpr VkImageLayout RO  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     constexpr VkImageLayout GEN = VK_IMAGE_LAYOUT_GENERAL;
 
-    // STAGE-42 temporal MV prior: active for THIS record only when armed AND a previous record has
-    // run (so the coarsest MV image holds a real seed). On the first armed pair, prior_active is
-    // false → the predictor is zero-cleared exactly like the prior-off path (no copy recorded).
-    // Requires coarsest >= 1: the prior source is the INTERMEDIATE mvl_img_[coarsest], which at record
-    // start is in GENERAL (the previous matcher left it there). The degenerate single-level pyramid
-    // (n_levels_==1, frames < 64 px — never the render-assistant case) leaves the source as mv_image_
-    // in SHADER_READ_ONLY; rather than special-case that layout, the prior simply does not engage there
-    // (zero-clear fallback, identical to off) — honest and safe.
+    // Temporal MV prior: active for THIS record only when armed AND a previous record has run (so the
+    // coarsest MV image holds a real seed). On the first armed pair, prior_active is false → the predictor
+    // is zero-cleared exactly like the prior-off path (no copy recorded). Requires coarsest >= 1: the prior
+    // source is the INTERMEDIATE mvl_img_[coarsest], which at record start is in GENERAL (the previous
+    // matcher left it there). The degenerate single-level pyramid (n_levels_==1, frames < 64 px) leaves the
+    // source as mv_image_ in SHADER_READ_ONLY; rather than special-case that layout, the prior simply does
+    // not engage there (zero-clear fallback, identical to off).
     const uint32_t coarsest = n_levels_ - 1u;
     const bool     prior_active = temporal_prior_ && have_prev_mv_ && (coarsest >= 1u);
     const VkImage  coarse_mv_src = mvl_img_[coarsest];   // intermediate level (coarsest>=1 when used)
 
-    // STAGE-77: the finest level (i==0) is the only one that emits the candidate field. When armed, bind
-    // the real cand image there; everywhere else (and when off) bind the 1×1 placeholder. The shader's
-    // emit_second push is set 1 only at the finest level when armed, so only that store touches cand_img_.
-    // (On the prebake path emit_second_best_ is OFF by eligibility → emit_cand is false, matching the baked
+    // The finest level (i==0) is the only one that emits the candidate field. When armed, bind the real
+    // cand image there; everywhere else (and when off) bind the 1×1 placeholder. The shader's emit_second
+    // push is set 1 only at the finest level when armed, so only that store touches cand_img_. (On the
+    // prebake path emit_second_best_ is OFF by eligibility → emit_cand is false, matching the baked
     // binding-5 placeholder. emit_cand is still needed below for the cand-image layout barrier guards.)
     const bool emit_cand = emit_second_best_ && (cand_img_ != VK_NULL_HANDLE);
 
@@ -889,7 +837,7 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
     if (!use_prebake)
         write_slot_descriptors(slot, a_view, b_view, c_view, emit_cand);
 
-    // ── STAGE-42 prior copy (BEFORE the discard loop, while the prior coarse MV is still intact). ──
+    // ── prior copy (BEFORE the discard loop, while the prior coarse MV is still intact). ──
     // When prior_active, copy the previous pair's coarsest MV (coarse_mv_src, still GENERAL from the
     // last record's storage write) into prior_mv_img_, BEFORE the discard loop transitions that source
     // image UNDEFINED→GENERAL (which would discard it). The copy reads the source as TRANSFER_SRC; the
@@ -934,9 +882,9 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     image_barrier(cmd, sad_img_, VK_IMAGE_LAYOUT_UNDEFINED, GEN, 0u, VK_ACCESS_SHADER_WRITE_BIT,
                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    // STAGE-77: the candidate field + the placeholder must be in GENERAL for the storage binding
-    // (validation checks the bound image's layout because the matcher's imageStore is statically used,
-    // even though emit_second gates the actual write). UNDEFINED→GENERAL discards any prior content
+    // The candidate field + the placeholder must be in GENERAL for the storage binding (validation checks
+    // the bound image's layout because the matcher's imageStore is statically used, even though
+    // emit_second gates the actual write). UNDEFINED→GENERAL discards any prior content
     // (rewritten this record when armed; the placeholder is never written). The bound image is
     // cand_img_ at the finest level when armed, else the placeholder — both are transitioned here so
     // whichever is bound is GENERAL. cand_img_ goes back to SHADER_READ_ONLY after the match (below).
@@ -946,8 +894,8 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
     image_barrier(cmd, cand_ph_img_, VK_IMAGE_LAYOUT_UNDEFINED, GEN, 0u, VK_ACCESS_SHADER_WRITE_BIT,
                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     // Coarsest-level predictor: when the prior is NOT active (off, or first armed pair), zero-clear it
-    // exactly as before (TRANSFER_DST → sampler-readable) — byte-identical to the pre-STAGE-42 path.
-    // When prior_active the copy above already populated it in GENERAL; skip the clear.
+    // (TRANSFER_DST → sampler-readable). When prior_active the copy above already populated it in GENERAL;
+    // skip the clear.
     if (!prior_active) {
         image_barrier(cmd, prior_mv_img_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                       0u, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -970,28 +918,23 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
     }
 
     // ── 2. coarse-to-fine match (coarsest → finest) ──
-    // push constants (12 bytes): { int search_radius; float pred_scale; int dual_centre } (STAGE-42).
-    // static_thresh removed — confidence gate in the warp handles static tiles (STAGE-20).
-    // Coarsest level, prior OFF/first pair: scale=0 (predictor nullified → centre (0,0)),
-    //   dual_centre=0 → a single ±R window around zero, byte-identical to the pre-STAGE-42 path.
-    // Coarsest level, prior_active: the predictor image holds last pair's coarse MV in THIS level's
-    //   own pixel units → scale=1.0 (no rescale), dual_centre=1 → search BOTH (0,0) and round(prior).
-    // Finer levels (unchanged): scale=2.0 (units double per level), dual_centre=0.
+    // The confidence gate in the warp handles static tiles, so there is no per-tile static lock here.
+    // Coarsest level, prior OFF/first pair: scale=0 (predictor nullified → centre (0,0)), dual_centre=0
+    //   → a single ±R window around zero.
+    // Coarsest level, prior_active: the predictor image holds last pair's coarse MV in THIS level's own
+    //   pixel units → scale=1.0 (no rescale), dual_centre=1 → search BOTH (0,0) and round(prior).
+    // Finer levels: scale=2.0 (units double per level), dual_centre=0.
     for (int i = static_cast<int>(n_levels_) - 1; i >= 0; --i) {
         const uint32_t ui = static_cast<uint32_t>(i);
         const bool coarsest_lvl = (ui == n_levels_ - 1u);
-        // STAGE-77: +int emit_second. 1 ONLY at the finest level (ui==0) when armed — the candidate field
-        // is the full-res/8 runner-up; coarser levels never write it. 0 everywhere else and on the whole
-        // feature-off path. ARC-A LEVER-1b: +int subpel (20-byte push). 1 ONLY at the finest level (ui==0)
-        // when mv_subpel_ is armed — exactly mirroring emit_second; 0 at every other level and when off →
-        // byte-identical to the pre-LEVER-1b 16-byte push (the store path is the exact integer best_mv).
-        // ARC-A holonic candidate-selection: +int candsel. 1 ONLY at the finest level (ui==0) when
-        // mv_candsel_ is armed — mirroring emit_second/subpel; 0 at every other level and when off →
-        // byte-identical to the pre-candsel 20-byte push (the OFF store is the exact integer best_mv).
+        // emit_second: 1 ONLY at the finest level (ui==0) when the candidate field is armed — that level
+        // writes the full-res/8 runner-up; coarser levels never write it, and the off path is 0 everywhere.
+        // subpel: 1 ONLY at the finest level when mv_subpel_ is armed; 0 elsewhere and when off (the OFF
+        // store is the exact integer best_mv → MV/SAD byte-identical). candsel: 1 ONLY at the finest level
+        // when mv_candsel_ is armed; 0 elsewhere and when off (OFF store is the exact integer best_mv).
         struct { int32_t r; float scale; int32_t dual; int32_t emit; int32_t subpel; int32_t candsel; } pc;
-        // ARC-A LEVER-1b reach rider DECOUPLED: coarse_wide_ (its own default-OFF switch) widens the
-        // coarsest radius (6→8). The affine arm (mv_affine_) NO LONGER influences coarse_r — the rider was
-        // measured net-negative (47 worse / 8 better) so it must not ride silently on --mv-affine.
+        // coarse_wide_ (its own default-OFF switch) widens the coarsest radius (6→8). The affine arm
+        // (mv_affine_) does NOT influence coarse_r.
         const int32_t coarse_r = coarse_wide_ ? kCoarseRAffine : kCoarseR;
         pc.r       = coarsest_lvl ? coarse_r : (ui == 0u ? search_radius_ : kRefineR);
         pc.scale   = coarsest_lvl ? (prior_active ? 1.0f : 0.0f) : 2.0f;
@@ -999,11 +942,11 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
         pc.emit    = (emit_cand && ui == 0u) ? 1 : 0;
         pc.subpel  = (mv_subpel_ && ui == 0u) ? 1 : 0;
         pc.candsel = (mv_candsel_ && ui == 0u) ? 1 : 0;
-        // CANON #12 app-local fork: bind the FG-variant matcher (runner-up tracking compiled out) when it was
-        // built (fg_variant_ armed AND emit_second_best_ OFF → match_pipeline_fg_ != null). It shares
-        // match_pipeline_layout_ + the same descriptor set, and writes byte-identical MV/SAD on this path
-        // (emit_cand is false, so pc.emit is 0 every level). When the fork is off, match_pipeline_fg_ is null
-        // → the canonical match_pipeline_ is bound exactly as before (byte-identical).
+        // Bind the FG-variant matcher (runner-up tracking compiled out) when it was built (fg_variant_
+        // armed AND emit_second_best_ OFF → match_pipeline_fg_ != null). It shares match_pipeline_layout_ +
+        // the same descriptor set, and writes byte-identical MV/SAD on this path (emit_cand is false, so
+        // pc.emit is 0 every level). When the fork is off, match_pipeline_fg_ is null → the canonical
+        // match_pipeline_ is bound exactly as before (byte-identical).
         const VkPipeline match_pipe = (match_pipeline_fg_ != VK_NULL_HANDLE) ? match_pipeline_fg_ : match_pipeline_;
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, match_pipe);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, match_pipeline_layout_, 0u, 1u, &match_set_[slot][ui], 0u, nullptr);
@@ -1018,20 +961,20 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     image_barrier(cmd, sad_img_, GEN, RO, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    // STAGE-77: the candidate field → SHADER_READ_ONLY for a downstream sampler / a copy-out (only when
-    // armed; the field was written by the finest level). Mirrors the mv/sad transitions exactly.
+    // The candidate field → SHADER_READ_ONLY for a downstream sampler / a copy-out (only when armed; the
+    // field was written by the finest level). Mirrors the mv/sad transitions exactly.
     if (emit_cand)
         image_barrier(cmd, cand_img_, GEN, RO, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-    // ── 3b. ARC-A LEVER-1 affine-fit post-pass (opt-in, armed only). Reads the finest MV field + the
-    //   SAD field (both now RO samplers) and fits the per-tile 2x2 linear part M over each tile's 3x3
-    //   MV neighbourhood, emitting M into aff_img_. The translational part stays in mv_image_. Runs
-    //   ONLY when mv_affine_ is armed; when off this block is skipped entirely (no aff_img_ exists, the
-    //   bindings/layouts of every other pass are untouched → MV/SAD outputs byte-identical). ──
+    // ── 3b. affine-fit post-pass (opt-in, armed only). Reads the finest MV field + the SAD field (both now
+    //   RO samplers) and fits the per-tile 2x2 linear part M over each tile's 3x3 MV neighbourhood,
+    //   emitting M into aff_img_. The translational part stays in mv_image_. Runs ONLY when mv_affine_ is
+    //   armed; when off this block is skipped entirely (no aff_img_ exists, the bindings/layouts of every
+    //   other pass are untouched → MV/SAD outputs byte-identical). ──
     if (mv_affine_ && aff_img_ != VK_NULL_HANDLE) {
-        // The affine post-pass set is written PER-RECORD (it is never part of the CANON #12 prebake — that
-        // path excludes mv_affine_ by eligibility). Inline the 3 updates here (counted in the instrument).
+        // The affine post-pass set is written PER-RECORD (it is never part of the descriptor prebake —
+        // that path excludes mv_affine_ by eligibility). Inline the 3 updates here (each counted).
         auto aff_write = [&](uint32_t bind, VkImageView v, VkDescriptorType ty, VkImageLayout lay) {
             VkDescriptorImageInfo ii{}; ii.imageView = v; ii.imageLayout = lay;
             VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, affine_set_[slot], bind,
@@ -1053,12 +996,12 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
         vkCmdPushConstants(cmd, affine_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0u, sizeof(aff_pc), &aff_pc);
         const uint32_t agx = (mv_w_ + 7u) / 8u, agy = (mv_h_ + 7u) / 8u;
         vkCmdDispatch(cmd, agx, agy, 1u);
-        // aff_img_ → SHADER_READ_ONLY for a downstream sampler / copy-out (the scorer copies it out).
+        // aff_img_ → SHADER_READ_ONLY for a downstream sampler / copy-out.
         image_barrier(cmd, aff_img_, GEN, RO, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
 
-    // ── 4. confidence+agreement warp dispatch — STAGE-20/STAGE-24/STAGE-29 gates. ──
+    // ── 4. confidence+agreement warp dispatch. ──
     // Push constants: { float residual_ceil; float improvement_frac; float agreement_threshold; float t; } (16 bytes).
     struct { float residual_ceil; float improvement_frac; float agreement_threshold; float t; } warp_pc;
     warp_pc.residual_ceil        = residual_ceil_;
@@ -1069,15 +1012,15 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, warp_pipeline_layout_, 0u, 1u, &warp_sets_[slot], 0u, nullptr);
     vkCmdPushConstants(cmd, warp_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0u, sizeof(warp_pc), &warp_pc);
     vkCmdDispatch(cmd, (frame_w_ + 7u) / 8u, (frame_h_ + 7u) / 8u, 1u);
-    // STAGE-42: the coarsest MV (mvl_img_[coarsest], left in GENERAL) is now a valid seed for the
-    // NEXT pair. Set unconditionally — so arming the prior mid-stream picks up the most recent pair's
-    // MV on its first armed record (a single pair's startup delay, not a stale/undefined read).
+    // The coarsest MV (mvl_img_[coarsest], left in GENERAL) is now a valid seed for the NEXT pair. Set
+    // unconditionally — so arming the prior mid-stream picks up the most recent pair's MV on its first
+    // armed record (a single pair's startup delay, not a stale/undefined read).
     have_prev_mv_ = true;
     return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// record_warp_only  (STAGE-29: re-dispatch warp at a different temporal phase,
+// record_warp_only  (re-dispatch the warp at a different temporal phase,
 //   reusing MV + SAD from the most recent record_optical_flow call)
 // ─────────────────────────────────────────────────────────────────────────────
 bool OpticalFlowPipeline::record_warp_only(VkCommandBuffer cmd, float t) noexcept
@@ -1085,8 +1028,8 @@ bool OpticalFlowPipeline::record_warp_only(VkCommandBuffer cmd, float t) noexcep
     if (!initialized() || cmd == VK_NULL_HANDLE) return false;
     if (n_sets_ == 0u) return false;
     // Precondition: warp_sets_[last_slot_] was written by record_optical_flow for
-    // the current frame pair. MV + SAD are in SHADER_READ_ONLY_OPTIMAL. c_view (Cinterp)
-    // is in GENERAL (left by the copy-back barrier at the end of the previous cmdB).
+    // the current frame pair. MV + SAD are in SHADER_READ_ONLY_OPTIMAL. c_view (the warp-output target)
+    // is in GENERAL (left by the copy-back barrier at the end of the previous command buffer).
     struct { float residual_ceil; float improvement_frac; float agreement_threshold; float t; } warp_pc;
     warp_pc.residual_ceil       = residual_ceil_;
     warp_pc.improvement_frac    = improvement_frac_;

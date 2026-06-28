@@ -1,18 +1,9 @@
 # capture_dump — the digital screen-capture tap for the FG-quality test-field
 
-> Standalone Windows tool for
-> `docs/planning/ongoing/HSR120_THROUGHPUT_DIAGNOSIS.md` §11 (the FG-quality
-> test-field). It is the **digital capture tap** that replaces the operator's
-> manual 240fps camera-of-the-screen method: it captures a window or a monitor
-> and dumps every presented frame as RGBA8 `.rgba` + a manifest the
-> `fg_quality_scorer` (§11.4 layer 2) consumes. Not wired into the render
-> pillar's CMake / CI. No Vulkan — pure capture. Diátaxis type: **reference**.
-
-Honesty status: `designed` — authored from first-hand reading of the proven
-capture code (`apps/render_assistant/src/main.cpp`) and the scorer's `.rgba`
-contract (`framework/render/vulkan/bench/fg_quality_scorer/README.md`). The
-supervisor integrates, builds, and verifies first-hand. **No capability,
-cadence, or capturability claim in this README is a measured claim.**
+> Standalone Windows tool: the digital capture tap. It captures a window or a
+> monitor and dumps every presented frame as RGBA8 `.rgba` + a manifest the
+> `fg_quality_scorer` consumes. Not wired into any CMake / CI. No Vulkan — pure
+> capture.
 
 ## Why this exists
 
@@ -77,11 +68,11 @@ WGC always delivers **BGRA8** (`B8G8R8A8UIntNormalized`), and DXGI DD on the
 desktop is also typically `B8G8R8A8_UNORM`. The scorer's `stage11` loader expects
 **RGBA8**. The tool therefore **swaps B↔R on write** (`row[x*4+0]=r;
 row[x*4+1]=g; row[x*4+2]=b; row[x*4+3]=255`) and forces an opaque alpha — the
-same swap `dump_bmp` does in `main.cpp:1225`, but in the RGBA direction. If a DD
-output is already `R8G8B8A8_UNORM`, the rows are copied straight through (no
-swap). Only 8-bit BGRA/RGBA SDR targets are accepted; an HDR (FP16) or 10-bit
-output is rejected up front (tone-mapping is deliberately out of scope — it would
-silently corrupt the `.rgba`).
+same swap `dump_bmp` does, but in the RGBA direction. If a DD output is already
+`R8G8B8A8_UNORM`, the rows are copied straight through (no swap). Only 8-bit
+BGRA/RGBA SDR targets are accepted; an HDR (FP16) or 10-bit output is rejected up
+front (tone-mapping is deliberately out of scope — it would silently corrupt the
+`.rgba`).
 
 ## Capturability test — the make-or-break
 
@@ -131,10 +122,10 @@ inter-frame ms** from the QPC timestamps (the observed capture cadence) — e.g.
 
 ## Build discipline / caveats
 
-- **Standalone**, mirrors `apps/render_assistant/bench/copy_bench`'s CMake shape;
-  links `d3d11 dxgi user32 gdi32` (+ `windowsapp` on MSVC for WGC). No Vulkan.
+- **Standalone** CMake build; links `d3d11 dxgi user32 gdi32` (+ `windowsapp` on
+  MSVC for WGC). No Vulkan.
 - WGC is **MSVC-only** (C++/WinRT + `windowsapp` + `/EHsc`); MinGW builds the DD
-  path only. This mirrors `render_assistant`'s dual-toolchain split exactly.
+  path only.
 - PhyriadFG uses **both** C++/WinRT *and* the interop COM path
   (`IGraphicsCaptureItemInterop::CreateForWindow/CreateForMonitor`,
   `IDirect3DDxgiInterfaceAccess` declared inline); this tool matches that

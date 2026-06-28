@@ -1,10 +1,8 @@
 # PhyriadFG/CMakeLists.txt
-# Standalone single-target build of phyriad_fg.exe — a self-contained FORK of Phyriad's
-# render_assistant + the vendored pillar closure (framework/, copias literales).
+# Standalone single-target build of phyriad_fg.exe.
 #
-# UN target, UN build-dir, UN comando (build.bat). Sin add_subdirectory, sin librerías:
-# los .cpp de los pilares se compilan por inclusión directa (el patrón de render_assistant),
-# así NO hay "explosión de builds".
+# One target, one build-dir, one command (build.bat). No add_subdirectory, no libraries:
+# the framework .cpp sources are compiled by direct inclusion, so there is no build explosion.
 #
 # Build (MSVC + WGC):
 #   build.bat
@@ -29,7 +27,7 @@ set(_rv  "${_fw}/render/vulkan")
 set(_spv2hdr "${_rv}/cmake/spv_to_header.cmake")
 set(_gen "${CMAKE_CURRENT_BINARY_DIR}/gen")
 
-# .comp -> .spv -> constexpr-array header (same recipe as render_assistant's ra_spv).
+# .comp -> .spv -> constexpr-array header.
 function(pfg_spv _src _hdr _var)
     get_filename_component(_stem "${_src}" NAME_WE)
     set(_spv "${_gen}/${_stem}.spv")
@@ -43,14 +41,14 @@ function(pfg_spv _src _hdr _var)
         DEPENDS "${_spv}" "${_spv2hdr}" COMMENT "spv->hdr: ${_var}" VERBATIM)
 endfunction()
 
-# --- render/vulkan pillar shaders (consumed by OpticalFlowPipeline.cpp; 5, block_match is unused) ---
+# --- render/vulkan shaders (consumed by OpticalFlowPipeline.cpp) ---
 pfg_spv("${_rv}/shaders/optical_flow_pyr_down.comp"     "${_gen}/optical_flow_pyr_down_spv.hpp"     "kOpticalFlowPyrDownSpv")
 pfg_spv("${_rv}/shaders/optical_flow_hier_match.comp"   "${_gen}/optical_flow_hier_match_spv.hpp"   "kOpticalFlowHierMatchSpv")
 pfg_spv("${_rv}/shaders/optical_flow_hier_match_fg.comp" "${_gen}/optical_flow_hier_match_fg_spv.hpp" "kOpticalFlowHierMatchFgSpv")
 pfg_spv("${_rv}/shaders/optical_flow_warp.comp"         "${_gen}/optical_flow_warp_spv.hpp"         "kOpticalFlowWarpSpv")
 pfg_spv("${_rv}/shaders/optical_flow_affine_fit.comp"   "${_gen}/optical_flow_affine_fit_spv.hpp"   "kOpticalFlowAffineFitSpv")
 
-# --- app shaders (15; included by src/core/main.cpp) ---
+# --- app shaders (included by src/core/main.cpp) ---
 set(_sh "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
 pfg_spv("${_sh}/hdr_convert.comp"        "${_gen}/hdr_convert_spv.hpp"        "kHdrConvertSpv")
 pfg_spv("${_sh}/upscale_bilinear.comp"   "${_gen}/upscale_bilinear_spv.hpp"   "kUpscaleBilinearSpv")
@@ -80,17 +78,17 @@ add_custom_target(pfg_shaders DEPENDS
 
 add_executable(phyriad_fg
     src/core/main.cpp
-    src/cli/cli.cpp                            # STEP 2: the CLI/config layer (Config + print_help + parse_args), extracted from main.cpp
-    src/core/vk_util.cpp                       # STEP 3: now_ms / route_for / Img+HBuf factories / barrier+submit helpers, extracted from main.cpp
-    src/core/device.cpp                        # STEP 3: VDev + vdev_create/vdev_destroy, extracted from main.cpp
-    src/core/globals.cpp                       # STEP 3: g_quit/device-lost/util+overlay atomics + vk_live + console Ctrl handler, extracted from main.cpp
-    src/flow/flow.cpp                          # STEP 4a: the FLOW factories (gme_fit_affine / NvofaProvider / MvSmoothPipe / GmePipe+gme_record / MedianPipe), extracted from main.cpp
-    src/capture/capture.cpp                    # STEP 4b: D3D11/DXGI interop (D3D/d3d_init/find_window/staging) + iGPU ConvPackPipe/UnpackPipe, extracted from main.cpp
-    src/warp_blend/warp_blend.cpp              # STEP 4b: WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask, extracted from main.cpp
-    src/present/present.cpp                     # STEP 4b: the present-side UpPipe upscale (bilinear/lanczos) factory, extracted from main.cpp
-    src/instrument/instrument.cpp              # STEP 4b: the dump_bmp/dump_rgba diagnostic frame-dump helpers, extracted from main.cpp
-    src/core/ra_simd.cpp                       # F16C batch (FR-HAL-1) — /arch:AVX2 below; main.cpp stays portable
-    "${_rv}/src/OpticalFlowPipeline.cpp"       # render/vulkan pillar (vendored)
+    src/cli/cli.cpp                            # the CLI/config layer (Config + print_help + parse_args)
+    src/core/vk_util.cpp                       # now_ms / route_for / Img+HBuf factories / barrier+submit helpers
+    src/core/device.cpp                        # VDev + vdev_create/vdev_destroy
+    src/core/globals.cpp                       # g_quit/device-lost/util+overlay atomics + vk_live + console Ctrl handler
+    src/flow/flow.cpp                          # the FLOW factories (gme_fit_affine / NvofaProvider / MvSmoothPipe / GmePipe+gme_record / MedianPipe)
+    src/capture/capture.cpp                    # D3D11/DXGI interop (D3D/d3d_init/find_window/staging) + iGPU ConvPackPipe/UnpackPipe
+    src/warp_blend/warp_blend.cpp              # WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask
+    src/present/present.cpp                     # the present-side UpPipe upscale (bilinear/lanczos) factory
+    src/instrument/instrument.cpp              # the dump_bmp/dump_rgba diagnostic frame-dump helpers
+    src/core/ra_simd.cpp                       # F16C batch — /arch:AVX2 below; main.cpp stays portable
+    "${_rv}/src/OpticalFlowPipeline.cpp"       # render/vulkan optical-flow pipeline
     "${_fw}/render/present/src/PresentSurface.cpp"
     "${_fw}/topology/src/HardwareTopology.cpp"
     "${_fw}/topology/src/CacheInfo.cpp"
@@ -101,7 +99,7 @@ add_dependencies(phyriad_fg pfg_shaders)
 
 target_compile_features(phyriad_fg PRIVATE cxx_std_23)
 target_include_directories(phyriad_fg PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"          # STEP 2: so #include "cli/cli.hpp" resolves (same-dir quoted includes still win for main.cpp's "telemetry_csv.hpp" etc.)
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"          # so #include "cli/cli.hpp" resolves (same-dir quoted includes still win for main.cpp's "telemetry_csv.hpp" etc.)
     "${_rv}/include" "${_gen}"
     "${_fw}/hal/include"
     "${_fw}/render/present/include"
@@ -110,10 +108,9 @@ target_include_directories(phyriad_fg PRIVATE
 target_compile_definitions(phyriad_fg PRIVATE WINVER=0x0A00 _WIN32_WINNT=0x0A00)
 target_link_libraries(phyriad_fg PRIVATE Vulkan::Vulkan d3d11 dxgi dcomp gdi32 user32 winmm pdh dwmapi avrt)
 
-# LTO / IPO — cross-TU inlining so the per-layer module split is PERFORMANCE-FREE (the compiler inlines
-# across capture/flow/warp_blend/present/core/framework .cpp as if it were one TU; often FASTER than the
-# original monolith via whole-program opt). MSVC: /GL + /LTCG. (This fork is unbound from Phyriad's
-# byte-identical dogma -> aggressive perf is fair game; the focus here is MAX performance.)
+# LTO / IPO — cross-TU inlining so the per-layer module split is performance-free (the compiler inlines
+# across capture/flow/warp_blend/present/core/framework .cpp as if it were one TU, via whole-program
+# optimization). MSVC: /GL + /LTCG.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT _pfg_ipo OUTPUT _pfg_ipo_msg)
 if(_pfg_ipo)

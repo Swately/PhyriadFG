@@ -1,11 +1,11 @@
 // framework/render/vulkan/shaders/optical_flow_warp.comp
 // Confidence-gated + source-agreement-gated motion-vector frame interpolation
-// (STAGE-20 confidence gate; STAGE-24 post-warp source-agreement gate).
+// (a confidence gate plus a post-warp source-agreement gate).
 //
 // Given two frames A, B, a motion-vector field, and the per-tile SAD pair from
 // optical_flow_hier_match.comp, produces the temporal-midpoint frame C.
 //
-// ── Gate 1: Confidence (STAGE-20) ────────────────────────────────────────────
+// ── Gate 1: Confidence ────────────────────────────────────────────
 // Per-tile WARP/BLEND decision using the two SADs in the SAD field (binding 3):
 //   sad_best : residual at the winning MV  (block-match quality — low = good match).
 //   sad_zero : residual at MV=(0,0)        (in-place change   — low = static tile).
@@ -20,7 +20,7 @@
 // This makes the gate noise-floor-invariant: no per-capture threshold knob needed.
 // If the scene moves well (sad_zero >> sad_best), condition (b) holds → WARP passes to gate 2.
 //
-// ── Gate 2: Source agreement (STAGE-24) ──────────────────────────────────────
+// ── Gate 2: Source agreement ──────────────────────────────────────
 // After computing the warp samples A[uv−mv/2] and B[uv+mv/2] (already needed for the
 // WARP result), measure the source disagreement:
 //
@@ -48,7 +48,6 @@
 //   the top level of main(), to be in unconditional (uniform-control-flow) scope.
 //   Consequence: the warp samples A_samp / B_samp are ALWAYS fetched — on tiles that will
 //   ultimately BLEND (confidence fails or agreement fails), 2 extra texture reads are paid.
-//   This is the source of the +12% warp-only cost increase measured in stage23_agreement.
 //
 // BLEND output:
 //   (1−t)·texture(u_frame_a, uv) + t·texture(u_frame_b, uv)   — in-place blend at phase t.
@@ -57,13 +56,6 @@
 //   sad_zero=0, sad_best=0 → cond(b): 0*(1−p) > 0 = false → BLEND (perfectly static tile).
 //   agreement_threshold=∞  → gate 2 always passes → confidence-only behaviour.
 //   residual_ceil < 0      → always BLEND.
-//
-// (History: replaces the per-tile STATIC LOCK (STAGE-18). Confidence gate (STAGE-20) removed
-//  the absolute static_thresh. Agreement gate (STAGE-24) extends gate 2 to also BLEND tiles
-//  where the warp sources straddle a motion boundary — the SAD-based gate alone could not
-//  detect this because block-match finds compromise MVs with low SAD. Measured in
-//  bench/stage23_agreement: per-tile thresh=0.20 → hud_fine +39 dB vs texelFetch conf_only,
-//  blob_edge/large_uni/two_vel delta=0; no false positives on uniform motion.)
 //
 // Bindings:
 //   set=0 binding=0  combined image sampler — frame A
@@ -76,7 +68,7 @@
 //   residual_ceil:          gate (a) ceiling for sad_best. Default 32.0.
 //   improvement_frac:       gate (b) minimum relative improvement. Default 0.5.
 //   agreement_threshold:    gate 2 d_tile ceiling in length() units. Default 0.20.
-//   t:                      temporal phase in (0,1). 0.5 = midpoint; k/N for Nx pacing (STAGE-29).
+//   t:                      temporal phase in (0,1). 0.5 = midpoint; k/N for Nx pacing.
 #version 450
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -89,7 +81,7 @@ layout(push_constant) uniform PushConsts {
     float residual_ceil;
     float improvement_frac;
     float agreement_threshold;
-    float t;          // temporal phase: 0.5 = midpoint; k/N for Nx pacing (STAGE-29)
+    float t;          // temporal phase: 0.5 = midpoint; k/N for Nx pacing
 } pc;
 
 // Shared memory for per-tile d reduction (64 invocations in the 8×8 workgroup).
@@ -116,11 +108,11 @@ void main() {
     const float sad_best = sad_pair.r;
     const float sad_zero = sad_pair.g;
 
-    // ── Gate 1: Confidence (STAGE-20) ──────────────────────────────────────────
+    // ── Gate 1: Confidence ──────────────────────────────────────────
     const bool good_match  = (sad_best < pc.residual_ceil);
     const bool good_improv = (sad_zero * (1.0 - pc.improvement_frac) > sad_best);
 
-    // ── Gate 2: Source agreement (STAGE-24) — per-tile mean d ──────────────────
+    // ── Gate 2: Source agreement — per-tile mean d ──────────────────
     // Fetch warp samples UNCONDITIONALLY so the barrier is in uniform control flow.
     // These samples are reused directly for the WARP result when both gates pass.
     // C_t(x) = (1−t)·A[x−t·mv] + t·B[x+(1−t)·mv]  (convention: MV points A→B)

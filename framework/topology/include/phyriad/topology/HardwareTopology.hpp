@@ -19,8 +19,8 @@
 //   optimal_producer_consumer_pair → best SPSC pair (same CCX preferred)
 //   detect_system_memory_mb()      → physical RAM in MiB
 //
-// PerformanceProfile integration (make_auto_profile, apply_profile_hints):
-//   Implemented in pillars/runtime — runtime depends on topology AND schema.
+// PerformanceProfile helpers (make_auto_profile, apply_profile_hints) live in the
+//   runtime layer, which depends on both topology and the profile schema.
 //
 
 #pragma once
@@ -151,7 +151,7 @@ private:
 // Graceful degradation: works on any x86 CPU (Intel, AMD) and ARM64-Windows.
 namespace hw {
 
-// ── FR-1: topology() singleton accessor ──────────────────────────────────────
+// ── topology() singleton accessor ────────────────────────────────────────────
 // Returns the process-wide cached HardwareTopology.
 //   First call: invokes HardwareTopology::probe() and caches the result.
 //   On probe failure: returns a sentinel empty topology (cores.empty() == true).
@@ -174,13 +174,12 @@ namespace hw {
 // Logical id of the core currently running the calling thread.
 // Returns UINT32_MAX if the platform query fails. Cheap on Linux
 // (sched_getcpu, ~30 ns) and on Windows (GetCurrentProcessorNumber, ~20 ns).
-// Used by per-CCD scheduling paths (Phase O1.4) to route work locally.
+// Used by per-CCD scheduling paths to route work to a local core.
 [[nodiscard]] uint32_t current_core_id() noexcept;
 
 // CCD (Chiplet Die / L3 domain) id of the core currently running the calling
 // thread. Returns UINT32_MAX if topology probing failed. Cached lookup table
-// built on first call. Used by SubmitterRegistry / TaskClassifier for
-// CCD-local task affinity.
+// built on first call. Used for CCD-local task affinity.
 [[nodiscard]] uint32_t current_core_ccd_id() noexcept;
 
 // CCD id of a specific logical core. UINT32_MAX if topology lookup fails.
@@ -225,7 +224,7 @@ optimal_producer_consumer_pair(bool prefer_v_cache_ccd) noexcept;
 // failure (conservative → owner mode).
 [[nodiscard]] double system_busy_fraction(uint32_t window_ms = 15u) noexcept;
 
-// ── FR-3: process-level affinity ─────────────────────────────────────────────
+// ── process-level affinity ───────────────────────────────────────────────────
 // Set/get the CPU affinity mask of an arbitrary process (cross-platform).
 //
 // Windows: requires PROCESS_SET_INFORMATION — usually needs admin for other users.
@@ -242,7 +241,7 @@ set_process_affinity(uint32_t pid, uint64_t mask) noexcept;
 [[nodiscard]] std::expected<uint64_t, phyriad::Error>
 get_process_affinity(uint32_t pid) noexcept;
 
-// ── FR-9: process-level priority ─────────────────────────────────────────────
+// ── process-level priority ───────────────────────────────────────────────────
 // Set/get the scheduling priority of an arbitrary process (cross-platform).
 //
 // Windows: priority_class is a Win32 priority-class constant:
@@ -261,15 +260,14 @@ set_process_priority(uint32_t pid, uint32_t priority_class) noexcept;
 [[nodiscard]] std::expected<uint32_t, phyriad::Error>
 get_process_priority(uint32_t pid) noexcept;
 
-// ── GFR-Ayama-2: thread-level affinity ──────────────────────────────────────
+// ── thread-level affinity ───────────────────────────────────────────────────
 // Set/get the CPU affinity mask of an arbitrary thread by TID (cross-platform).
 //
-// Symmetric counterpart to FR-3 `set_process_affinity` but operates at the
+// Symmetric counterpart to `set_process_affinity` but operates at the
 // thread granularity. Use case: "differential thread pinning" — keeping the
 // hot critical-path thread on a high-throughput core cluster (e.g. AMD
 // V-Cache CCD, Intel P-cores) while letting worker threads stay on the
 // secondary cluster. Requires per-thread control, not process-wide.
-// See apps/ayama/ for a concrete consumer implementing this pattern.
 //
 // Windows: requires THREAD_SET_INFORMATION | THREAD_QUERY_LIMITED_INFORMATION
 //          via OpenThread. Cross-process typically needs admin.
@@ -291,7 +289,7 @@ set_thread_affinity(uint32_t tid, uint64_t mask) noexcept;
 [[nodiscard]] std::expected<uint64_t, phyriad::Error>
 get_thread_affinity(uint32_t tid) noexcept;
 
-// ── GFR-Ayama-4: thread-level ideal processor (soft scheduling hint) ────────
+// ── thread-level ideal processor (soft scheduling hint) ─────────────────────
 // Set/get the IDEAL processor for a thread. Unlike `set_thread_affinity`
 // (hard constraint — thread CAN ONLY run on the masked cores), the ideal
 // processor is a soft hint: the scheduler PREFERS this core but may move
@@ -300,8 +298,8 @@ get_thread_affinity(uint32_t tid) noexcept;
 // Use case: combine `set_thread_affinity` (pin to CCD mask) with
 // `set_thread_ideal_processor` (prefer specific core within CCD) for both
 // isolation AND deterministic placement, while keeping scheduler flexibility
-// if the preferred core is busy. See apps/ayama/ for a worked example
-// applying this pattern to game-thread pinning on asymmetric CPUs.
+// if the preferred core is busy. A typical use is game-thread pinning on
+// asymmetric CPUs.
 //
 // `logical_id` is a flat OS index (0..logical_core_count()-1). On Windows
 // systems with > 64 logical CPUs, the implementation maps to PROCESSOR_NUMBER
@@ -320,7 +318,7 @@ set_thread_ideal_processor(uint32_t tid, uint32_t logical_id) noexcept;
 [[nodiscard]] std::expected<uint32_t, phyriad::Error>
 get_thread_ideal_processor(uint32_t tid) noexcept;
 
-// ── THREAD_PROTECTION S2: MMCSS (Multimedia Class Scheduler Service) ──────────
+// ── MMCSS (Multimedia Class Scheduler Service) ───────────────────────────────
 // Per-thread, OS-sanctioned BOUNDED priority boost via the AVRT API. Unlike a
 // raw SetThreadPriority(TIME_CRITICAL), MMCSS gives the two properties raw
 // priority lacks under contention (both Microsoft-documented): (1) the
@@ -328,11 +326,11 @@ get_thread_ideal_processor(uint32_t tid) noexcept;
 // low-priority work, and (2) consumption-based SELF-DEMOTION of an over-consuming
 // thread into the demoted band. That makes it a boost that CANNOT starve the box.
 // Windows-only; on non-Windows the token is always inactive (caller falls back to
-// elevate_thread_rt). See THREAD_PROTECTION_MASTER_PLAN.md §2.1.
+// elevate_thread_rt).
 //
-// HARD RULES (master-plan §2.1): use ONLY the per-thread AVRT API; NEVER
-// read/write the global SystemResponsiveness registry value; NEVER the "Games"
-// task (Windows keeps it LOW); NEVER REALTIME_PRIORITY_CLASS.
+// HARD RULES: use ONLY the per-thread AVRT API; NEVER read/write the global
+// SystemResponsiveness registry value; NEVER the "Games" task (Windows keeps it
+// LOW); NEVER REALTIME_PRIORITY_CLASS.
 
 // MMCSS task category. Maps to the Win32 task-name string the service ships with.
 enum class MmcssTask : uint8_t {

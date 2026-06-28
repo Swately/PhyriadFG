@@ -1,15 +1,11 @@
-// gme_fit_bench — measure-first baseline for the render_assistant CPU tail (STAGE-86 prep).
+// gme_fit_bench — microbenchmark for the CPU global-motion-estimation tail of the frame generator.
 //
-// WHY: the --fsub field measure (HSR120 §6.7) showed the per-pair CPU tail (~6-8ms) is the
-// dominant serial cost, not the GPU flow (~3.7ms). gme_fit_affine is the biggest CPU piece.
-// Before completing hal/Simd + wiring it in, the mandato de eficiencia requires MEASURING the
-// hot path: how much of gme_fit is the fp16 decode vs the FMA reduction vs the dissidence pass,
-// and what does sub2 (the every-2nd-block latch) actually cost. This standalone bench answers
-// that on synthetic 240x135 (1080p/8) RG16F MV grids — a console program, no overlay.
+// Breaks the per-pair CPU cost of gme_fit_affine into its fp16 decode, its FMA reduction, and its
+// dissidence pass, and measures the cost of the every-2nd-block subsample (sub2). Runs on a
+// synthetic 240x135 (1080p/8) RG16F motion-vector grid. Console program, no overlay.
 //
-// The gme_fit_affine + half_to_float here are VERBATIM copies of apps/render_assistant/src/main.cpp
-// (gme_fit_affine @1090, half_to_float @1007, float_to_half @1041) so the measured cost matches the
-// shipping scalar path exactly. Build (self-contained, no app/framework deps):
+// gme_fit_affine, half_to_float, and float_to_half are scalar copies of the shipping frame-generator
+// path so the measured cost matches it exactly. Build:
 //   g++ -O2 -std=c++23 main.cpp -o gme_fit_bench         (MinGW)
 //   cl  /O2 /std:c++latest /EHsc main.cpp                 (MSVC)
 
@@ -20,9 +16,9 @@
 #include <vector>
 #include <chrono>
 #include <algorithm>
-#include <phyriad/hal/Simd.hpp>   // FR-HAL-1: the real pillar primitive under test (hal::f16_to_f32_batch)
+#include <phyriad/hal/Simd.hpp>   // the batch fp16->fp32 primitive under test (hal::f16_to_f32_batch)
 
-// ── VERBATIM from main.cpp:1007 (the F16C-free portable decode) ───────────────
+// ── Portable (F16C-free) half->float decode ──────────────────────────────────
 static inline float half_to_float(uint16_t h){
     const uint32_t sign = (uint32_t)(h & 0x8000u) << 16;
     const uint32_t exp  = (h >> 10) & 0x1Fu;
@@ -43,7 +39,7 @@ static inline float half_to_float(uint16_t h){
     }
     float out; std::memcpy(&out, &bits, sizeof(out)); return out;
 }
-// ── VERBATIM from main.cpp:1041 (encode, used only to build the synthetic grid) ──
+// ── float->half encode (used only to build the synthetic grid) ───────────────
 static inline uint16_t float_to_half(float f){
     uint32_t x; std::memcpy(&x, &f, sizeof(x));
     const uint32_t sign = (x >> 16) & 0x8000u;
@@ -70,7 +66,7 @@ static inline uint16_t float_to_half(float f){
 }
 
 static constexpr float kChangeGateSadZ = 0.5f;
-// ── VERBATIM from main.cpp:1090 ──────────────────────────────────────────────
+// ── gme_fit_affine: IRLS-weighted least-squares affine fit of the MV grid (scalar path) ──
 static double gme_fit_affine(const void* mv_raw, const void* sad_raw, uint32_t mvw, uint32_t mvh,
                              float out6[6], uint8_t* dis_out, bool sub2){
     const uint16_t* h = (const uint16_t*)mv_raw;
@@ -134,9 +130,9 @@ static double gme_fit_affine(const void* mv_raw, const void* sad_raw, uint32_t m
     return total ? 100.0 * (double)dissident / (double)total : 0.0;
 }
 
-// The batch fp16→fp32 primitive under test is now hal::f16_to_f32_batch (framework/hal/Simd.hpp,
-// FR-HAL-1) — runtime-dispatched F16C/scalar. The bench calls it directly so the A/B measures the
-// REAL pillar primitive, not a bench-local copy.
+// The batch fp16->fp32 primitive under test is hal::f16_to_f32_batch (framework/hal/Simd.hpp) —
+// runtime-dispatched F16C/scalar. The bench calls it directly so the comparison measures the real
+// primitive, not a bench-local copy.
 
 // gme_fit over PRE-DECODED floats: identical math to gme_fit_affine, but reads uv[]/szf[] instead
 // of decoding fp16 per block per pass. The "decode once, reuse 4x" design. uv = interleaved [u,v]
@@ -187,12 +183,12 @@ static double gme_fit_affine_pre(const float* uv, const float* szf, uint32_t mvw
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// GPU-fp32 SIMULATION — the GO/NO-GO precision gate for offloading gme_fit to the 1080 Ti.
+// GPU-fp32 SIMULATION — the precision gate for offloading gme_fit to a GPU.
 //
-// WHY: Pascal fp64 = 1/32 rate (ruled out). The GPU path will accumulate in fp32 with a
-// PARALLEL reduction order (workgroup-partials-then-combine), NOT the CPU's fp64 sequential
-// running sum. That is not byte-identical. Before building the (large) GPU path we MEASURE the
-// drift the fp32 + reorder introduces, against the fp64 reference gme_fit_affine.
+// A GPU path accumulates in fp32 with a PARALLEL reduction order (workgroup-partials-then-combine),
+// not the CPU's fp64 sequential running sum, so it is not byte-identical (and fp64 is impractical on
+// Pascal-class GPUs at a 1/32 rate). This models the fp32 + reorder drift against the fp64 reference
+// gme_fit_affine, so the precision cost of an offload is known before committing to it.
 //
 // What is simulated faithfully:
 //   • ALL accumulation in float (the 12 reduction sums Sw..by2, the residual/weight math, the
@@ -205,8 +201,8 @@ static double gme_fit_affine_pre(const float* uv, const float* szf, uint32_t mvw
 //   • The IRLS reweight (Geman-McClure w = 1/(1+(r/2)²)) and the Cramer 3×3 in fp32.
 //   • The dissidence pass: same r>4 count + min(255,round(16·r)) quantization + change-gate, fp32.
 //
-// The reference gme_fit_affine already casts its fp64 result to float for out6, so the model
-// comparison is (fp32-rounded fp64 model) vs (fp32-native model) — exactly what ships if we adopt.
+// The reference gme_fit_affine already casts its fp64 result to float for out6, so the comparison is
+// (fp32-rounded fp64 model) vs (fp32-native model) — exactly what an adopted GPU path produces.
 
 // Reduce 12 fp32 partials over a [first,last) block range walked in row-major grid order, summing
 // SEQUENTIALLY within the range (a single workgroup's local reduction). `iter`>0 applies the IRLS

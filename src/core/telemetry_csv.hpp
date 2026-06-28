@@ -278,7 +278,7 @@ inline void TelemetryCsv::write_header() {
         "GPUUtilization_iGPU,CPUUtilization,"
         "phyriadfg_disp_phase,phyriadfg_disp_src_frames\n");   // fluidity axis (appended; positions of all prior columns unchanged)
     // a one-line schema note so a consumer knows the vocabulary (console-style)
-    std::fprintf(fp_, "# schema=PhyriadFG/STAGE-100+TB-C9; frametime=MsBetweenPresents(console-style); FrameType: Synthesized|Repeated; NA cells are empty; per-device GPU* suffixed; iGPU/CPU telemetry NA this phase; phyriadfg_disp_phase=intra-pair t_use[0,1], phyriadfg_disp_src_frames=content-source-time(source-frame units, the Animation-Error analogue)\n");
+    std::fprintf(fp_, "# schema=PhyriadFG; frametime=MsBetweenPresents(console-style); FrameType: Synthesized|Repeated; NA cells are empty; per-device GPU* suffixed; iGPU/CPU telemetry NA this phase; phyriadfg_disp_phase=intra-pair t_use[0,1], phyriadfg_disp_src_frames=content-source-time(source-frame units, the Animation-Error analogue)\n");
 }
 
 inline void TelemetryCsv::write_row(const CsvRow& r, long long& prev_qpc, bool& have_prev) {
@@ -412,9 +412,9 @@ inline void TelemetryCsv::write_stats() {
     std::fprintf(sf, "duration_s,%s,\n", F(dur_s).c_str());
     std::fprintf(sf, "frame_count,%llu,presented frames\n", (unsigned long long)n_present_);
     std::fprintf(sf, "freeze_count,%llu,real lap-freezes (re-shows; distinct from fdrop)\n", (unsigned long long)n_freeze_);
-    std::fprintf(sf, "fdrop_count,%llu,STAGE-105 --fdrop exact-duplicate discriminator drops (elided redundant warps; make-space density)\n", (unsigned long long)n_fdrop_);
+    std::fprintf(sf, "fdrop_count,%llu,--fdrop exact-duplicate discriminator drops (elided redundant warps; make-space density)\n", (unsigned long long)n_fdrop_);
     std::fprintf(sf, "dropped_rows,%llu,ring overflow (telemetry only; not presents)\n", (unsigned long long)drops_.load());
-    std::fprintf(sf, "max_stall_ms,%s,STAGE-103 watchdog: longest present-thread stall (gap>100ms = freeze/hang)\n", F(max_stall_ms_).c_str());
+    std::fprintf(sf, "max_stall_ms,%s,watchdog: longest present-thread stall (gap>100ms = freeze/hang)\n", F(max_stall_ms_).c_str());
     std::fprintf(sf, "stall_count,%llu,present stalls/freezes/hangs detected (gap>100ms; see # STALL_ lines in raw csv)\n", (unsigned long long)stall_count_);
     std::fprintf(sf, "total_stall_ms,%s,cumulative stalled wall-time\n", F(total_stall_ms_).c_str());
     std::fprintf(sf, "present_fps_avg,%s,all presented frames\n", F(avg_fps).c_str());
