@@ -19,6 +19,18 @@ ui/Microsoft.WebView2*
 *.cab
 .vscode/
 
+# ── LaTeX intermediates (keep .tex + rendered .pdf/.png) ────────
+*.aux
+*.log
+*.log1
+*.log2
+*.out
+*.toc
+*.nav
+*.snm
+*.vrb
+*.synctex.gz
+
 # ── Scratch / diagnostics (gitignored campaign artifacts) ───────
 frames/
 *.bak

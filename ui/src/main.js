@@ -31,67 +31,67 @@ let restartTimer = null;
 //       'text'        str  -> emits `flag value` when non-empty
 const GROUPS = [
   {
-    title: "Captura",
+    title: "Capture",
     controls: [
       {
         flag: "--capture-api", type: "select", default: "dd",
-        name: "API de captura",
+        name: "Capture API",
         options: [
           { value: "dd", label: "dd (Desktop Duplication)" },
           { value: "wgc", label: "wgc (Windows Graphics Capture)" },
         ],
-        desc: "Backend de captura: dd (por defecto) o wgc (HW-accel flip/overlay).",
+        desc: "Capture backend: dd (default) or wgc (HW-accel flip/overlay).",
       },
       {
         flag: "--ingest-async", type: "switch", default: false,
-        name: "Ingesta asíncrona (DDA)",
-        desc: "Desacopla la ingesta DDA: hilo que solo adquiere a un ring + worker de convert en paralelo (drop-to-newest) que publica al instante. Sube la ingesta hacia la tasa entregada (mira captura vs ingesta). Solo DDA; default OFF.",
+        name: "Asynchronous ingest (DDA)",
+        desc: "Decouples DDA ingest: a thread that only acquires into a ring + a parallel convert worker (drop-to-newest) that publishes instantly. Raises ingest toward the delivered rate (watch capture vs ingest). DDA only; default off.",
       },
       {
         flag: "--dedup", type: "switch", default: true,
-        name: "Descartar duplicados (DDA)",
-        desc: "DDA compone el escritorio a la tasa de refresco del monitor, así que muchas capturas son DUPLICADOS de contenido (el DWM re-compone el mismo frame del juego, que renderiza menos frames únicos). Descarta los duplicados del pipeline para que el FG interpole entre únicos VERDADEROS en vez de pares de movimiento-cero. La lectura de captura muestra siempre la tasa única real. Solo DDA; default OFF.",
+        name: "Drop duplicates (DDA)",
+        desc: "DDA composes the desktop at the monitor's refresh rate, so many captures are content DUPLICATES (DWM re-composes the same game frame, which renders fewer unique frames). Drops the duplicates from the pipeline so FG interpolates between TRUE uniques instead of zero-motion pairs. The capture readout always shows the real unique rate. DDA only; default off.",
       },
       {
         flag: "--window", type: "text", default: "",
-        name: "Ventana (subcadena)", placeholder: "p.ej. Battlefield",
-        desc: "WGC: captura la ventana cuyo título contiene esta subcadena (implica --capture-api wgc).",
+        name: "Window (substring)", placeholder: "e.g. Battlefield",
+        desc: "WGC: captures the window whose title contains this substring (implies --capture-api wgc).",
       },
       {
         flag: "--monitor", type: "number", default: "0", min: 0, step: 1,
-        name: "Monitor de captura", placeholder: "0",
-        desc: "Captura desde la salida DXGI M (por defecto 0).",
+        name: "Capture monitor", placeholder: "0",
+        desc: "Captures from DXGI output M (default 0).",
       },
       {
         flag: "--present-monitor", type: "number", default: "", min: 0, step: 1,
-        name: "Monitor de presentación", placeholder: "= captura",
-        desc: "Presenta en la salida P (por defecto: la misma que la de captura).",
+        name: "Presentation monitor", placeholder: "= capture",
+        desc: "Presents on output P (default: the same as the capture output).",
       },
       {
         flag: "--cap-slots", type: "number", default: "0", min: 0, max: 32, step: 1,
-        name: "Slots del ring de captura", placeholder: "0 = auto",
-        desc: "Override de la profundidad auto del ring de captura (0=auto ~src/10+4, máx 32). Son slots de frame en RAM.",
+        name: "Capture ring slots", placeholder: "0 = auto",
+        desc: "Override the capture ring's auto depth (0=auto ~src/10+4, max 32). These are frame slots in RAM.",
       },
       {
         flag: "--ingest-backlog", type: "number", default: "3", min: 1, max: 3, step: 1,
-        name: "Backlog de ingesta",
-        desc: "Profundidad de drenaje en-orden de la ingesta (1=más fresco/más saltos span-2, 3=más suave/más latencia). El lever DOMINANTE de freshage/input-lag.",
+        name: "Ingest backlog",
+        desc: "In-order drain depth of the ingest (1=fresher/more span-2 jumps, 3=smoother/more latency). The DOMINANT lever for freshage/input-lag.",
       },
       {
         flag: "--copy-fence", type: "switch", default: false, name: "Copy-fence (WGC)",
-        desc: "Pickup de copia WGC dirigido por evento (fence+event en vez de busy-poll Map). Necesita D3D11.4; force-off si no.",
+        desc: "Event-driven WGC copy pickup (fence+event instead of busy-poll Map). Needs D3D11.4; force-off otherwise.",
       },
       {
-        flag: "--copy-device", type: "switch", default: false, name: "Copy en 2º device (WGC)",
-        desc: "Corre el CopyResource de staging WGC en un D3D11 device separado del mismo adaptador (desacopla la cola de copia). WGC-only; force-off si falla.",
+        flag: "--copy-device", type: "switch", default: false, name: "Copy on 2nd device (WGC)",
+        desc: "Runs the WGC staging CopyResource on a separate D3D11 device of the same adapter (decouples the copy queue). WGC-only; force-off if it fails.",
       },
       {
         flag: "--dpi-probe", type: "switch", default: false, name: "DPI probe (diag)",
-        desc: "Diagnóstico de solo-lectura: loguea GetClientRect/GetDpiForWindow/Size para el crop de captura en alto-DPI.",
+        desc: "Read-only diagnostic: logs GetClientRect/GetDpiForWindow/Size for the capture crop on high-DPI.",
       },
       {
         flag: "--cap-route-probe", type: "switch", default: false, name: "Cap-route probe",
-        desc: "Imprime una decisión de routing por capacidad (has_fp16/dp4a) sobre los VDev del FG. MEDICIÓN-SÓLO, inerte (roles A/B/G fijos).",
+        desc: "Prints a capability-based routing decision (has_fp16/dp4a) over the FG's VDevs. MEASUREMENT-ONLY, inert (A/B/G roles fixed).",
       },
     ],
     windowSelector: true,
@@ -102,37 +102,37 @@ const GROUPS = [
     controls: [
       {
         flag: "--fg-gpu", type: "select", default: "auto",
-        name: "GPU de frame-gen",
+        name: "Frame-gen GPU",
         options: [
-          { value: "auto", label: "auto (según carga)" },
+          { value: "auto", label: "auto (by load)" },
           { value: "primary", label: "primary" },
           { value: "assist", label: "assist" },
         ],
-        desc: "Dispositivo del frame-gen: auto (por defecto), primary o assist.",
+        desc: "Frame-gen device: auto (default), primary or assist.",
       },
       {
         flag: "--convert-gpu", type: "select", default: "igpu",
-        name: "GPU de conversión",
+        name: "Convert GPU",
         options: [
-          { value: "igpu", label: "igpu (convert fusionado sin PCIe)" },
+          { value: "igpu", label: "igpu (fused convert, no PCIe)" },
           { value: "primary", label: "primary" },
         ],
-        desc: "Dónde corre el convert+pack: igpu (por defecto, zero-PCIe) o primary.",
+        desc: "Where convert+pack runs: igpu (default, zero-PCIe) or primary.",
       },
       {
         flag: "--present-gpu", type: "text", default: "",
-        name: "GPU de presentación", placeholder: "(heredado)",
-        desc: "HEREDADO / IGNORADO: la presentación es el adaptador dueño del panel desde STAGE-45b.",
+        name: "Presentation GPU", placeholder: "(inherited)",
+        desc: "INHERITED / IGNORED: presentation is the adapter that owns the panel since STAGE-45b.",
       },
       {
         flag: "--force-single-gpu", type: "switch", default: false,
-        name: "Forzar GPU única",
-        desc: "Conduce la ruta de una sola GPU (suprime la 2.ª discreta + iGPU; todos los roles en el dispositivo A).",
+        name: "Force single GPU",
+        desc: "Drives the single-GPU path (suppresses the 2nd discrete + iGPU; all roles on device A).",
       },
       {
         flag: "--assist-gpu", type: "text", default: "",
-        name: "GPU asistente (nombre)", placeholder: "fragmento del nombre",
-        desc: "Fragmento del nombre de la GPU para el frame-gen (selección del dispositivo asistente).",
+        name: "Assist GPU (name)", placeholder: "name fragment",
+        desc: "GPU name fragment for the frame-gen (assist device selection).",
       },
     ],
   },
@@ -141,427 +141,427 @@ const GROUPS = [
     controls: [
       {
         flag: "--fg-factor", type: "select", default: "2",
-        name: "Factor FG",
+        name: "FG factor",
         options: [
-          { value: "2", label: "2x (por defecto)" },
+          { value: "2", label: "2x (default)" },
           { value: "3", label: "3x" },
           { value: "4", label: "4x" },
           { value: "5", label: "5x" },
           { value: "6", label: "6x" },
           { value: "8", label: "8x" },
-          { value: "auto", label: "auto (medido)" },
+          { value: "auto", label: "auto (measured)" },
         ],
-        desc: "Multiplicador de salida: 2=2x (por defecto), 3=3x, ... auto=medido.",
+        desc: "Output multiplier: 2=2x (default), 3=3x, ... auto=measured.",
       },
       {
         flag: "--flow-scale", type: "select", default: "1",
-        name: "Escala de flujo",
+        name: "Flow scale",
         options: [
           { value: "1", label: "1 (byte-identical)" },
           { value: "2", label: "2 (1/2 res)" },
           { value: "4", label: "4 (1/4 res)" },
           { value: "auto", label: "auto" },
         ],
-        desc: "DRS coin-3: corre el flujo + la cola CPU por par sobre una rejilla MV a 1/N de resolución (~N^2 más barato; solo WAP).",
+        desc: "DRS coin-3: runs the flow + CPU tail per pair over an MV grid at 1/N resolution (~N^2 cheaper; WAP only).",
       },
       {
         flag: "--warp-scale", type: "select", default: "1",
-        name: "Escala de warp",
+        name: "Warp scale",
         options: [
           { value: "1", label: "1 (byte-identical)" },
           { value: "2", label: "2" },
           { value: "4", label: "4" },
         ],
-        desc: "Corre NUESTRO warp a WW/N y reescala (PARKED-NEGATIVE: borroso por el ojo del operador en BF6 4K; no toca la latencia).",
+        desc: "Runs OUR warp at WW/N and rescales (PARKED-NEGATIVE: blurry to the operator's eye on BF6 4K; doesn't touch latency).",
       },
       {
         flag: "--nvofa", type: "switch", default: false,
         name: "NVIDIA OFA (HW)",
-        desc: "Reemplaza el flujo clásico por el Optical Flow Accelerator HW de NVIDIA (4090). Auto-fallback si no hay VK_NV_optical_flow.",
+        desc: "Replaces the classic flow with NVIDIA's HW Optical Flow Accelerator (4090). Auto-fallback if VK_NV_optical_flow is absent.",
       },
       {
         flag: "--nvofa-cost-scale", type: "number", default: "0.5", min: 0, max: 16, step: 0.1,
         name: "NVOFA cost-scale",
-        desc: "Remap del coste OFA (0..255) -> sad_best. PLACEHOLDER (eye-calibración). Sólo con --nvofa.",
+        desc: "Remap of the OFA cost (0..255) -> sad_best. PLACEHOLDER (eye-calibration). Only with --nvofa.",
       },
       {
         flag: "--nvofa-sadz-scale", type: "number", default: "4.0", min: 0, max: 64, step: 0.5,
         name: "NVOFA sadz-scale",
-        desc: "SUM|A-B| del bloque -> magnitud 8x8. PLACEHOLDER (eye-calibración). Sólo con --nvofa.",
+        desc: "Block SUM|A-B| -> 8x8 magnitude. PLACEHOLDER (eye-calibration). Only with --nvofa.",
       },
       {
         flag: "--flow-scale-target-mp", type: "number", default: "2.1", min: 0.25, max: 12, step: 0.1,
         name: "Flow-scale auto target (MP)",
-        desc: "Target en megapíxeles de trabajo de flujo para --flow-scale auto (1080p ~div=1; 1440p/4K bajan). El slider calidad<->latencia.",
+        desc: "Flow-work megapixel target for --flow-scale auto (1080p ~div=1; 1440p/4K drop lower). The quality<->latency slider.",
       },
     ],
   },
   {
-    title: "Presentación / Pacing",
+    title: "Presentation / Pacing",
     controls: [
       {
         flag: "--hdr", type: "switch", default: false,
         name: "HDR (FP16 scRGB)",
-        desc: "Presenta un swapchain FP16 scRGB para HDR (alias de --present-fp16). INERTE sin pantalla+contenido HDR.",
+        desc: "Presents an FP16 scRGB swapchain for HDR (alias of --present-fp16). INERT without an HDR display+content.",
       },
       {
         flag: "--present-own-window", type: "switch", default: false,
-        name: "Ventana propia",
-        desc: "Presenta nuestra propia HWND flip borderless (plano Independent-Flip, topología LSFG). Click-through.",
+        name: "Own window",
+        desc: "Presents our own borderless flip HWND (Independent-Flip plane, LSFG topology). Click-through.",
       },
       {
         flag: "--no-async-present", type: "switch-off", default: false,
-        name: "Presentación asíncrona",
-        desc: "DEFAULT ON (PART-A). Desacopla la presentación de la fence del warp (present no bloqueante + drop-interpolated; ~1 frame de latencia). Apagar = ruta SÍNCRONA bloqueante (byte-identical). La auto-activan --target-output-fps/--fdrop/--upload-xfer/--rfp/--motion-fallback/--shallow-queue.",
+        name: "Asynchronous present",
+        desc: "DEFAULT ON (PART-A). Decouples present from the warp fence (non-blocking present + drop-interpolated; ~1 frame of latency). Off = blocking SYNCHRONOUS path (byte-identical). Auto-enabled by --target-output-fps/--fdrop/--upload-xfer/--rfp/--motion-fallback/--shallow-queue.",
       },
       {
         flag: "--cap-fps", type: "number", default: "", min: 1, step: 1,
-        name: "Límite de captura (fps)", placeholder: "0 = off",
-        desc: "Limita la captura WGC a N fps (MinUpdateInterval=1/N). Diagnóstico; no cambia el algoritmo.",
+        name: "Capture cap (fps)", placeholder: "0 = off",
+        desc: "Limits WGC capture to N fps (MinUpdateInterval=1/N). Diagnostic; doesn't change the algorithm.",
       },
       {
         flag: "--refresh-hz", type: "number", default: "240", min: 1, step: 1,
-        name: "Refresh del reloj (Hz)", placeholder: "240",
-        desc: "Tasa de tick del reloj de salida (por defecto 240).",
+        name: "Clock refresh (Hz)", placeholder: "240",
+        desc: "Output clock tick rate (default 240).",
       },
       {
         flag: "--target-output-fps", type: "number", default: "", min: 1, step: 1,
-        name: "FPS de salida objetivo", placeholder: "0 = off",
-        desc: "Controlador fraccional de tasa de salida (cadencia estable). Auto-activa --async-present. Nunca capa el juego.",
+        name: "Target output FPS", placeholder: "0 = off",
+        desc: "Fractional output-rate controller (stable cadence). Auto-enables --async-present. Never caps the game.",
       },
       {
         flag: "--s2-sustain", type: "number", default: "0.93", min: 0.5, max: 1, step: 0.01,
         name: "Sustain frac (target-fps)",
-        desc: "Fracción de la tasa medida alcanzable que apunta --target-output-fps ('un 180 estable gana a un 191 errático') [0.5,1]. Sólo con target-output-fps.",
+        desc: "Fraction of the measured achievable rate that --target-output-fps aims for ('a steady 180 beats an erratic 191') [0.5,1]. Only with target-output-fps.",
       },
       {
         flag: "--present-sync", type: "select", default: "0",
         name: "Sync interval",
         options: [
-          { value: "0", label: "0 (inmediato)" },
-          { value: "1", label: "1 (pace al compositor)" },
+          { value: "0", label: "0 (immediate)" },
+          { value: "1", label: "1 (pace to compositor)" },
           { value: "2", label: "2" },
           { value: "3", label: "3" },
           { value: "4", label: "4" },
         ],
-        desc: "Present(sync_interval): 0 = present-immediately (por defecto, sobre-presenta); 1 = pace al compositor.",
+        desc: "Present(sync_interval): 0 = present-immediately (default, over-presents); 1 = pace to the compositor.",
       },
       {
         flag: "--present-waitable", type: "switch", default: false, name: "Swapchain waitable",
-        desc: "SetMaximumFrameLatency(1) + wait-before-present: reduce jitter DENTRO de la composición DWM (PARCIAL; no llega a Independent Flip).",
+        desc: "SetMaximumFrameLatency(1) + wait-before-present: reduces jitter WITHIN DWM composition (PARTIAL; doesn't reach Independent Flip).",
       },
       {
-        flag: "--present-colorspace", type: "select", default: "off", name: "Colorspace del overlay",
+        flag: "--present-colorspace", type: "select", default: "off", name: "Overlay colorspace",
         options: [
           { value: "off", label: "off (no-op)" },
-          { value: "srgb", label: "srgb (declara sRGB)" },
+          { value: "srgb", label: "srgb (declares sRGB)" },
         ],
-        desc: "Declara el colorspace del overlay (sRGB) para que un escritorio HDR componga el overlay SDR sin lavado. Soft si no hay soporte.",
+        desc: "Declares the overlay colorspace (sRGB) so an HDR desktop composes the SDR overlay without washout. Soft if unsupported.",
       },
       {
-        flag: "--indicator", type: "switch", default: false, name: "Indicador (WIP)",
-        desc: "Marca en pantalla de PhyriadFG-activo (WIP, passthrough-only; el stamp en la ruta warp falló DEVICE_LOST).",
+        flag: "--indicator", type: "switch", default: false, name: "Indicator (WIP)",
+        desc: "On-screen PhyriadFG-active mark (WIP, passthrough-only; the stamp on the warp path failed DEVICE_LOST).",
       },
       {
-        flag: "--no-upscale", type: "switch", default: false, name: "Sin upscale",
-        desc: "Presenta a la resolución de trabajo (el blit del bridge escala). Emite --no-upscale.",
+        flag: "--no-upscale", type: "switch", default: false, name: "No upscale",
+        desc: "Presents at the working resolution (the bridge blit scales). Emits --no-upscale.",
       },
       {
         flag: "--upscale-lanczos", type: "switch", default: false, name: "Upscale Lanczos-2",
-        desc: "Upscale Lanczos-2 (más nítido, más lento).",
+        desc: "Lanczos-2 upscale (sharper, slower).",
       },
     ],
   },
   {
-    title: "Calidad (por defecto ON)",
-    note: "Apagar un interruptor emite su --no-X. (Excepto Matte, que está OFF por defecto y emite --matte.)",
+    title: "Quality (default on)",
+    note: "Turning a switch off emits its --no-X. (Except Matte, which is off by default and emits --matte.)",
     controls: [
       { flag: "--no-warp-at-presenter", type: "switch-off", default: true, name: "Warp-at-presenter (WAP)",
-        desc: "Re-warp por tick a la fase exacta. Apagar = modo rejilla (deshabilita bidir/fill-div/rescue/mv-guided/gme/matte/inertia)." },
-      { flag: "--no-gme", type: "switch-off", default: true, name: "GME (modelo global)",
-        desc: "Modelo de movimiento afín global por par. Apagar también deshabilita matte (cascada)." },
-      { flag: "--no-bidir", type: "switch-off", default: true, name: "Flujo bidireccional",
-        desc: "Flujo bidireccional + clasificación de oclusión. Apagar también deshabilita fill-div y matte (cascada)." },
-      { flag: "--matte", type: "switch-on", default: false, name: "Matte fluida",
-        desc: "Composición fluida de dos capas. POR DEFECTO OFF (el A/B del operador halló --no-matte mejor: doblaba la figura). --matte la reactiva (necesita gme + bidir)." },
-      { flag: "--no-mv-guided", type: "switch-off", default: true, name: "MV guiada por color",
-        desc: "Asignación de MV guiada por membresía de color. Apagar = mediana/lineal ciega." },
-      { flag: "--no-rescue", type: "switch-off", default: true, name: "Rescate de candidatos",
-        desc: "Rescate por MV de bloques vecinos. Apagar = byte-identical." },
-      { flag: "--no-inertia", type: "switch-off", default: true, name: "Inercia (persistencia)",
-        desc: "Prior de persistencia de movimiento (histéresis de estado). Apagar = byte-identical." },
-      { flag: "--inertia-thresh", type: "number", default: "0.50", min: 0.1, max: 1, step: 0.05, name: "Inercia: umbral",
-        desc: "Corte de persistencia (R8-norm [0.1,1]). 0.5 ≈ 8 pares estáticos." },
+        desc: "Per-tick re-warp to the exact phase. Off = grid mode (disables bidir/fill-div/rescue/mv-guided/gme/matte/inertia)." },
+      { flag: "--no-gme", type: "switch-off", default: true, name: "GME (global model)",
+        desc: "Per-pair global affine motion model. Off also disables matte (cascade)." },
+      { flag: "--no-bidir", type: "switch-off", default: true, name: "Bidirectional flow",
+        desc: "Bidirectional flow + occlusion classification. Off also disables fill-div and matte (cascade)." },
+      { flag: "--matte", type: "switch-on", default: false, name: "Fluid matte",
+        desc: "Two-layer fluid composite. DEFAULT OFF (the operator's A/B found --no-matte better: it doubled the figure). --matte re-enables it (needs gme + bidir)." },
+      { flag: "--no-mv-guided", type: "switch-off", default: true, name: "Color-guided MV",
+        desc: "MV assignment guided by color membership. Off = blind median/linear." },
+      { flag: "--no-rescue", type: "switch-off", default: true, name: "Candidate rescue",
+        desc: "Rescue via neighbor-block MVs. Off = byte-identical." },
+      { flag: "--no-inertia", type: "switch-off", default: true, name: "Inertia (persistence)",
+        desc: "Motion-persistence prior (state hysteresis). Off = byte-identical." },
+      { flag: "--inertia-thresh", type: "number", default: "0.50", min: 0.1, max: 1, step: 0.05, name: "Inertia: threshold",
+        desc: "Persistence cutoff (R8-norm [0.1,1]). 0.5 ~ 8 static pairs." },
       { flag: "--no-stasis", type: "switch-off", default: true, name: "Stasis (bypass HUD)",
-        desc: "Capa de stasis: un bloque sad_zero<=thresh presenta el real directamente. Apagar = byte-identical." },
-      { flag: "--stasis-thresh", type: "number", default: "0.50", min: 0.05, max: 8, step: 0.05, name: "Stasis: umbral",
-        desc: "Corte sad_zero (SUM|A-B| por bloque [0.05,8]). ~0 = bloque idéntico." },
+        desc: "Stasis layer: a block with sad_zero<=thresh presents the real directly. Off = byte-identical." },
+      { flag: "--stasis-thresh", type: "number", default: "0.50", min: 0.05, max: 8, step: 0.05, name: "Stasis: threshold",
+        desc: "sad_zero cutoff (per-block SUM|A-B| [0.05,8]). ~0 = identical block." },
     ],
   },
   {
-    title: "Flujo / Vectores (MV)",
+    title: "Flow / Vectors (MV)",
     controls: [
       { flag: "--no-mv-subpel", type: "switch-off", default: true, name: "MV sub-pixel",
-        desc: "DEFAULT ON. Refinamiento sub-pixel (parábola del pico SAD) -> MV fraccional. Apagar = best_mv entero." },
+        desc: "DEFAULT ON. Sub-pixel refinement (parabola of the SAD peak) -> fractional MV. Off = integer best_mv." },
       { flag: "--mv-candsel", type: "switch", default: true, name: "MV candidate-select",
-        desc: "Tiles interiores ambiguos adoptan la MV de región coarse (mata el crossfade de apertura). Compone con mv-subpel." },
-      { flag: "--mv-median", type: "switch", default: false, name: "MV mediana 3x3",
-        desc: "Mediana vectorial 3x3 ciega sobre el campo MV antes del warp (superado por mv-guided)." },
+        desc: "Ambiguous interior tiles adopt the coarse region MV (kills the aperture crossfade). Composes with mv-subpel." },
+      { flag: "--mv-median", type: "switch", default: false, name: "MV median 3x3",
+        desc: "Blind 3x3 vector median over the MV field before the warp (superseded by mv-guided)." },
       { flag: "--mv-smooth", type: "number", default: "0", min: 0, max: 1, step: 0.1, name: "MV smooth (EMA)",
-        desc: "Alpha de EMA temporal de MV (0=off; ~0.6 amortigua el jitter de tile)." },
-      { flag: "--mv-prior", type: "switch", default: false, name: "MV prior temporal",
-        desc: "Prior temporal de MV en el matcher (dual-centre, auto-cura en cortes). Ignorado con bidir (default)." },
-      { flag: "--mv-sim", type: "number", default: "0.10", min: 0.02, max: 0.5, step: 0.01, name: "MV-guided: banda color",
-        desc: "Banda de membresía de color para mv-guided (max-ch [0.02,0.5])." },
+        desc: "Temporal MV EMA alpha (0=off; ~0.6 damps tile jitter)." },
+      { flag: "--mv-prior", type: "switch", default: false, name: "MV temporal prior",
+        desc: "Temporal MV prior in the matcher (dual-centre, self-heals on cuts). Ignored with bidir (default)." },
+      { flag: "--mv-sim", type: "number", default: "0.10", min: 0.02, max: 0.5, step: 0.01, name: "MV-guided: color band",
+        desc: "Color-membership band for mv-guided (max-ch [0.02,0.5])." },
       { flag: "--residual-ceil", type: "number", default: "32", min: 0, step: 1, name: "Gate: residual-ceil",
-        desc: "Gate (a): sad_best máximo (default 32)." },
+        desc: "Gate (a): max sad_best (default 32)." },
       { flag: "--conf-improv", type: "number", default: "0.20", min: 0, max: 1, step: 0.01, name: "Gate: conf-improv",
-        desc: "Gate (b): mejora mínima de SAD (fracción, default 0.20)." },
+        desc: "Gate (b): minimum SAD improvement (fraction, default 0.20)." },
       { flag: "--agreement", type: "number", default: "0.05", min: 0, max: 1, step: 0.01, name: "Gate: agreement",
-        desc: "Gate de acuerdo: d máximo por tile (default 0.05)." },
+        desc: "Agreement gate: max d per tile (default 0.05)." },
       { flag: "--occl-thresh", type: "number", default: "1.5", min: 0.25, max: 8, step: 0.1, name: "Occlusion thresh",
-        desc: "Umbral round-trip fwd<->bwd (px [0.25,8]). Sólo con bidir." },
+        desc: "Round-trip fwd<->bwd threshold (px [0.25,8]). Only with bidir." },
       { flag: "--div-eps", type: "number", default: "0.05", min: 0.005, max: 1, step: 0.01, name: "Divergence eps",
-        desc: "Banda de divergencia (px/texel [0.005,1]); usado por fill-div." },
+        desc: "Divergence band (px/texel [0.005,1]); used by fill-div." },
       { flag: "--fill-div", type: "switch", default: false, name: "Fill-div",
-        desc: "Pick de disoclusión dirigido por divergencia. DEFAULT OFF (auditoría WASH); requiere bidir." },
+        desc: "Divergence-driven disocclusion pick. DEFAULT OFF (WASH audit); requires bidir." },
     ],
   },
   {
-    title: "Warp / Mezcla",
+    title: "Warp / Blend",
     controls: [
       { flag: "--no-soft-gate", type: "switch-off", default: true, name: "Soft-gate",
-        desc: "DEFAULT ON. Gate continuo de warp. Apagar = keep/freeze binario por bloque 8x8." },
-      { flag: "--no-commit", type: "switch-off", default: true, name: "Commit del warp",
-        desc: "DEFAULT ON (commit_thresh 0.08 + commit_real). Apagar = averaging + deshabilita rescue + appearance." },
-      { flag: "--commit-thresh", type: "number", default: "0.08", min: 0.005, max: 0.5, step: 0.01, name: "Commit: umbral",
-        desc: "Umbral de commit (color units [0.005,0.5]; 0 = averaging). --no-commit gana si ambos." },
+        desc: "DEFAULT ON. Continuous warp gate. Off = binary keep/freeze per 8x8 block." },
+      { flag: "--no-commit", type: "switch-off", default: true, name: "Warp commit",
+        desc: "DEFAULT ON (commit_thresh 0.08 + commit_real). Off = averaging + disables rescue + appearance." },
+      { flag: "--commit-thresh", type: "number", default: "0.08", min: 0.005, max: 0.5, step: 0.01, name: "Commit: threshold",
+        desc: "Commit threshold (color units [0.005,0.5]; 0 = averaging). --no-commit wins if both." },
       { flag: "--no-appearance", type: "switch-off", default: true, name: "Appearance re-blend",
-        desc: "DEFAULT ON. Re-blend tonal en píxeles committeados (violador de brightness-constancy)." },
-      { flag: "--appear-band", type: "number", default: "0.10", min: 0.02, max: 0.5, step: 0.01, name: "Appearance: banda",
-        desc: "Banda de apariencia (max-ch [0.02,0.5])." },
+        desc: "DEFAULT ON. Tonal re-blend on committed pixels (a brightness-constancy violator)." },
+      { flag: "--appear-band", type: "number", default: "0.10", min: 0.02, max: 0.5, step: 0.01, name: "Appearance: band",
+        desc: "Appearance band (max-ch [0.02,0.5])." },
       { flag: "--no-commit-default", type: "switch-off", default: true, name: "Commit-default",
-        desc: "DEFAULT ON. El warp es el default; sólo basura evidenciada (d_pixel grande) hace blend." },
+        desc: "DEFAULT ON. The warp is the default; only evidenced garbage (large d_pixel) blends." },
       { flag: "--no-onepos", type: "switch-off", default: true, name: "One-position",
-        desc: "DEFAULT ON. Colapso una-posición-por-píxel (anti doble-exposición del propio warp)." },
-      { flag: "--onepos-band", type: "number", default: "1.0", min: 0.05, max: 4, step: 0.05, name: "One-pos: banda",
-        desc: "Escala de inicio del colapso ([0.05,4]; 1.0 = STAGE-81, menor = colapsa crescents tenues)." },
+        desc: "DEFAULT ON. One-position-per-pixel collapse (anti double-exposure of the warp itself)." },
+      { flag: "--onepos-band", type: "number", default: "1.0", min: 0.05, max: 4, step: 0.05, name: "One-pos: band",
+        desc: "Collapse onset scale ([0.05,4]; 1.0 = STAGE-81, lower = collapses faint crescents)." },
       { flag: "--no-member-commit", type: "switch-off", default: true, name: "Member-commit",
-        desc: "DEFAULT ON. Membership-beats-the-blend en interiores planos de objeto (anti ghost-step)." },
+        desc: "DEFAULT ON. Membership-beats-the-blend in flat object interiors (anti ghost-step)." },
       { flag: "--no-phase-anchor", type: "switch-off", default: true, name: "Phase-anchor",
-        desc: "DEFAULT ON. MV primaria anclada a la fase (cur-anchored a fase alta). Necesita bidir." },
+        desc: "DEFAULT ON. Primary MV anchored to the phase (cur-anchored at high phase). Needs bidir." },
       { flag: "--no-vblend", type: "switch-off", default: true, name: "V-blend (velocity)",
-        desc: "DEFAULT ON. Cerca del fin de par, la MV se inclina hacia la velocidad del próximo par (anti pulse)." },
+        desc: "DEFAULT ON. Near pair end, the MV tilts toward the next pair's velocity (anti pulse)." },
       { flag: "--vblend-t0", type: "number", default: "0.6", min: 0, max: 0.95, step: 0.05, name: "V-blend: t0",
-        desc: "Fase donde empieza la rampa de tilt [0,0.95]. Sólo con vblend." },
-      { flag: "--vblend-strength", type: "number", default: "0.5", min: 0, max: 1, step: 0.05, name: "V-blend: fuerza",
-        desc: "Peso máx de tilt en t=1 [0,1]. Sólo con vblend." },
-      { flag: "--vblend-exact", type: "switch", default: false, name: "V-blend exacto",
-        desc: "Velocity-continuity EXACTA (MV real del próximo par; +1 source-frame de latencia). Implica vblend." },
+        desc: "Phase where the tilt ramp begins [0,0.95]. Only with vblend." },
+      { flag: "--vblend-strength", type: "number", default: "0.5", min: 0, max: 1, step: 0.05, name: "V-blend: strength",
+        desc: "Max tilt weight at t=1 [0,1]. Only with vblend." },
+      { flag: "--vblend-exact", type: "switch", default: false, name: "V-blend exact",
+        desc: "EXACT velocity-continuity (real MV of the next pair; +1 source-frame of latency). Implies vblend." },
       { flag: "--no-bg-snap", type: "switch-off", default: true, name: "BG-snap",
-        desc: "DEFAULT ON. En la banda de contorno iGPU snapea MVs de fondo al modelo gme (mata la gravedad de disoclusión)." },
-      { flag: "--bg-snap-strength", type: "number", default: "1.0", min: 0, max: 4, step: 0.5, name: "BG-snap: fuerza",
-        desc: "Escala del peso de snap [0,4] (1=soft, 2-4=snap progresivamente duro)." },
+        desc: "DEFAULT ON. In the iGPU contour band, snaps background MVs to the gme model (kills disocclusion gravity)." },
+      { flag: "--bg-snap-strength", type: "number", default: "1.0", min: 0, max: 4, step: 0.5, name: "BG-snap: strength",
+        desc: "Snap weight scale [0,4] (1=soft, 2-4=progressively harder snap)." },
       { flag: "--bg-snap-norm", type: "number", default: "0.04", min: 0.001, max: 1, step: 0.01, name: "BG-snap: norm",
-        desc: "Normalizador dist-contorno->[0,1] de la banda ([0.001,1])." },
-      { flag: "--band-xfade-strength", type: "number", default: "1.0", min: 0, max: 1, step: 0.05, name: "Band-xfade (gravedad)",
-        desc: "Crossfade de cancelación de gravedad en la banda (DEFAULT 1.0; 0 = off = equivale a --no-band-xfade)." },
+        desc: "Contour-distance->[0,1] normalizer of the band ([0.001,1])." },
+      { flag: "--band-xfade-strength", type: "number", default: "1.0", min: 0, max: 1, step: 0.05, name: "Band-xfade (gravity)",
+        desc: "Gravity-cancellation crossfade in the band (DEFAULT 1.0; 0 = off = equivalent to --no-band-xfade)." },
       { flag: "--ts-smooth", type: "number", default: "0.1", min: 0, max: 1, step: 0.05, name: "TS-smooth",
-        desc: "Suavizado temporal adaptativo gateado a píxeles basura (DEFAULT 0.1; 0 = off; 0.5 over-smooths)." },
+        desc: "Adaptive temporal smoothing gated to garbage pixels (DEFAULT 0.1; 0 = off; 0.5 over-smooths)." },
       { flag: "--disoccl-hardpick", type: "number", default: "0", min: 0, max: 1, step: 0.05, name: "Disoccl hard-pick",
-        desc: "Hard-pick con gate de borde Sobel en la banda bidir (0=off; requiere bidir + campo iGPU)." },
+        desc: "Hard-pick with a Sobel edge gate in the bidir band (0=off; requires bidir + iGPU field)." },
     ],
   },
   {
-    title: "GME / Objetos / Matte",
-    note: "Sub-stack de la matte: la mayoría son hijos de --matte/--gme/--bidir/--objects y caen por cascada si el padre está apagado.",
+    title: "GME / Objects / Matte",
+    note: "Matte sub-stack: most are children of --matte/--gme/--bidir/--objects and cascade off if the parent is off.",
     controls: [
-      { flag: "--no-gme-gpu", type: "switch-off", default: true, name: "GME en GPU B",
-        desc: "DEFAULT ON. Offload del fit afín gme a la GPU B (1080 Ti, donde vive MV/SAD). Apagar = CPU. Auto-fallback a CPU si B no está." },
+      { flag: "--no-gme-gpu", type: "switch-off", default: true, name: "GME on GPU B",
+        desc: "DEFAULT ON. Offloads the gme affine fit to GPU B (1080 Ti, where MV/SAD live). Off = CPU. Auto-fallback to CPU if B is absent." },
       { flag: "--gme-gpu-verify", type: "switch", default: false, name: "GME-GPU verify",
-        desc: "Corre GPU+CPU gme e imprime rel-diff + dis-mask flips. Implica gme-gpu." },
-      { flag: "--gme-irls2", type: "switch", default: false, name: "GME IRLS 2-pasadas",
-        desc: "gme_fit con 2 pasadas IRLS en vez de 3 (~0.3-0.7ms/par). Default 3 (byte-identical)." },
-      { flag: "--matte-thresh", type: "number", default: "0.25", min: 0.05, max: 1, step: 0.05, name: "Matte: umbral",
-        desc: "Corte de disidencia de la matte (R8-norm [0.05,1])." },
+        desc: "Runs GPU+CPU gme and prints rel-diff + dis-mask flips. Implies gme-gpu." },
+      { flag: "--gme-irls2", type: "switch", default: false, name: "GME IRLS 2-pass",
+        desc: "gme_fit with 2 IRLS passes instead of 3 (~0.3-0.7ms/pair). Default 3 (byte-identical)." },
+      { flag: "--matte-thresh", type: "number", default: "0.25", min: 0.05, max: 1, step: 0.05, name: "Matte: threshold",
+        desc: "Matte dissent cutoff (R8-norm [0.05,1])." },
       { flag: "--mass-k", type: "number", default: "0.5", min: 0, max: 2, step: 0.1, name: "Matte: mass-k",
-        desc: "Ganancia de feedback de masa-conservación de la matte [0,2] (0=off/lerp)." },
+        desc: "Matte mass-conservation feedback gain [0,2] (0=off/lerp)." },
       { flag: "--obj-fill-rim", type: "switch", default: true, name: "Obj fill-rim",
-        desc: "Infill de MV coherente en TODO el interior de un objeto rígido (mata el crescent media-luna). Se rinde en rim no-rígido." },
+        desc: "Coherent MV infill across the ENTIRE interior of a rigid object (kills the half-moon crescent). Gives up on a non-rigid rim." },
       { flag: "--disoccl-commit", type: "switch", default: false, name: "Disoccl-commit",
-        desc: "Commit de un solo lado en la banda de disoclusión (reemplaza los blend-fallback simétricos). Requiere --matte." },
+        desc: "One-sided commit in the disocclusion band (replaces the symmetric blend-fallbacks). Requires --matte." },
       { flag: "--no-objects", type: "switch-off", default: true, name: "Object-holon",
-        desc: "DEFAULT ON. Clustering + reparación por herencia de movimiento. Apagar = pre-stage exacto." },
+        desc: "DEFAULT ON. Clustering + repair via motion inheritance. Off = exact pre-stage." },
       { flag: "--no-shapefield", type: "switch-off", default: true, name: "Shape-field",
-        desc: "DEFAULT ON (hijo de objects). Apagar = herencia rígida de MV única (STAGE-61)." },
+        desc: "DEFAULT ON (child of objects). Off = rigid single-MV inheritance (STAGE-61)." },
       { flag: "--no-crescent", type: "switch-off", default: true, name: "Crescent (bg)",
-        desc: "DEFAULT ON. Fetch de fondo dirigido por crescent (matte). Apagar = blend (1-t,t)." },
-      { flag: "--no-travel", type: "switch-off", default: true, name: "Travel (ocupación)",
-        desc: "DEFAULT ON. Ocupación de silueta viajera (matte). Apagar = lerp STAGE-59." },
+        desc: "DEFAULT ON. Crescent-driven background fetch (matte). Off = blend (1-t,t)." },
+      { flag: "--no-travel", type: "switch-off", default: true, name: "Travel (occupancy)",
+        desc: "DEFAULT ON. Traveling-silhouette occupancy (matte). Off = STAGE-59 lerp." },
       { flag: "--no-contour", type: "switch-off", default: true, name: "Contour marriage",
-        desc: "DEFAULT ON. Arbitraje de banda de contorno por afinidad de color (matte). Apagar = binario." },
+        desc: "DEFAULT ON. Contour-band arbitration by color affinity (matte). Off = binary." },
       { flag: "--no-obj-crescent", type: "switch-off", default: true, name: "Obj-crescent",
-        desc: "DEFAULT ON. Ponderación de lado del crescent para la capa OBJETO. Apagar = (1-t,t)." },
+        desc: "DEFAULT ON. Crescent-side weighting for the OBJECT layer. Off = (1-t,t)." },
       { flag: "--no-memory", type: "switch-off", default: true, name: "Scene memory",
-        desc: "DEFAULT ON (hijo de objects). Memoria de silueta advectada. Apagar = sólo el par fresco." },
+        desc: "DEFAULT ON (child of objects). Advected silhouette memory. Off = only the fresh pair." },
       { flag: "--no-persist-reset", type: "switch-off", default: true, name: "Persist-reset",
-        desc: "DEFAULT ON. Membership-beats-inertia (reset del escudo HUD en interiores de mover)." },
+        desc: "DEFAULT ON. Membership-beats-inertia (resets the HUD shield in mover interiors)." },
       { flag: "--no-change-gate", type: "switch-off", default: true, name: "Change-gate",
-        desc: "DEFAULT ON. Las máscaras de disidencia exigen contenido CAMBIADO (anti-halo). Apagar = máscaras crudas." },
+        desc: "DEFAULT ON. Dissent masks require CHANGED content (anti-halo). Off = raw masks." },
       { flag: "--no-expire", type: "switch-off", default: true, name: "Expire (stigmergy)",
-        desc: "DEFAULT ON. Expiración de EMAs cross-par en contradicciones. Apagar = decae a través." },
-      { flag: "--no-ambig", type: "switch-off", default: true, name: "Ambiguity (2º cand)",
-        desc: "DEFAULT ON (hijo de gme). Arbitraje del segundo-mejor candidato en empates de SAD (anti textura periódica)." },
+        desc: "DEFAULT ON. Expiry of cross-pair EMAs on contradictions. Off = decays through." },
+      { flag: "--no-ambig", type: "switch-off", default: true, name: "Ambiguity (2nd cand)",
+        desc: "DEFAULT ON (child of gme). Second-best candidate arbitration on SAD ties (anti periodic-texture)." },
     ],
   },
   {
-    title: "Multi-candidato",
+    title: "Multi-candidate",
     controls: [
-      { flag: "--multicand", type: "switch", default: false, name: "Multi-candidato",
-        desc: "Selección medoid multi-candidato (generate+discriminate+SELECT). DEFAULT OFF (edge-gate sin validar)." },
+      { flag: "--multicand", type: "switch", default: false, name: "Multi-candidate",
+        desc: "Multi-candidate medoid selection (generate+discriminate+SELECT). DEFAULT OFF (unvalidated edge-gate)." },
       { flag: "--mc-nperturb", type: "select", default: "2", name: "MC: nperturb",
         options: [ { value: "0", label: "0" }, { value: "2", label: "2" }, { value: "4", label: "4" } ],
-        desc: "Candidatos warp perturbados en velocidad (0/2/4) sobre {warp,A-only,B-only}. Sólo con multicand." },
+        desc: "Velocity-perturbed warp candidates (0/2/4) over {warp,A-only,B-only}. Only with multicand." },
       { flag: "--mc-perturb", type: "number", default: "0.15", min: 0, max: 0.5, step: 0.05, name: "MC: perturb",
-        desc: "Fracción de perturbación de velocidad [0,0.5]." },
-      { flag: "--mc-disp", type: "number", default: "0.35", min: 0, max: 2, step: 0.05, name: "MC: dispersión",
-        desc: "Umbral de dispersión del set (sin consenso -> crossfade) [0,2]." },
+        desc: "Velocity perturbation fraction [0,0.5]." },
+      { flag: "--mc-disp", type: "number", default: "0.35", min: 0, max: 2, step: 0.05, name: "MC: dispersion",
+        desc: "Set dispersion threshold (no consensus -> crossfade) [0,2]." },
       { flag: "--mc-edge", type: "number", default: "0.5", min: 0, max: 1, step: 0.05, name: "MC: edge",
-        desc: "Umbral de borde Sobel para mantener el hard-pick [0,1] (0=siempre duro)." },
+        desc: "Sobel edge threshold to keep the hard-pick [0,1] (0=always hard)." },
     ],
   },
   {
     title: "iGPU field",
-    note: "El campo de contornos iGPU es DEFAULT ON. Apagarlo (--no-igpu-field) cascada apaga bg-snap/band-xfade/afill (lo leen).",
+    note: "The iGPU contour field is DEFAULT ON. Turning it off (--no-igpu-field) cascades off bg-snap/band-xfade/afill (which read it).",
     controls: [
-      { flag: "--no-igpu-field", type: "switch-off", default: true, name: "Campo de contornos iGPU",
-        desc: "Sobel de contornos en la iGPU (binding 11). DEFAULT ON. Apagar emite --no-igpu-field y (cascada) apaga bg-snap/band-xfade/afill, que lo leen." },
+      { flag: "--no-igpu-field", type: "switch-off", default: true, name: "iGPU contour field",
+        desc: "Contour Sobel on the iGPU (binding 11). DEFAULT ON. Off emits --no-igpu-field and (cascade) turns off bg-snap/band-xfade/afill, which read it." },
       { flag: "--igpu-field-verify", type: "switch", default: false, name: "iGPU field verify",
-        desc: "Oráculo CPU Sobel vs el campo GPU (gate de bytes D-13). Implica --igpu-field." },
-      { flag: "--afill", type: "switch", default: false, name: "A-fill (visualizador)",
-        desc: "A tinta la banda de contorno sobre wapOutA in-place (eye-valida iGPU<->frontera). Auto-activa --igpu-field." },
-      { flag: "--afill-strength", type: "number", default: "0.5", min: 0, max: 1, step: 0.1, name: "A-fill: fuerza",
-        desc: "Peso de visibilidad del tinte [0,1] (0=byte-identical)." },
+        desc: "CPU Sobel oracle vs the GPU field (D-13 byte gate). Implies --igpu-field." },
+      { flag: "--afill", type: "switch", default: false, name: "A-fill (visualizer)",
+        desc: "A tints the contour band over wapOutA in-place (eye-validates iGPU<->boundary). Auto-enables --igpu-field." },
+      { flag: "--afill-strength", type: "number", default: "0.5", min: 0, max: 1, step: 0.1, name: "A-fill: strength",
+        desc: "Tint visibility weight [0,1] (0=byte-identical)." },
       { flag: "--afill-edge-norm", type: "number", default: "0.04", min: 0.001, max: 1, step: 0.01, name: "A-fill: edge-norm",
-        desc: "Normalizador dist-contorno->[0,1] (~1/edge_thr)." },
+        desc: "Contour-distance->[0,1] normalizer (~1/edge_thr)." },
       { flag: "--afill-mv-gate", type: "number", default: "6", min: 0, max: 64, step: 1, name: "A-fill: still-gate (px)",
-        desc: "Gate de pixeles QUIETOS: el contorno se desvanece donde |MV| >= este valor (px), persiste en zonas quietas bajo movimiento. 0 = sin gate (contorno completo). Solo el visualizador afill." },
+        desc: "STILL-pixel gate: the contour fades where |MV| >= this value (px), persists in still areas under motion. 0 = no gate (full contour). Only the afill visualizer." },
     ],
   },
   {
-    title: "Pacing avanzado (cadencia / PLL / metrónomo)",
+    title: "Advanced pacing (cadence / PLL / metronome)",
     controls: [
       { flag: "--no-sync-clock", type: "switch-off", default: true, name: "Sync-clock (NCO+PLL)",
-        desc: "DEFAULT ON. Reloj de contenido NCO + PLL 2º orden. Apagar = pacing por-par legacy." },
+        desc: "DEFAULT ON. NCO content clock + 2nd-order PLL. Off = legacy per-pair pacing." },
       { flag: "--no-sc-select", type: "switch-off", default: true, name: "SC-select",
-        desc: "DEFAULT ON. El content_clock dirige también la SELECCIÓN de par (barrido 0->1 completo). Implica sync-clock." },
+        desc: "DEFAULT ON. The content_clock also drives pair SELECTION (full 0->1 sweep). Implies sync-clock." },
       { flag: "--no-phasefix", type: "switch-off", default: true, name: "Phasefix",
-        desc: "DEFAULT ON. Fix de cobertura de la escalera de fase (recalcula el ancla D). Apagar = ancla pre-STAGE-78." },
+        desc: "DEFAULT ON. Phase-ladder coverage fix (recomputes the D anchor). Off = pre-STAGE-78 anchor." },
       { flag: "--sc-phase-gain", type: "number", default: "0.10", min: 0, max: 1, step: 0.01, name: "PLL phase-gain",
-        desc: "Fracción de corrección de fase del PLL por arribo [0,1]." },
+        desc: "PLL phase-correction fraction per arrival [0,1]." },
       { flag: "--sc-freq-alpha", type: "number", default: "0.05", min: 0, max: 1, step: 0.01, name: "PLL freq-alpha",
-        desc: "Peso EMA de frecuencia (T_robust) del PLL [0,1]." },
+        desc: "PLL frequency EMA weight (T_robust) [0,1]." },
       { flag: "--sc-reseat", type: "number", default: "4.0", min: 0.5, max: 64, step: 0.5, name: "PLL re-seat",
-        desc: "Umbral de error de fase para re-seat vs slew (source-frames [0.5,64])." },
+        desc: "Phase-error threshold for re-seat vs slew (source-frames [0.5,64])." },
       { flag: "--phase-norm", type: "switch", default: true, name: "Phase-norm",
-        desc: "Escalera-N normalizada: fase intra-par en rejilla uniforme (j+0.5)/N. DEFAULT OFF." },
+        desc: "Normalized N-ladder: intra-pair phase on a uniform grid (j+0.5)/N. DEFAULT OFF." },
       { flag: "--cphase", type: "switch", default: true, name: "C-phase (reshape)",
-        desc: "Reshape velocity-continuous de la tasa de fase (seam-slope match; cúbico monótono). TEXT-safe. DEFAULT OFF." },
+        desc: "Velocity-continuous reshape of the phase rate (seam-slope match; monotonic cubic). TEXT-safe. DEFAULT OFF." },
       { flag: "--cphase-ease", type: "number", default: "0.25", min: 0.05, max: 0.5, step: 0.05, name: "C-phase: ease",
-        desc: "Ancho de fase del ease de apertura [0.05,0.5]. Sólo con cphase." },
+        desc: "Phase width of the opening ease [0.05,0.5]. Only with cphase." },
       { flag: "--cphase-gain", type: "number", default: "1.0", min: 0, max: 1, step: 0.1, name: "C-phase: gain",
-        desc: "Fuerza del match de pendiente del seam [0,1] (0=lineal/off). Sólo con cphase." },
+        desc: "Strength of the seam slope match [0,1] (0=linear/off). Only with cphase." },
       { flag: "--pace-variance", type: "switch", default: false, name: "Pace-variance (FSR3)",
-        desc: "Pacer FSR3 variance-aware (target = SMA10 - varFactor·std - safety). Pure CPU. DEFAULT OFF." },
+        desc: "FSR3 variance-aware pacer (target = SMA10 - varFactor*std - safety). Pure CPU. DEFAULT OFF." },
       { flag: "--pv-safety", type: "number", default: "0.75", min: 0, step: 0.05, name: "PV: safety (ms)",
-        desc: "FSR3 safetyMargin de --pace-variance (ms). Sólo con pace-variance." },
+        desc: "FSR3 safetyMargin of --pace-variance (ms). Only with pace-variance." },
       { flag: "--pv-var", type: "number", default: "0.1", min: 0, step: 0.05, name: "PV: var-factor",
-        desc: "FSR3 varianceFactor de --pace-variance. Sólo con pace-variance." },
-      { flag: "--pace-present", type: "switch", default: false, name: "Pace-present (metrónomo)",
-        desc: "Pacer métrico drift-corrected: mantiene el grid y slewea el ancla (MASD->0). DEFAULT OFF." },
+        desc: "FSR3 varianceFactor of --pace-variance. Only with pace-variance." },
+      { flag: "--pace-present", type: "switch", default: false, name: "Pace-present (metronome)",
+        desc: "Drift-corrected metric pacer: keeps the grid and slews the anchor (MASD->0). DEFAULT OFF." },
       { flag: "--pp-safety", type: "number", default: "0.50", min: 0, max: 8, step: 0.05, name: "PP: safety (ms)",
-        desc: "FSR3 safetyMargin del drift target [0,8]. Sólo con pace-present." },
+        desc: "FSR3 safetyMargin of the drift target [0,8]. Only with pace-present." },
       { flag: "--pp-var", type: "number", default: "0.1", min: 0, max: 4, step: 0.05, name: "PP: var-factor",
-        desc: "FSR3 varianceFactor del drift target [0,4]. Sólo con pace-present." },
+        desc: "FSR3 varianceFactor of the drift target [0,4]. Only with pace-present." },
       { flag: "--pp-slew", type: "number", default: "0.05", min: 0, max: 0.5, step: 0.01, name: "PP: slew-gain",
-        desc: "Fracción por-tick del error de fase del grid plegada en tick_t0 [0,0.5]. Sólo con pace-present." },
+        desc: "Per-tick fraction of the grid phase error folded into tick_t0 [0,0.5]. Only with pace-present." },
       { flag: "--pace-hard", type: "switch", default: false, name: "Pace-hard",
-        desc: "Pacer duro: fija cada frame al borde QPC (sleep-then-spin acotado). own-window only; freeze-floor < 1 vblank. DEFAULT OFF." },
+        desc: "Hard pacer: pins every frame to the QPC edge (bounded sleep-then-spin). own-window only; freeze-floor < 1 vblank. DEFAULT OFF." },
       { flag: "--ph-spin", type: "number", default: "2.0", min: 0.1, max: 4, step: 0.1, name: "PH: spin (ms)",
-        desc: "Presupuesto del spin final de --pace-hard (ms [0.1,4])." },
+        desc: "Final-spin budget of --pace-hard (ms [0.1,4])." },
       { flag: "--pace-vblank", type: "switch", default: false, name: "Pace-vblank",
-        desc: "Phase-lock al vblank real (DwmGetCompositionTimingInfo). own-window + requiere pace-hard. DEFAULT OFF." },
+        desc: "Phase-lock to the real vblank (DwmGetCompositionTimingInfo). own-window + requires pace-hard. DEFAULT OFF." },
       { flag: "--pv-lock-gain", type: "number", default: "0.05", min: 0, max: 0.5, step: 0.01, name: "PV: lock-gain",
-        desc: "Fracción por-query del error de fase de vblank plegada en tick_t0 [0,0.5]. Sólo con pace-vblank." },
+        desc: "Per-query fraction of the vblank phase error folded into tick_t0 [0,0.5]. Only with pace-vblank." },
     ],
   },
   {
-    title: "Latencia / Responsividad",
+    title: "Latency / Responsiveness",
     controls: [
       { flag: "--low-d", type: "switch", default: true, name: "Low-D (floor-trim)",
-        desc: "Recorta el término span del ancla D (menos input-lag); freshage_ema queda como piso de freeze. Requiere phasefix. DEFAULT OFF." },
+        desc: "Trims the D anchor's span term (less input-lag); freshage_ema remains as the freeze floor. Requires phasefix. DEFAULT OFF." },
       { flag: "--low-d-frac", type: "number", default: "0.5", min: 0, max: 1, step: 0.1, name: "Low-D: frac",
-        desc: "Fracción del término span conservada [0,1] (1=sin recorte). Sólo con low-d." },
+        desc: "Fraction of the span term kept [0,1] (1=no trim). Only with low-d." },
       { flag: "--low-d-span-cap", type: "number", default: "1.5", min: 1, max: 8, step: 0.5, name: "Low-D: span-cap",
-        desc: "Techo de crecimiento del término span (source-frames [1,8]). Sólo con low-d." },
+        desc: "Growth ceiling of the span term (source-frames [1,8]). Only with low-d." },
       { flag: "--rfp", type: "switch", default: false, name: "Real-fast-path",
-        desc: "En ticks que ya caen al real más fresco, presenta el real (sin par de interp). Implica async-present. DEFAULT OFF." },
+        desc: "On ticks that already land on the freshest real, presents the real (no interp pair). Implies async-present. DEFAULT OFF." },
       { flag: "--rfp-window", type: "number", default: "0.15", min: 0, max: 1, step: 0.05, name: "RFP: window",
-        desc: "Tolerancia de fase del rfp (dispara con phase >= 1-window) [0,1]. Sólo con rfp." },
-      { flag: "--rfp-fresh", type: "switch", default: false, name: "RFP-fresh (rediseño)",
-        desc: "Presenta el real CAPTURADO más fresco (no el del par). Trade: content sawtooth. Requiere --rfp." },
-      { flag: "--asw", type: "switch", default: false, name: "ASW (extrapolación)",
-        desc: "Extrapolación fwd acotada (proyecta cur al frente; rellena déficit). Requiere sync-clock. DEFAULT OFF." },
+        desc: "rfp phase tolerance (fires when phase >= 1-window) [0,1]. Only with rfp." },
+      { flag: "--rfp-fresh", type: "switch", default: false, name: "RFP-fresh (redesign)",
+        desc: "Presents the freshest CAPTURED real (not the pair's). Trade: content sawtooth. Requires --rfp." },
+      { flag: "--asw", type: "switch", default: false, name: "ASW (extrapolation)",
+        desc: "Bounded fwd extrapolation (projects cur forward; fills deficit). Requires sync-clock. DEFAULT OFF." },
       { flag: "--asw-max", type: "number", default: "1.0", min: 0, max: 4, step: 0.5, name: "ASW: max",
-        desc: "Cota de extrapolación en unidades de fase [0,4]." },
+        desc: "Extrapolation bound in phase units [0,4]." },
       { flag: "--camera-twarp", type: "switch", default: false, name: "Camera-twarp",
-        desc: "Lead de cámara en el muestreo del FG (la vista LIDERA la captura; sincroniza el ratón). DEFAULT OFF." },
+        desc: "Camera lead in the FG sampling (the view LEADS the capture; syncs the mouse). DEFAULT OFF." },
       { flag: "--camera-twarp-amt", type: "number", default: "0.5", min: 0, max: 3, step: 0.1, name: "Camera-twarp: amt",
-        desc: "Escalar de lead eye-tunable [0,3]." },
+        desc: "Eye-tunable lead scalar [0,3]." },
       { flag: "--motion-fallback", type: "switch", default: false, name: "Motion-fallback (AFMF2)",
-        desc: "Fallback frame-level: sobre dispersión gme alta presenta el real (no warp basura). Implica async. DEFAULT OFF." },
-      { flag: "--mf-disp", type: "number", default: "50", min: 0, max: 100, step: 1, name: "MF: dispersión (%)",
-        desc: "Cota de dispersión gme para el fallback (% [0,100]; sobre ella presenta un real)." },
+        desc: "Frame-level fallback: on high gme dispersion presents the real (not garbage warp). Implies async. DEFAULT OFF." },
+      { flag: "--mf-disp", type: "number", default: "50", min: 0, max: 100, step: 1, name: "MF: dispersion (%)",
+        desc: "gme dispersion bound for the fallback (% [0,100]; above it presents a real)." },
     ],
   },
   {
     title: "Make-space / Throughput",
     controls: [
       { flag: "--no-load-governor", type: "switch-off", default: true, name: "Load governor",
-        desc: "DEFAULT ON (PART-A). Piso de tier-5 por util del 4090 para el colapso del multiplicador en combate. Mantiene flow+warp; suelta trabajo opcional." },
+        desc: "DEFAULT ON (PART-A). 4090-util tier-5 floor for the multiplier collapse in combat. Keeps flow+warp; sheds optional work." },
       { flag: "--gov-util", type: "number", default: "92", min: 50, max: 100, step: 1, name: "Gov-util (%)",
-        desc: "Umbral de util del 4090 que dispara el tier-5 [50,100]. Sólo con load-governor." },
+        desc: "4090-util threshold that triggers tier-5 [50,100]. Only with load-governor." },
       { flag: "--no-deficit-tier", type: "switch-off", default: true, name: "Deficit-tier",
-        desc: "DEFAULT ON. Shed de object_repair/memory en escenas pesadas bajo déficit sostenido. Apagar = sin tier-4." },
+        desc: "DEFAULT ON. Sheds object_repair/memory in heavy scenes under sustained deficit. Off = no tier-4." },
       { flag: "--no-tiers", type: "switch-off", default: true, name: "Pressure tiers",
-        desc: "DEFAULT ON. Tiers de presión STAGE-84 (bwd-skip + shed graduado). Apagar = sólo bwd-skip." },
-      { flag: "--fdrop", type: "switch", default: false, name: "F-drop (dup exactos)",
-        desc: "Descarta frames duplicados EXACTOS en presentación (elide warp redundante). Implica async. DEFAULT OFF." },
-      { flag: "--fdrop-quiet-ms", type: "number", default: "0", min: 0, step: 0.5, name: "F-drop quiet (DIFERIDO)",
-        desc: "Stage-B soft near-dup: PARSEADO pero LÓGICA DIFERIDA (inerte en 0)." },
-      { flag: "--fdrop-k", type: "number", default: "0", min: 0, step: 0.1, name: "F-drop k (DIFERIDO)",
-        desc: "Stage-B sensibilidad de movimiento: PARSEADO pero LÓGICA DIFERIDA (inerte en 0)." },
+        desc: "DEFAULT ON. STAGE-84 pressure tiers (bwd-skip + graduated shed). Off = bwd-skip only." },
+      { flag: "--fdrop", type: "switch", default: false, name: "F-drop (exact dups)",
+        desc: "Drops EXACT duplicate frames at present (elides redundant warp). Implies async. DEFAULT OFF." },
+      { flag: "--fdrop-quiet-ms", type: "number", default: "0", min: 0, step: 0.5, name: "F-drop quiet (DEFERRED)",
+        desc: "Stage-B soft near-dup: PARSED but LOGIC DEFERRED (inert at 0)." },
+      { flag: "--fdrop-k", type: "number", default: "0", min: 0, step: 0.1, name: "F-drop k (DEFERRED)",
+        desc: "Stage-B motion sensitivity: PARSED but LOGIC DEFERRED (inert at 0)." },
       { flag: "--upload-xfer", type: "switch", default: false, name: "Upload-xfer (DMA)",
-        desc: "Mueve el upload del warp a la cola transfer/DMA del 4090 (overlap). Implica async. Force-off sin familia transfer. DEFAULT OFF." },
+        desc: "Moves the warp upload to the 4090's transfer/DMA queue (overlap). Implies async. Force-off without a transfer family. DEFAULT OFF." },
       { flag: "--fwd-prestage", type: "switch", default: true, name: "Fwd-prestage",
-        desc: "Prestage de la copia B fuera del flow submit (colapsa el gap de build). Ruta serial + iGPU-convert. DEFAULT OFF." },
+        desc: "Prestages the B copy outside the flow submit (collapses the build gap). Serial path + iGPU-convert. DEFAULT OFF." },
       { flag: "--fwd-pipeline", type: "switch", default: false, name: "Fwd-pipeline",
-        desc: "Pipelining fwd cross-par (WAP; +1 par de lag de publish). Opt-in A/B. DEFAULT OFF." },
-      { flag: "--fg-prebake", type: "switch", default: false, name: "FG-prebake (descriptores)",
-        desc: "Pre-bake de descriptor sets al init (evita el burst vkUpdateDescriptorSets por-par). Alivio host-CPU. DEFAULT OFF." },
+        desc: "Cross-pair fwd pipelining (WAP; +1 pair of publish lag). Opt-in A/B. DEFAULT OFF." },
+      { flag: "--fg-prebake", type: "switch", default: false, name: "FG-prebake (descriptors)",
+        desc: "Pre-bakes descriptor sets at init (avoids the per-pair vkUpdateDescriptorSets burst). Host-CPU relief. DEFAULT OFF." },
       { flag: "--shallow-queue", type: "switch", default: false, name: "Shallow-queue",
-        desc: "Colapsa la profundidad async ~1->~0 en ticks con headroom (re-poll acotado). Implica async. DEFAULT OFF." },
+        desc: "Collapses the async depth ~1->~0 on ticks with headroom (bounded re-poll). Implies async. DEFAULT OFF." },
       { flag: "--shallow-queue-budget-us", type: "number", default: "350", min: 0, max: 4000, step: 50, name: "Shallow-queue budget (us)",
-        desc: "Cap del poll de early-promote (us [0,4000]; 0=inerte). Sólo con shallow-queue." },
+        desc: "Cap of the early-promote poll (us [0,4000]; 0=inert). Only with shallow-queue." },
     ],
   },
   {
-    title: "Protección de hilos / Estabilidad",
-    note: "Apagar un interruptor emite su --no-X. --no-fg-protect no toca pin/async (usa sus propios interruptores).",
+    title: "Thread protection / Stability",
+    note: "Turning a switch off emits its --no-X. --no-fg-protect doesn't touch pin/async (they use their own switches).",
     controls: [
-      { flag: "--no-pin", type: "switch-off", default: true, name: "Pin de hilos",
-        desc: "DEFAULT ON (PART-A). Fija C/F/P a núcleos (P elevado RT). Apagar = hilos OS bare (byte-identical). NO arregla el slip ligado a GPU." },
-      { flag: "--pin-test", type: "select", default: "0", name: "Pin-test (ablación)",
+      { flag: "--no-pin", type: "switch-off", default: true, name: "Thread pin",
+        desc: "DEFAULT ON (PART-A). Pins C/F/P to cores (P elevated RT). Off = bare OS threads (byte-identical). Does NOT fix the GPU-bound slip." },
+      { flag: "--pin-test", type: "select", default: "0", name: "Pin-test (ablation)",
         options: [
           { value: "0", label: "0 FULL (pin C/F/P + elevate P+F)" },
           { value: "1", label: "1 NO-FLOW-RT" },
@@ -570,38 +570,38 @@ const GROUPS = [
           { value: "4", label: "4 NEITHER" },
           { value: "5", label: "5 MMCSS-COMPOSITE" },
         ],
-        desc: "Selector de ablación de la política de pin (sólo con --pin). fg-protect fija mode-5 por defecto." },
+        desc: "Ablation selector for the pin policy (only with --pin). fg-protect forces mode-5 by default." },
       { flag: "--no-fg-protect", type: "switch-off", default: true, name: "FG protect (S3)",
-        desc: "DEFAULT ON (PART-A). Paquete S3 contra GPU99%+CPU100%: MMCSS-composite mode-5 + async-present + GAME_FLOOR (nunca toca la afinidad del juego). (async-present vive en Presentación.)" },
+        desc: "DEFAULT ON (PART-A). S3 package against GPU99%+CPU100%: MMCSS-composite mode-5 + async-present + GAME_FLOOR (never touches the game's affinity). (async-present lives in Presentation.)" },
     ],
   },
   {
-    title: "Overlay / Diagnóstico",
+    title: "Overlay / Diagnostics",
     controls: [
-      { flag: "--fps-overlay", type: "switch", default: false, name: "Overlay de FPS",
-        desc: "Overlay 'in->out' estilo LSFG dibujado arriba-izquierda sobre el frame presentado (ruta sync; el path async lo omite)." },
-      { flag: "--csv", type: "text", default: "", name: "CSV de telemetría", placeholder: "salida.csv",
-        desc: "Exporta telemetría por present a este CSV." },
+      { flag: "--fps-overlay", type: "switch", default: false, name: "FPS overlay",
+        desc: "LSFG-style 'in->out' overlay drawn top-left on the presented frame (sync path; the async path skips it)." },
+      { flag: "--csv", type: "text", default: "", name: "Telemetry CSV", placeholder: "output.csv",
+        desc: "Exports per-present telemetry to this CSV." },
       { flag: "--latency-trace", type: "switch", default: false, name: "Latency trace",
-        desc: "Solo medición: emite una línea [lat-trace] con la descomposición de latencia del pipeline." },
+        desc: "Measurement only: emits a [lat-trace] line with the pipeline's latency breakdown." },
       { flag: "--wsub", type: "switch", default: false, name: "W-sub (warp timings)",
-        desc: "Sub-tiempos por-tick del warp-lambda (up/rec/gpu/prs ms) en la línea de stats." },
+        desc: "Per-tick sub-timings of the warp-lambda (up/rec/gpu/prs ms) in the stats line." },
       { flag: "--fsub", type: "switch", default: false, name: "F-sub (flow split)",
-        desc: "Split F por-par fsub(flow/pair/cpu) ms en la línea de stats (premisa STAGE-85)." },
+        desc: "Per-pair F split fsub(flow/pair/cpu) ms in the stats line (STAGE-85 premise)." },
       { flag: "--dump", type: "number", default: "0", min: 0, step: 1, name: "Dump frames",
-        desc: "Vuelca los próximos N frames presentados a frames\\ como BMP (diagnóstico)." },
+        desc: "Dumps the next N presented frames to frames\\ as BMP (diagnostic)." },
       { flag: "--objdump", type: "number", default: "0", min: 0, step: 1, name: "Obj-dump (grids)",
-        desc: "Vuelca N pares de BLOCK GRIDS a frames\\ (máscara de disidencia, |MV|, persist)." },
+        desc: "Dumps N pairs of BLOCK GRIDS to frames\\ (dissent mask, |MV|, persist)." },
       { flag: "--pairdump", type: "number", default: "0", min: 0, step: 1, name: "Pair-dump (inputs)",
-        desc: "Vuelca los 2 frames full-res que el warp recibe por par (el plano de INPUT)." },
+        desc: "Dumps the 2 full-res frames the warp receives per pair (the INPUT plane)." },
       { flag: "--outdump", type: "number", default: "0", min: 0, step: 1, name: "Out-dump (warp out)",
-        desc: "Vuelca N salidas WARP presentadas (wapOutA tras la fence, fase t en el nombre)." },
+        desc: "Dumps N presented WARP outputs (wapOutA after the fence, phase t in the name)." },
       { flag: "--phaselog", type: "number", default: "0", min: 0, step: 1, name: "Phase-log",
-        desc: "Loguea la escalera de t_use presentado para los próximos N pares (STAGE-78)." },
-      { flag: "--duration", type: "number", default: "0", min: 0, step: 1, name: "Duración (s)", placeholder: "0 = ilimitado",
-        desc: "Run acotado por wall-clock: tras ~N s, teardown limpio (= --exit-after). 0 = ilimitado." },
-      { flag: "--max-frames", type: "number", default: "0", min: 0, step: 1, name: "Max frames", placeholder: "0 = ilimitado",
-        desc: "Run acotado por presents (total_frames). 0 = ilimitado. Para el testbench." },
+        desc: "Logs the presented t_use ladder for the next N pairs (STAGE-78)." },
+      { flag: "--duration", type: "number", default: "0", min: 0, step: 1, name: "Duration (s)", placeholder: "0 = unlimited",
+        desc: "Wall-clock-bounded run: after ~N s, clean teardown (= --exit-after). 0 = unlimited." },
+      { flag: "--max-frames", type: "number", default: "0", min: 0, step: 1, name: "Max frames", placeholder: "0 = unlimited",
+        desc: "Present-bounded run (total_frames). 0 = unlimited. For the testbench." },
     ],
   },
 ];
@@ -711,7 +711,7 @@ function renderGroup(group) {
     const btn = document.createElement("button");
     btn.className = "btn btn-ghost";
     btn.style.marginTop = "10px";
-    btn.textContent = "Detectar monitores";
+    btn.textContent = "Detect monitors";
     btn.addEventListener("click", detectMonitors);
     g.appendChild(btn);
   }
@@ -739,10 +739,10 @@ function renderWindowSelector(g) {
   const lbl = document.createElement("span");
   lbl.className = "field-label";
   lbl.style.margin = "0";
-  lbl.textContent = "Ventana objetivo (captura)";
+  lbl.textContent = "Target window (capture)";
   const refresh = document.createElement("button");
   refresh.className = "btn btn-ghost";
-  refresh.textContent = "Refrescar";
+  refresh.textContent = "Refresh";
   refresh.addEventListener("click", refreshWindows);
   head.appendChild(lbl);
   head.appendChild(refresh);
@@ -763,14 +763,14 @@ function renderWindowSelector(g) {
   const target = document.createElement("div");
   target.className = "winsel-target";
   target.id = "window-target";
-  target.textContent = "Objetivo: (ninguno)";
+  target.textContent = "Target: (none)";
 
   wrap.appendChild(head);
   wrap.appendChild(sel);
   wrap.appendChild(target);
   g.appendChild(wrap);
 
-  resetWindowSelect("Pulsa «Refrescar» para listar ventanas");
+  resetWindowSelect("Click \"Refresh\" to list windows");
 
   // Keep the prominent "Objetivo:" line in sync with manual edits of the text field.
   const wi = windowInput();
@@ -797,25 +797,25 @@ function updateTarget(title, exe) {
   const t = document.getElementById("window-target");
   if (!t) return;
   if (!title) {
-    t.textContent = "Objetivo: (ninguno)";
+    t.textContent = "Target: (none)";
   } else if (exe) {
-    t.textContent = `Objetivo: ${title} (${exe})`;
+    t.textContent = `Target: ${title} (${exe})`;
   } else {
-    t.textContent = `Objetivo: ${title}`;
+    t.textContent = `Target: ${title}`;
   }
 }
 
 async function refreshWindows() {
   if (!invoke) return;
   const sel = document.getElementById("window-select");
-  resetWindowSelect("cargando…");
+  resetWindowSelect("loading...");
   try {
     const wins = await invoke("list_windows");
     lastWindows = Array.isArray(wins) ? wins : [];
     resetWindowSelect(
       lastWindows.length
-        ? `— seleccionar ventana (${lastWindows.length}) —`
-        : "— sin ventanas con título —"
+        ? `- select window (${lastWindows.length}) -`
+        : "- no titled windows -"
     );
     for (const w of lastWindows) {
       const opt = document.createElement("option");
@@ -833,7 +833,7 @@ async function refreshWindows() {
       updateTarget(cur, match ? match.exe : "");
     }
   } catch (e) {
-    resetWindowSelect("error al listar ventanas");
+    resetWindowSelect("error listing windows");
     logLine("[ui] error list_windows: " + e, "exit");
   }
 }
@@ -979,7 +979,7 @@ function setRunning(on) {
   running = on;
   btnStart.disabled = on;
   btnStop.disabled = !on;
-  statePill.textContent = on ? "en ejecución" : "detenido";
+  statePill.textContent = on ? "running" : "stopped";
   statePill.className = "state-pill " + (on ? "running" : "stopped");
   if (!on) {
     fpsCapEl.textContent = "--";
@@ -1011,14 +1011,14 @@ async function doRestart() {
   if (!invoke || !running) return;
   const args = buildArgs();
   const exePath = exeInput.value || DEFAULT_EXE;
-  logLine("[ui] reiniciando FG con la nueva config…", "sys");
+  logLine("[ui] restarting FG with new config...", "sys");
   // Belt-and-suspenders del guard de epoch del backend: marcar el reinicio en vuelo para que
   // el "fg-exit" del hijo viejo (si el backend llegara a emitir uno) no nos pase a "detenido".
   restarting = true;
   try {
     await invoke("restart", { args, exePath });
   } catch (e) {
-    logLine("[ui] error al reiniciar: " + e, "exit");
+    logLine("[ui] restart error: " + e, "exit");
     restarting = false;
     setRunning(false); // el reinicio falló (p.ej. spawn): el FG ya no está corriendo
     return;
@@ -1032,7 +1032,7 @@ async function doRestart() {
 
 async function detectMonitors() {
   if (!invoke) return;
-  logLine("[ui] consultando --list-monitors ...", "sys");
+  logLine("[ui] querying --list-monitors ...", "sys");
   try {
     const out = await invoke("list_monitors", { exePath: exeInput.value || DEFAULT_EXE });
     for (const l of String(out).split(/\r?\n/)) if (l.trim() !== "") logLine(l, classify(l));
@@ -1043,17 +1043,17 @@ async function detectMonitors() {
 
 btnStart.addEventListener("click", async () => {
   if (!invoke) {
-    logLine("[ui] API de Tauri no disponible.", "exit");
+    logLine("[ui] Tauri API not available.", "exit");
     return;
   }
   const args = buildArgs();
   const exePath = exeInput.value || DEFAULT_EXE;
   setRunning(true);
-  logLine("[ui] iniciando: " + exeBasename(exePath) + " " + args.map(quoteArg).join(" "), "sys");
+  logLine("[ui] starting: " + exeBasename(exePath) + " " + args.map(quoteArg).join(" "), "sys");
   try {
     await invoke("launch", { args, exePath });
   } catch (e) {
-    logLine("[ui] no se pudo iniciar: " + e, "exit");
+    logLine("[ui] failed to start: " + e, "exit");
     setRunning(false);
   }
 });
@@ -1063,7 +1063,7 @@ btnStop.addEventListener("click", async () => {
   try {
     await invoke("stop");
   } catch (e) {
-    logLine("[ui] error al detener: " + e, "exit");
+    logLine("[ui] stop error: " + e, "exit");
   }
 });
 
@@ -1080,7 +1080,7 @@ if (listen) {
     // siga "en ejecución" sin parpadear a "detenido".
     if (restarting) return;
     const code = e.payload;
-    logLine("[ui] proceso finalizado (código " + (code ?? "?") + ")", "exit");
+    logLine("[ui] process finished (code " + (code ?? "?") + ")", "exit");
     setRunning(false);
   });
 }
@@ -1097,3 +1097,5 @@ window.addEventListener("DOMContentLoaded", async () => {
     setRunning(false);
   }
 });
+
+// Made with my soul - Swately <3

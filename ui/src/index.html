@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="styles.css" />
@@ -19,22 +19,22 @@
       <div class="status" id="status">
         <div class="fps">
           <div class="fps-block">
-            <span class="fps-label">captura</span>
+            <span class="fps-label">capture</span>
             <span class="fps-val" id="fps-cap">--</span>
           </div>
           <span class="fps-arrow">&rarr;</span>
           <div class="fps-block">
-            <span class="fps-label">ingesta</span>
+            <span class="fps-label">ingest</span>
             <span class="fps-val" id="fps-in">--</span>
           </div>
           <span class="fps-arrow">&rarr;</span>
           <div class="fps-block">
-            <span class="fps-label">salida</span>
+            <span class="fps-label">output</span>
             <span class="fps-val accent" id="fps-out">--</span>
           </div>
         </div>
         <div class="state">
-          <span class="state-pill stopped" id="state-pill">detenido</span>
+          <span class="state-pill stopped" id="state-pill">stopped</span>
         </div>
       </div>
     </header>
@@ -46,8 +46,8 @@
 
       <aside class="sidebar">
         <div class="card run-card">
-          <button id="btn-start" class="btn btn-primary">Iniciar</button>
-          <button id="btn-stop" class="btn btn-danger" disabled>Detener</button>
+          <button id="btn-start" class="btn btn-primary">Start</button>
+          <button id="btn-stop" class="btn btn-danger" disabled>Stop</button>
           <!-- Control SOLO de UI (no entra en el modelo GROUPS de flags): con el FG en
                ejecución, al cambiar cualquier flag/control el launcher reinicia el FG con la
                nueva config (el FG lee su Config solo al arrancar). -->
@@ -57,12 +57,12 @@
             style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--text-dim);"
           >
             <input type="checkbox" id="auto-restart" />
-            <span>Auto-reiniciar al cambiar config</span>
+            <span>Auto-restart on config change</span>
           </label>
         </div>
 
         <div class="card">
-          <label class="field-label" for="exe-path">Ruta del ejecutable</label>
+          <label class="field-label" for="exe-path">Executable path</label>
           <input
             type="text"
             id="exe-path"
@@ -73,19 +73,19 @@
         </div>
 
         <div class="card">
-          <label class="field-label" for="raw-flags">Flags crudos (avanzado)</label>
+          <label class="field-label" for="raw-flags">Raw flags (advanced)</label>
           <textarea
             id="raw-flags"
             class="text-input raw"
             rows="3"
             spellcheck="false"
-            placeholder="--wsub --csv salida.csv ..."
+            placeholder="--wsub --csv output.csv ..."
           ></textarea>
-          <p class="hint">Se anexan al final del comando. Casi todos los flags ya están expuestos arriba; usa esta caja para overrides, alias (--exit-after, --present-fp16), el bi-argumento --qdump DIR N, o flags nuevos.</p>
+          <p class="hint">Appended to the end of the command. Almost all flags are already exposed above; use this box for overrides, aliases (--exit-after, --present-fp16), the two-argument --qdump DIR N, or new flags.</p>
         </div>
 
         <div class="card cmd-card">
-          <label class="field-label">Comando</label>
+          <label class="field-label">Command</label>
           <code id="cmd-preview" class="cmd-preview">phyriad_fg.exe</code>
         </div>
       </aside>
@@ -93,8 +93,8 @@
 
     <section class="logwrap card">
       <div class="log-head">
-        <span class="field-label">Salida en vivo</span>
-        <button id="btn-clear" class="btn btn-ghost">Limpiar</button>
+        <span class="field-label">Live output</span>
+        <button id="btn-clear" class="btn btn-ghost">Clear</button>
       </div>
       <div id="log" class="log"></div>
     </section>

@@ -136,7 +136,7 @@ fn spawn_fg(
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("No se pudo iniciar '{}': {}", exe, e))?;
+        .map_err(|e| format!("Failed to start '{}': {}", exe, e))?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -161,12 +161,12 @@ fn spawn_fg(
             };
             match res {
                 Ok(()) => {
-                    let _ = app.emit("fg-log", "[ui] FG atado al job (kill-on-close)".to_string());
+                    let _ = app.emit("fg-log", "[ui] FG bound to job (kill-on-close)".to_string());
                 }
                 Err(e) => {
                     let _ = app.emit(
                         "fg-log",
-                        format!("[ui] WARN: no se pudo atar el FG al job ({}); podría quedar huérfano.", e),
+                        format!("[ui] WARN: failed to bind FG to job ({}); it may be orphaned.", e),
                     );
                 }
             }
@@ -277,7 +277,7 @@ fn launch(
     {
         let guard = state.child.lock().map_err(|e| e.to_string())?;
         if guard.is_some() {
-            return Err("Ya hay un proceso de PhyriadFG en ejecución.".into());
+            return Err("A PhyriadFG process is already running.".into());
         }
     }
 
@@ -325,7 +325,7 @@ fn restart(
 
     let _ = app.emit(
         "fg-log",
-        "[ui] config cambió → FG reiniciado con la nueva config".to_string(),
+        "[ui] config changed → FG restarted with the new config".to_string(),
     );
     Ok(())
 }
@@ -367,12 +367,12 @@ fn list_monitors(exe_path: Option<String>) -> Result<String, String> {
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("No se pudo ejecutar '{}': {}", exe, e))?;
+        .map_err(|e| format!("Failed to run '{}': {}", exe, e))?;
 
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| "Sin stdout del proceso".to_string())?;
+        .ok_or_else(|| "No stdout from process".to_string())?;
 
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     std::thread::spawn(move || {
@@ -390,7 +390,7 @@ fn list_monitors(exe_path: Option<String>) -> Result<String, String> {
         Err(_) => {
             let _ = child.kill();
             let _ = child.wait();
-            Err("--list-monitors agotó el tiempo de espera (6 s).".into())
+            Err("--list-monitors timed out (6 s).".into())
         }
     }
 }
@@ -525,3 +525,5 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+// Made with my soul - Swately <3
