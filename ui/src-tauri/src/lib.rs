@@ -13,8 +13,15 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, State};
 
-/// Default location of the frame-gen executable (overridable from the UI via `exe_path`).
-const DEFAULT_EXE: &str = "G:\\PhyriadFG\\build\\phyriad_fg.exe";
+/// Default: phyriad_fg.exe in the same directory as ui.exe (portable layout).
+/// Overridable from the UI via the `exe_path` field.
+fn default_exe() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("phyriad_fg.exe")))
+        .and_then(|p| p.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "phyriad_fg.exe".to_string())
+}
 
 /// Managed state: the single child process handle, behind a mutex so `stop`/`is_running`
 /// and the stdout-reaper thread can race for it safely (whoever takes it first reaps it).
@@ -100,7 +107,7 @@ struct WindowInfo {
 fn resolve_exe(exe_path: Option<String>) -> String {
     match exe_path {
         Some(p) if !p.trim().is_empty() => p,
-        _ => DEFAULT_EXE.to_string(),
+        _ => default_exe(),
     }
 }
 
