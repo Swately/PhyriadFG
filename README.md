@@ -20,13 +20,18 @@ build.
 
 ## Build
 
-Requires **Windows**, **MSVC** (Build Tools), the **Vulkan SDK**, and **Ninja**.
+Requires **Windows**, **[MSVC Build Tools](https://aka.ms/vs/17/release/vs_BuildTools.exe)**,
+the **[Vulkan SDK](https://vulkan.lunarg.com/sdk/home)**, and **Ninja** (included with the
+Build Tools). Set the `VULKAN_SDK` environment variable before building (the SDK installer
+does this automatically).
 
 ```
-build.bat            ->  build\phyriad_fg.exe
+build-release.bat    ->  build-release\phyriad_fg.exe   (distributable, no debug DLLs)
+build.bat            ->  build\phyriad_fg.exe            (debug build)
 ```
 
-One target, one `build\` directory, LTO enabled.
+One target, LTO enabled on release. Both scripts detect Visual Studio automatically via
+`vswhere.exe` — no hardcoded paths.
 
 ## Run
 

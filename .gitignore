@@ -31,6 +31,9 @@ ui/Microsoft.WebView2*
 *.vrb
 *.synctex.gz
 
+# ── Release artifacts (attached to GitHub releases, not versioned) ──
+*.zip
+
 # ── Scratch / diagnostics (gitignored campaign artifacts) ───────
 frames/
 *.bak

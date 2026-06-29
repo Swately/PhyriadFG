@@ -1,6 +1,5 @@
 @echo off
-rem PhyriadFG — debug build (one command: configure + compile -> build\phyriad_fg.exe)
-rem For a distributable binary use build-release.bat instead.
+rem PhyriadFG — release build -> build-release\phyriad_fg.exe (distributable, no debug DLLs)
 setlocal
 
 rem ── Locate Visual Studio via vswhere ────────────────────────────────────────
@@ -26,10 +25,11 @@ if not defined VULKAN_SDK (
     exit /b 1
 )
 
-cmake -S "%~dp0." -B "%~dp0build" -G Ninja -DCMAKE_CXX_COMPILER=cl ^
+cmake -S "%~dp0." -B "%~dp0build-release" -G Ninja -DCMAKE_CXX_COMPILER=cl ^
+    -DCMAKE_BUILD_TYPE=Release ^
     -DVulkan_INCLUDE_DIR="%VULKAN_SDK%/Include" ^
     -DVulkan_LIBRARY="%VULKAN_SDK%/Lib/vulkan-1.lib" || exit /b 1
-cmake --build "%~dp0build" || exit /b 1
+cmake --build "%~dp0build-release" || exit /b 1
 
 echo.
-echo === build OK: %~dp0build\phyriad_fg.exe ===
+echo === build OK: %~dp0build-release\phyriad_fg.exe ===
