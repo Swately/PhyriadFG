@@ -24,12 +24,16 @@
 #include <vector>
 
 // ─── D3D11/DXGI ──────────────────────────────────────────────────────────────
-struct OutInfo { char name[40]={}; RECT coords{}; bool attached=false; HMONITOR hmon=nullptr; int hz=0; char adapter_name[128]={}; };
+struct OutInfo { char name[40]={}; RECT coords{}; bool attached=false; HMONITOR hmon=nullptr; int hz=0; int rot=0; char adapter_name[128]={}; };
 struct D3D {
     ID3D11Device* dev=nullptr; ID3D11DeviceContext* ctx=nullptr;
     IDXGIOutputDuplication* dup=nullptr; LUID luid{};
     char adapter[128]={}; uint32_t w=0,h=0; DXGI_FORMAT fmt=DXGI_FORMAT_UNKNOWN;
     HMONITOR cap_hmon=nullptr;
+    int cap_rot=0;             // DXGI_MODE_ROTATION del output duplicado (DDA entrega la orientación NATIVA
+                               // del panel — issue #1: Landscape-flipped=ROTATE180 salía de cabeza; el
+                               // convert corrige 180; 90/270 = no soportado con warning honesto). WGC
+                               // entrega ya-rotado (medido) → la corrección se gatea a CA_DD.
     int cap_ci=-1;             // chosen output index, persisted so dda_rearm() can re-DuplicateOutput after ACCESS_LOST
     std::vector<OutInfo> outputs;
 };

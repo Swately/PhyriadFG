@@ -26,7 +26,16 @@ layout(local_size_x = 64) in;
 layout(std430, binding = 0) readonly  buffer Src  { uint s[]; };  // BGRA8/RGBA8 (1 uint/px) OR FP16 (2 uint/px)
 layout(std430, binding = 1) writeonly buffer Dst  { uint d[]; };  // packed: 3 uints per 4-px group
 layout(std430, binding = 2) writeonly buffer Rgba { uint r[]; };  // RGBA8:  1 uint per pixel
-layout(push_constant) uniform PC { uint groups; uint is_bgra; uint px; uint is_hdr; float exposure; };  // px = W*H
+layout(push_constant) uniform PC { uint groups; uint is_bgra; uint px; uint is_hdr; float exposure; uint rot180; };  // px = W*H
+
+// (issue #1) índice de LECTURA con corrección ROTATE180: DDA entrega la orientación nativa
+// del panel en displays Landscape-flipped → el píxel destino i lee la fuente en px-1-i
+// (180° en index-space row-major = reversa total). min() acota los píxeles de cola del
+// último grupo (sus writes ya están gateados; el read queda dentro del buffer).
+uint sidx(uint i) {
+    uint ii = min(i, px - 1u);
+    return (rot180 != 0u) ? (px - 1u - ii) : ii;
+}
 
 vec3 srgb_oetf(vec3 c) {
     bvec3 lo = lessThan(c, vec3(0.0031308));
@@ -50,12 +59,12 @@ void main() {
     if (g >= groups) return;
     uint r0, g0, b0, r1, g1, b1, r2, g2, b2, r3, g3, b3;
     if (is_hdr != 0u) {
-        uvec3 c0 = hdr_px(g*4u+0u, exposure), c1 = hdr_px(g*4u+1u, exposure);
-        uvec3 c2 = hdr_px(g*4u+2u, exposure), c3 = hdr_px(g*4u+3u, exposure);
+        uvec3 c0 = hdr_px(sidx(g*4u+0u), exposure), c1 = hdr_px(sidx(g*4u+1u), exposure);
+        uvec3 c2 = hdr_px(sidx(g*4u+2u), exposure), c3 = hdr_px(sidx(g*4u+3u), exposure);
         r0=c0.x; g0=c0.y; b0=c0.z;  r1=c1.x; g1=c1.y; b1=c1.z;
         r2=c2.x; g2=c2.y; b2=c2.z;  r3=c3.x; g3=c3.y; b3=c3.z;
     } else {
-    uint p0 = s[g*4+0], p1 = s[g*4+1], p2 = s[g*4+2], p3 = s[g*4+3];
+    uint p0 = s[sidx(g*4u+0u)], p1 = s[sidx(g*4u+1u)], p2 = s[sidx(g*4u+2u)], p3 = s[sidx(g*4u+3u)];
     if (is_bgra != 0u) {
         // B8G8R8A8_UNORM uint32: bits[7:0]=B [15:8]=G [23:16]=R [31:24]=A
         r0=(p0>>16)&0xffu; g0=(p0>>8)&0xffu; b0=p0&0xffu;

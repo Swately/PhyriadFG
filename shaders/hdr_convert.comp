@@ -12,7 +12,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform sampler2D u_src;
 layout(set = 0, binding = 1, rgba8) uniform writeonly image2D u_dst;
-layout(push_constant) uniform PC { uint is_hdr; float exposure; } pc;
+layout(push_constant) uniform PC { uint is_hdr; float exposure; uint rot180; } pc;
 
 vec3 srgb_oetf(vec3 c) {
     bvec3 lo = lessThan(c, vec3(0.0031308));
@@ -25,7 +25,10 @@ void main() {
     const ivec2 co = ivec2(gl_GlobalInvocationID.xy);
     const ivec2 ds = imageSize(u_dst);
     if (co.x >= ds.x || co.y >= ds.y) return;
-    const vec2 uv = (vec2(co) + vec2(0.5)) / vec2(ds);
+    vec2 uv = (vec2(co) + vec2(0.5)) / vec2(ds);
+    // (issue #1) ROTATE180: DDA entrega la orientación nativa del panel en displays
+    // Landscape-flipped — muestrear la fuente girada 180° la endereza a orientación lógica.
+    if (pc.rot180 != 0u) uv = vec2(1.0) - uv;
     vec3 c = texture(u_src, uv).rgb;
     if (pc.is_hdr != 0u) {
         c = max(c, vec3(0.0)) * pc.exposure;

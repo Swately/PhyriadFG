@@ -25,7 +25,7 @@ bool d3d_init(D3D& d,int ci,bool want_dup){
     WideCharToMultiByte(CP_ACP,0,adesc.Description,-1,d.adapter,sizeof(d.adapter),nullptr,nullptr);
     for(UINT i=0;;++i){ IDXGIOutput* o=nullptr; if(ad->EnumOutputs(i,&o)!=S_OK)break; DXGI_OUTPUT_DESC od{}; o->GetDesc(&od);
         OutInfo info; WideCharToMultiByte(CP_ACP,0,od.DeviceName,-1,info.name,sizeof(info.name),nullptr,nullptr);
-        info.coords=od.DesktopCoordinates; info.attached=(od.AttachedToDesktop!=0); info.hmon=od.Monitor;
+        info.coords=od.DesktopCoordinates; info.attached=(od.AttachedToDesktop!=0); info.hmon=od.Monitor; info.rot=(int)od.Rotation;
         // Refresh rate: the visibility ceiling of any present on this output (MAILBOX shows at most hz fps).
         { DEVMODEA dm{}; dm.dmSize=sizeof(dm); if(EnumDisplaySettingsExA(info.name,ENUM_CURRENT_SETTINGS,&dm,0)) info.hz=(int)dm.dmDisplayFrequency; }
         d.outputs.push_back(info);
@@ -33,13 +33,14 @@ bool d3d_init(D3D& d,int ci,bool want_dup){
             d.cap_hmon=od.Monitor;
             if(want_dup){
                 IDXGIOutput1* o1=nullptr; o->QueryInterface(__uuidof(IDXGIOutput1),(void**)&o1);
-                if(o1&&o1->DuplicateOutput(d.dev,&d.dup)==S_OK){DXGI_OUTDUPL_DESC dd{}; d.dup->GetDesc(&dd); d.w=dd.ModeDesc.Width; d.h=dd.ModeDesc.Height; d.fmt=dd.ModeDesc.Format;}
+                if(o1&&o1->DuplicateOutput(d.dev,&d.dup)==S_OK){DXGI_OUTDUPL_DESC dd{}; d.dup->GetDesc(&dd); d.w=dd.ModeDesc.Width; d.h=dd.ModeDesc.Height; d.fmt=dd.ModeDesc.Format; d.cap_rot=(int)dd.Rotation;}
                 rel(o1);
             } else {
                 // WGC path: get dimensions from output rect; WGC delivers BGRA8
                 d.w=(uint32_t)(od.DesktopCoordinates.right-od.DesktopCoordinates.left);
                 d.h=(uint32_t)(od.DesktopCoordinates.bottom-od.DesktopCoordinates.top);
                 d.fmt=DXGI_FORMAT_B8G8R8A8_UNORM;
+                d.cap_rot=(int)od.Rotation;
             }
         }
         rel(o); }
@@ -64,7 +65,7 @@ bool dda_rearm(D3D& d){
         IDXGIOutput1* o1=nullptr; o->QueryInterface(__uuidof(IDXGIOutput1),(void**)&o1);
         if(o1 && o1->DuplicateOutput(d.dev,&d.dup)==S_OK && d.dup){
             DXGI_OUTDUPL_DESC dd{}; d.dup->GetDesc(&dd);
-            d.w=dd.ModeDesc.Width; d.h=dd.ModeDesc.Height; d.fmt=dd.ModeDesc.Format;
+            d.w=dd.ModeDesc.Width; d.h=dd.ModeDesc.Height; d.fmt=dd.ModeDesc.Format; d.cap_rot=(int)dd.Rotation;
             ok=true;
         }
         rel(o1); rel(o);
@@ -112,7 +113,7 @@ ID3D11Texture2D* d3d_staging_on(ID3D11Device* dev,DXGI_FORMAT fmt,uint32_t w,uin
 bool cpipe_create(VDev& d,VkBuffer src,VkDeviceSize src_b,VkBuffer dst,VkDeviceSize dst_b,VkBuffer rgba,VkDeviceSize rgba_b,const std::vector<uint32_t>& spv,ConvPackPipe& p){
     const VkDescriptorSetLayoutBinding bd[3]={{0,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr},{1,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr},{2,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr}};
     VkDescriptorSetLayoutCreateInfo dl{}; dl.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; dl.bindingCount=3; dl.pBindings=bd; vkCreateDescriptorSetLayout(d.dev,&dl,nullptr,&p.dsl);
-    VkPushConstantRange pcr{}; pcr.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; pcr.size=20; // {groups,is_bgra,px,is_hdr,exposure}
+    VkPushConstantRange pcr{}; pcr.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; pcr.size=24; // {groups,is_bgra,px,is_hdr,exposure,rot180}
     VkPipelineLayoutCreateInfo pl{}; pl.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO; pl.setLayoutCount=1; pl.pSetLayouts=&p.dsl; pl.pushConstantRangeCount=1; pl.pPushConstantRanges=&pcr; vkCreatePipelineLayout(d.dev,&pl,nullptr,&p.layout);
     VkShaderModuleCreateInfo mci{}; mci.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO; mci.codeSize=spv.size()*sizeof(uint32_t); mci.pCode=spv.data(); VkShaderModule mod; vkCreateShaderModule(d.dev,&mci,nullptr,&mod);
     VkPipelineShaderStageCreateInfo stg{}; stg.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO; stg.stage=VK_SHADER_STAGE_COMPUTE_BIT; stg.module=mod; stg.pName="main";
@@ -235,6 +236,18 @@ void run_capture(FgContext& ctx){
     auto& raw_tcap = ctx.raw_tcap;
     auto& dxgi_stage2 = ctx.dxgi_stage2;
 
+            // ── Corrección de rotación de pantalla (issue #1) ────────────────────────────
+            // DDA entrega los frames en la orientación NATIVA del panel; con el display rotado en
+            // Windows (Landscape-flipped = ROTATE180, típico en monitores montados invertidos) el
+            // contenido salía de cabeza. Reproducido de primera mano (qdump bajo 180: escritorio
+            // invertido). El convert corrige 180 vía push-constant en AMBOS paths (iGPU pack + A).
+            // WGC entrega ya-rotado a orientación lógica (MEDIDO en este rig) → gateado a CA_DD.
+            // 90/270 exigirían swap W/H por todo el pipeline → no soportado, warning honesto.
+            const uint32_t cap_rot180 = (cfg.capture_api==CA_DD && d.cap_rot==(int)DXGI_MODE_ROTATION_ROTATE180) ? 1u : 0u;
+            if(cap_rot180)
+                std::printf("[ra] capture-rotation: Landscape-flipped (ROTATE180) display detected — DDA delivers the panel's native orientation; correcting in the convert pass.\n");
+            else if(cfg.capture_api==CA_DD && (d.cap_rot==(int)DXGI_MODE_ROTATION_ROTATE90 || d.cap_rot==(int)DXGI_MODE_ROTATION_ROTATE270))
+                std::printf("[ra] WARNING: the capture display is PORTRAIT-rotated (90/270) — unsupported on the DDA path (would need a W/H swap through the whole pipeline). Content will appear rotated; WGC (the default API) delivers correctly-rotated content.\n");
             // --pin-test 5: MMCSS token held thread-local → RAII AvRevert at thread exit.
             // Default-constructed = inactive (no AVRT call) for modes 0-4 / no --pin (byte-identical-off).
             phyriad::hw::MmcssToken mmcss_c;
@@ -565,7 +578,7 @@ void run_capture(FgContext& ctx){
                     img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                     img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT);
                     vkCmdBindPipeline(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvPipe); vkCmdBindDescriptorSets(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvLayout,0,1,&cvSet,0,nullptr);
-                    struct{uint32_t is_hdr;float exposure;}pcv{IS_HDR?1u:0u,1.f}; vkCmdPushConstants(cmdA,cvLayout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcv),&pcv);
+                    struct{uint32_t is_hdr;float exposure;uint32_t rot180;}pcv{IS_HDR?1u:0u,1.f,cap_rot180}; vkCmdPushConstants(cmdA,cvLayout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcv),&pcv);
                     vkCmdDispatch(cmdA,(WW+7)/8,(WH+7)/8,1);
                     img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
                     { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyImageToBuffer(cmdA,Awork.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hR_a[s].buf,1,&cp); }
@@ -593,8 +606,8 @@ void run_capture(FgContext& ctx){
                     const bool is_bgra=(d.fmt==DXGI_FORMAT_B8G8R8A8_UNORM);
                     // is_hdr selects the FP16 scRGB tone-map branch (8 bytes/px src);
                     // exposure mirrors the A-path hdr_convert (nominal 1.0).
-                    struct{uint32_t groups;uint32_t is_bgra;uint32_t px;uint32_t is_hdr;float exposure;}
-                        pcg{(WW*WH+3u)/4u,(uint32_t)is_bgra,WW*WH,IS_HDR?1u:0u,1.f};
+                    struct{uint32_t groups;uint32_t is_bgra;uint32_t px;uint32_t is_hdr;float exposure;uint32_t rot180;}
+                        pcg{(WW*WH+3u)/4u,(uint32_t)is_bgra,WW*WH,IS_HDR?1u:0u,1.f,cap_rot180};
                     vkCmdPushConstants(cmdG,cpPipe[s].layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcg),&pcg);
                     vkCmdDispatch(cmdG,(pcg.groups+63)/64,1,1);
                     if(cfg.igpu_field){   // 2nd G.q2 dispatch — contour field over hR_g into hFIELD_g
@@ -661,6 +674,9 @@ void run_capture(FgContext& ctx){
 // converted frame reaches F/P promptly. The worker is joined in main() BEFORE any convert/Vulkan teardown.
 void run_convert_worker(FgContext& ctx){
     auto& cfg = ctx.cfg;
+    // (issue #1) misma corrección ROTATE180 que el path serial (ver run_capture) — el worker
+    // empuja los MISMOS push-constants a los MISMOS pipelines de convert.
+    const uint32_t cap_rot180 = (cfg.capture_api==CA_DD && ctx.d.cap_rot==(int)DXGI_MODE_ROTATION_ROTATE180) ? 1u : 0u;
     auto& raw_seq = ctx.raw_seq;
     auto& raw_busy = ctx.raw_busy;
     auto& raw_cv = ctx.raw_cv;
@@ -729,7 +745,7 @@ void run_convert_worker(FgContext& ctx){
             img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
             img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT);
             vkCmdBindPipeline(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvPipe); vkCmdBindDescriptorSets(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvLayout,0,1,&cvSet,0,nullptr);
-            struct{uint32_t is_hdr;float exposure;}pcv{IS_HDR?1u:0u,1.f}; vkCmdPushConstants(cmdA,cvLayout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcv),&pcv);
+            struct{uint32_t is_hdr;float exposure;uint32_t rot180;}pcv{IS_HDR?1u:0u,1.f,cap_rot180}; vkCmdPushConstants(cmdA,cvLayout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcv),&pcv);
             vkCmdDispatch(cmdA,(WW+7)/8,(WH+7)/8,1);
             img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
             { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyImageToBuffer(cmdA,Awork.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hR_a[s].buf,1,&cp); }
@@ -753,8 +769,8 @@ void run_convert_worker(FgContext& ctx){
             vkCmdBindPipeline(cmdG,VK_PIPELINE_BIND_POINT_COMPUTE,cpPipe[s].pipe);
             vkCmdBindDescriptorSets(cmdG,VK_PIPELINE_BIND_POINT_COMPUTE,cpPipe[s].layout,0,1,&cpPipe[s].set,0,nullptr);
             const bool is_bgra=(d.fmt==DXGI_FORMAT_B8G8R8A8_UNORM);
-            struct{uint32_t groups;uint32_t is_bgra;uint32_t px;uint32_t is_hdr;float exposure;}
-                pcg{(WW*WH+3u)/4u,(uint32_t)is_bgra,WW*WH,IS_HDR?1u:0u,1.f};
+            struct{uint32_t groups;uint32_t is_bgra;uint32_t px;uint32_t is_hdr;float exposure;uint32_t rot180;}
+                pcg{(WW*WH+3u)/4u,(uint32_t)is_bgra,WW*WH,IS_HDR?1u:0u,1.f,cap_rot180};
             vkCmdPushConstants(cmdG,cpPipe[s].layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcg),&pcg);
             vkCmdDispatch(cmdG,(pcg.groups+63)/64,1,1);
             if(cfg.igpu_field){
