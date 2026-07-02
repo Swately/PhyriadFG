@@ -259,7 +259,7 @@ void run_capture(FgContext& ctx){
                     std::printf("[ra] MMCSS-composite: C 'Capture' join INACTIVE -> fallback elevate_thread_rt(HIGHEST)%s + soft-affinity core %u\n", phyriad::hw::elevate_thread_rt(false)?"":" FAILED", ra_core_c);
             }
             int warmup_c=0;
-            double last_dd_arr_ms=0.0;   // previous DD arrival timestamp
+            double last_dd_arr_ms=0.0;   // (async DD) arrival-ts del último frame PUBLICADO post-dedup (el serial usa last_ing_arr_ms)
             // ── --ingest-async (DDA-only): the ACQUIRE-ONLY loop ─────────────────────────────────────────
             // This thread does ONLY AcquireNextFrame → CopyResource+Flush → Map(DO_NOT_WAIT the PREVIOUS
             // frame's copy = the readback overlap, removing the blocking-Map stall) → memcpy into the RAW
@@ -269,6 +269,7 @@ void run_capture(FgContext& ctx){
             // and the serial loop below runs byte-identically.
             if(cfg.ingest_async){
                 ID3D11Texture2D* ddst[2]={dxgi_stage,dxgi_stage2};
+                double db_arr_ms[2]={0.0,0.0};   // (PLL units) arrival-ts por slot del double-buffer (el frame publica 1 iteración después)
                 uint64_t acq=0;            // monotone frames acquired (drives the double-buffer parity + the raw slot)
                 bool have_prev=false;      // a previous frame's copy is in flight (ready to Map next iteration)
                 // MEDICIÓN: desglose por-operación del lazo de acquire (acquire / copy+flush / map+memcpy).
@@ -305,10 +306,11 @@ void run_capture(FgContext& ctx){
                     d.dup->ReleaseFrame();
                     const double _cp_ms=now_ms()-_t_cp0;   // MEDICIÓN: CopyResource+Flush (GPU copy bajo saturación)
                     dd_acq.fetch_add(1);   // TELEMETRY: a successful acquire
-                    {   // arrival-delta EMA + dd_arrived (mirror the serial branch)
-                        const double t_arr=now_ms();
-                        if(last_dd_arr_ms>0.0){ const double iv=t_arr-last_dd_arr_ms; if(iv>0.5&&iv<500.0) dd_arr_delta_us.store((uint64_t)(iv*1000.0)); }
-                        last_dd_arr_ms=t_arr; dd_arrived.fetch_add(1);
+                    {   // arrival stamp (per double-buffer slot) + dd_arrived. El delta del PLL se almacena
+                        // en el punto de PUBLICACIÓN (post-dedup) abajo — un delta por-ENTREGA aquí
+                        // corrompería T_robust bajo --dedup (fix de unidades).
+                        db_arr_ms[cur_db]=now_ms();
+                        dd_arrived.fetch_add(1);
                     }
                     // READBACK OVERLAP: map the PREVIOUS frame's completed copy into the raw ring (DO_NOT_WAIT).
                     double _mp_ms=-1.0;   // MEDICIÓN: -1 = no se mapeó esta iteración (sin prev / slot busy / map-miss)
@@ -340,6 +342,17 @@ void run_capture(FgContext& ctx){
                                 const bool _dup=(prev_hash!=0 && _h==prev_hash); prev_hash=_h;
                                 if(!_dup) dd_uniq.fetch_add(1);
                                 if(!(cfg.dedup && _dup)){
+                                    // (PLL units) delta entre frames PUBLICADOS (únicos), sellado con la
+                                    // llegada PROPIA de cada frame (db_arr_ms[prev_db] — exacto, sin el
+                                    // corrimiento de 1 frame del pipeline). Mismo stream que consume el worker.
+                                    const double t_arr_pub=db_arr_ms[prev_db];
+                                    if(t_arr_pub>0.0){
+                                        if(last_dd_arr_ms>0.0){
+                                            const double iv=t_arr_pub-last_dd_arr_ms;
+                                            if(iv>0.5&&iv<500.0) dd_arr_delta_us.store((uint64_t)(iv*1000.0));
+                                        }
+                                        last_dd_arr_ms=t_arr_pub;
+                                    }
                                     raw_tcap[rk]=now_ms();           // freshage anchor = host-resident instant (≈ serial's about-to-convert tcap)
                                     // PUBLISH under raw_mtx so the store can't slip between the worker's predicate
                                     // check and its wait() (lost-wakeup-safe); the notify itself is outside the lock.
@@ -369,9 +382,11 @@ void run_capture(FgContext& ctx){
             // Desglose 4-way del readback.
             double _sema_acq=0.0,_sema_cp=0.0,_sema_map=0.0,_sema_mc=0.0; uint64_t _sdbg=0;
             uint64_t prev_hash=0;   // hash del último frame INGESTADO (persistente entre iteraciones)
+            double last_ing_arr_ms=0.0;   // (PLL units) arrival-ts del último frame INGESTADO (post-dedup)
             while(!g_quit&&!g_quit_threads.load()){
                 const int s=(int)(c_seq.load()%(uint64_t)cap_slots);
                 double lt_wgc_submit_ms=0.0, lt_wgc_compose_us=0.0;   // --latency-trace: carried from the consumed WGC slot
+                double arr_ts=0.0;   // this frame's arrival timestamp (branch-set; consumed post-dedup below)
 #ifdef _MSC_VER
                 if(cfg.capture_api==CA_WGC){
                     // --copy-device: Map the ring on the SAME device the callback copied it on
@@ -391,10 +406,22 @@ void run_capture(FgContext& ctx){
                     // straight into the existing Map(DO_NOT_WAIT)+older-slot+Sleep(1) path below. If the fence
                     // is already >= w, SetEventOnCompletion fires immediately (no spurious wait).
                     if(cfg.copy_fence && wgc_ctx->copyFence && wgc_ctx->ctx4 && wgc_ctx->copyEvt){
+                        // Espera VALIDADA y anti-stale. El copyEvt es auto-reset: una SetEventOnCompletion
+                        // de un frame ANTERIOR que disparó sin waiter deja el evento señalado → el
+                        // WaitForSingleObject de ESTE frame despertaría al instante con el copy sin
+                        // completar (falso wake → Map miss por frame, medido). Por eso: (1) ResetEvent
+                        // ANTES de registrar (limpia el stale sin lost-wake: si el fence ya >= tgt al
+                        // registrar, el evento se re-señala fresco); (2) el lazo RE-VERIFICA
+                        // GetCompletedValue tras cada wake (absorbe cualquier wake espurio); (3) el
+                        // presupuesto total 33ms conserva el fallback timeout→Map-retry intacto.
                         const uint64_t tgt=(uint64_t)w;
-                        if(wgc_ctx->copyFence->GetCompletedValue()<tgt){
+                        const double t0=now_ms();
+                        while(wgc_ctx->copyFence->GetCompletedValue()<tgt){
+                            ResetEvent(wgc_ctx->copyEvt);
                             wgc_ctx->copyFence->SetEventOnCompletion(tgt,wgc_ctx->copyEvt);
-                            WaitForSingleObject(wgc_ctx->copyEvt,33);   // bounded; WAIT_TIMEOUT → fall through to Map-retry
+                            const double el=now_ms()-t0;
+                            if(el>=33.0) break;
+                            if(WaitForSingleObject(wgc_ctx->copyEvt,(DWORD)(33.0-el))==WAIT_TIMEOUT) break;
                         }
                     }
                     // Saturated-primary capture resilience. The callback only SUBMITS the CopyResource — the
@@ -416,6 +443,7 @@ void run_capture(FgContext& ctx){
                     else for(uint32_t y=0;y<NAT_H;++y)
                         std::memcpy((uint8_t*)Astage.mapped+size_t(y)*nat_row,(const uint8_t*)mr.pData+size_t(y)*mr.RowPitch,nat_row);
                     cap_ctx->Unmap(wgc_ctx->ring[(use_cnt-1u)%WgcCtx::RING_N],0); wgc_ctx->ring_read.store(use_cnt);
+                    arr_ts=now_ms();   // WGC consume instant (≈ delivery + copy; el jitter lo absorbe la EMA+banda)
                     if(cfg.latency_trace){ const uint32_t cs=(use_cnt-1u)%WgcCtx::RING_N;
                         lt_wgc_submit_ms =(double)wgc_ctx->ring_submit_us[cs].load()/1000.0;
                         lt_wgc_compose_us=(double)wgc_ctx->ring_compose_us[cs].load(); }
@@ -479,18 +507,11 @@ void run_capture(FgContext& ctx){
                         std::printf("[ra-acq] (serial) acquire=%.2fms copy=%.2fms mapwait=%.2fms memcpy=%.2fms | loop~%.2fms (~%.0ffps)\n",
                             _sema_acq,_sema_cp,_sema_map,_sema_mc,_loop,_loop>0.0?1000.0/_loop:0.0); }
                     if(had_upd)++warmup_c; if(warmup_c<3) continue;
-                    // DD "arrival" = a delivered frame in hand. Timestamp it and feed the arrival-delta EMA
-                    // (measured at capture, before convert — closer to true source cadence than P's
-                    // processed-interval, which runs away).
-                    {
-                        const double t_arr=now_ms();
-                        if(last_dd_arr_ms>0.0){
-                            const double iv=t_arr-last_dd_arr_ms;
-                            if(iv>0.5&&iv<500.0) dd_arr_delta_us.store((uint64_t)(iv*1000.0));
-                        }
-                        last_dd_arr_ms=t_arr;
-                        dd_arrived.fetch_add(1);
-                    }
+                    // DD "arrival" = a delivered frame in hand. Timestamp it (the PLL delta is stored
+                    // POST-dedup in the shared tail below — a per-DELIVERY delta here would corrupt
+                    // T_robust by the delivered/unique ratio under --dedup) and count the delivery.
+                    arr_ts=now_ms();
+                    dd_arrived.fetch_add(1);
                 }
                 c_slots[s].t_cap_ms=now_ms();
                 // --latency-trace: the two PRE-tcap (INVISIBLE-to-freshage) deltas. copy = the
@@ -517,6 +538,25 @@ void run_capture(FgContext& ctx){
                     if(cfg.dedup && _dup) continue;
                 }
                 total_real.fetch_add(1);   // in = frames realmente INGESTADOS (cae a la tasa única con --dedup ON; = acq con OFF)
+                // (PLL units) el delta de llegada se mide entre frames INGESTADOS — el MISMO stream de
+                // eventos que cuenta c_seq (la referencia de fase del reloj de contenido). Medirlo sobre
+                // entregas crudas corrompe T_robust por el factor entregado/único bajo --dedup (k≈11
+                // medido: fuente 21fps en escritorio DDA 240Hz → la biestabilidad asiento-profundo /
+                // vibración). WGC y DD-serial convergen aquí; cada run usa UNA API → stream homogéneo.
+                if(arr_ts>0.0){
+                    if(last_ing_arr_ms>0.0){
+                        const double iv=arr_ts-last_ing_arr_ms;
+                        if(iv>0.5&&iv<500.0){
+                            const uint64_t us=(uint64_t)(iv*1000.0);
+#ifdef _MSC_VER
+                            if(cfg.capture_api==CA_WGC&&wgc_ctx) wgc_ctx->arr_delta_us.store(us);
+                            else
+#endif
+                            dd_arr_delta_us.store(us);
+                        }
+                    }
+                    last_ing_arr_ms=arr_ts;
+                }
                 if(!use_igpu_convert){
                     vkResetCommandBuffer(cmdA,0);
                     VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdA,&bi);

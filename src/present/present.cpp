@@ -381,6 +381,7 @@ void run_present(FgContext& ctx){
             pp::PresentSurface ra_surface;
             bool surface_ready=false;
             uint64_t ps_ok=0,ps_timeout=0,ps_err=0,last_ps_ok=0;  // submit ok/timeout/err counters
+            uint64_t rdrop_ticks=0,last_rdrop=0;   // async re-present drops (warp in-flight → stale front re-shown; uniq es CIEGO a estos) — declarado ANTES del lambda wap_warp_present que lo incrementa
             {
                 pp::PresentSurfaceDesc psd{};
                 psd.monitor_index=cfg.pres_mon; psd.width=0; psd.height=0;  // full present-monitor extent
@@ -404,7 +405,10 @@ void run_present(FgContext& ctx){
                     g_quit_threads.store(true); g_quit=true; return;
                 }
                 ra_surface=std::move(*cr); surface_ready=true;
-                std::printf("[ra] present: PresentSurface dcomp-ct+WDA — click_through=%s capture_excluded=%s\n",
+                // Print the REAL style (the old line said "dcomp-ct+WDA" hardcoded — under
+                // --present-own-window it misreported the own flip plane as the overlay).
+                std::printf("[ra] present: PresentSurface %s — click_through=%s capture_excluded=%s\n",
+                    cfg.present_own_window?"OWN-WINDOW flip plane (displayed only while the game/our window is FOREGROUND — watch the yield lines)":"dcomp-ct+WDA",
                     ra_surface.is_click_through()?"yes":"no", ra_surface.capture_excluded()?"yes":"no");
                 // The producer bridge texture is FP16 iff cfg.present_format==1 (above), and the swapchain
                 // was requested FP16 with the SAME flag. If the surface's soft fallback dropped to BGRA8 on
@@ -880,6 +884,10 @@ void run_present(FgContext& ctx){
                 int back = 0;
                 if(ap) back = (async_front==0) ? 1 : 0;
                 const bool record_this_tick = (!ap || (async_inflight<0)) && do_warp;   // --fdrop: do_warp=false on an exact-dup drop → skip the warp record/submit (zero 4090 cost); the async fence-poll above STILL promotes async_front, and the present tail re-shows the completed front → state machine stays consistent
+                // (observabilidad) rdrop = ticks async donde el warp SIGUE en vuelo → este tick re-presenta
+                // el front VIEJO. uniq es CIEGO a esto (cuenta la SELECCIÓN pair/phase, no lo entregado):
+                // un rdrop crónico entrega la mitad de las posiciones calculadas y la telemetría se ve sana.
+                if(ap && do_warp && async_inflight>=0) ++rdrop_ticks;
                 // Slot shadows: on the off path these alias slot-0 = the today-resources (byte-identical); on the
                 // async path they point at the chosen back slot. (Shadowing the captured names keeps the large
                 // record body below textually unchanged — &cmdBridge etc. resolve to these locals.)
@@ -1181,7 +1189,10 @@ void run_present(FgContext& ctx){
                 // gpu = submit + the BLOCKING fence wait (the warp dispatch + blit ran on A.q in
                 // this segment — if (c) dominates, the shader stack is the cost; bisect with --no-*).
                 const double wsub_prs0 = cfg.wsub ? now_ms() : 0.0;
-                if(cfg.wsub){ const double gpu=wsub_prs0-wsub_gpu0; w_gpu_ema=w_gpu_ema>0.0?w_gpu_ema*0.8+gpu*0.2:gpu; }
+                // gate on record_this_tick: wsub_gpu0 is stamped ONLY inside the record block — on a
+                // skip tick (async warp in flight / rfp / fdrop) it holds 0.0 and gpu = now−0 =
+                // absolute uptime, poisoning the EMA to millions of ms (measured: wsub gpu:7654321).
+                if(cfg.wsub && record_this_tick){ const double gpu=wsub_prs0-wsub_gpu0; w_gpu_ema=w_gpu_ema>0.0?w_gpu_ema*0.8+gpu*0.2:gpu; }
                 // read the presented matte mass AFTER the fence — the dispatch + the
                 // device→host copy are both complete, so the host-coherent buffer reflects the per-dispatch
                 // device-local count (reset on-GPU by the fill, accumulated by the shader, copied back here).
@@ -1428,6 +1439,10 @@ void run_present(FgContext& ctx){
                 // overwrite on tick 0 and collapse the ease to one tick). P-thread-local doubles → lock-free.
                 uint64_t cph_pair=0; double cph_prev_vmag=0.0, cph_cur_vmag=0.0; bool cph_have=false;
                 double last_disp_t=0.0; bool disp_init=false;   // monotone t_display (never rewind time)
+                // (own-window) yield-transition telemetry state: submit() returns SUCCESS while
+                // yielded (present-nothing passthrough, no-lock-out), así que sin estas líneas una
+                // corrida own-window con el juego nunca-en-foco se ve sana mostrando NADA.
+                bool own_yld_prev=false, own_yld_init=false;
                 // ── --sync-clock state (the free-running content clock / NCO + 2nd-order PLL) ──
                 // ARMED-ONLY. All quantities are in SOURCE-FRAME units (content_clock) or MILLISECONDS
                 // (T_robust) — NEVER tick counts, NEVER a panel-rate constant. The panel rate enters ONLY
@@ -1448,6 +1463,7 @@ void run_present(FgContext& ctx){
                 double T_robust_ms=0.0;     // PLL frequency estimate (ms/source-frame); seeded from T_src
                 bool   sc_init=false;       // content_clock seeded? (first armed pair we have a cur_c for)
                 uint64_t sc_last_c=0;       // cur_c at the last phase-lock (detect a NEW pair arrival)
+                uint64_t tr_last_cseq=0;    // (PLL units) c_seq en la última aplicación del delta a la EMA — gate una-vez-por-ingesta
                 // Loop gains — named with rationale, NOT magic numbers:
                 // kScFreqAlpha: EMA weight for the FREQUENCY (T_robust) per outlier-rejected arrival delta.
                 // 0.05 = a ~20-sample memory: slow enough that a single jittery arrival barely moves the
@@ -1521,6 +1537,16 @@ void run_present(FgContext& ctx){
                 // inert local with no effect on any presented pixel → byte-identical-off. (.)
                 const double t_run_start = now_ms();
                 while(!g_quit&&!g_quit_threads.load()){
+                    // (own-window) log yield/re-assert TRANSITIONS — the only visible truth of whether
+                    // our plane is on the panel (ps-ok counts even while yielded). Cold: prints only on change.
+                    if(cfg.present_own_window && surface_ready){
+                        const bool _y=ra_surface.is_yielded();
+                        if(!own_yld_init || _y!=own_yld_prev){
+                            own_yld_init=true; own_yld_prev=_y;
+                            std::printf(_y?"[ra] own-window: plane YIELDED (foreground is neither the game nor us) -> passthrough, presents are no-ops. Focus the CAPTURED window to display.\n"
+                                          :"[ra] own-window: plane DISPLAYED (game/our window in front) -> we own the panel.\n");
+                        }
+                    }
                     // ── 1. tick boundary ──────────────────────────────────────
                     // timer: paced_wait_P spins to the next k·tick_period target (the clock).
                     {
@@ -1540,7 +1566,12 @@ void run_present(FgContext& ctx){
                             const double var =pv_sumsq/(double)pv_n - mean*mean;
                             const double sd  =var>0.0 ? std::sqrt(var) : 0.0;
                             double ti=mean - cfg.pv_var_factor*sd - cfg.pv_safety_ms;
-                            if(ti<0.5) ti=0.5;                                  // floor (never a tiny/negative target)
+                            // FLOOR = the PANEL TICK, not an absolute 0.5ms. The SMA samples this pacer's OWN
+                            // tick deltas (self-referential), so the −safety/−var bias compounds window over
+                            // window: with a 0.5ms floor it SPIRALED to ~1856 presents/s on a 240Hz clock
+                            // (measured). The panel tick as floor kills the descent: pace-variance may stretch
+                            // the interval ABOVE the tick under jitter (its documented job), never below it.
+                            if(ti<tick_period_ms) ti=tick_period_ms;
                             tgt=pv_last+ti;
                             if(tn-tgt>4.0*tick_period_ms) tgt=tn;               // hitch guard (the relative anchor self-corrects)
                         } else {
@@ -1746,20 +1777,29 @@ void run_present(FgContext& ctx){
                     // 1000..500000us WGC) is the PLL's outlier rejection (duplicate/late frames that would
                     // poison the period estimate are dropped). 0.0 = no fresh valid delta this tick.
                     double sc_delta_ms=0.0;   // outlier-rejected arrival delta this tick (ms); 0 = none
+                    // (PLL units fix) aplicar el delta atrapado UNA vez por nueva INGESTA (avance de
+                    // c_seq), no cada tick: el atomic de último-valor re-entraría a la EMA cada tick
+                    // hasta la siguiente llegada — inflando el alpha efectivo ~(ticks/llegada)× y
+                    // sesgando por duración hacia los deltas cortos. cur_c se lee AQUÍ (una sola
+                    // snapshot por tick, la misma que consume el paso 3 abajo).
+                    const uint64_t cur_c=c_seq.load();
+                    if(cur_c!=tr_last_cseq){
+                        tr_last_cseq=cur_c;
 #ifdef _MSC_VER
-                    if(cfg.capture_api==CA_WGC&&wgc_ctx){
-                        const uint64_t d_us=wgc_ctx->arr_delta_us.load();
-                        if(d_us>1000&&d_us<500000){
-                            src_interval_ema_ms=src_interval_ema_ms*0.9+((double)d_us/1000.0)*0.1;
-                            sc_delta_ms=(double)d_us/1000.0;
-                        }
-                    } else
+                        if(cfg.capture_api==CA_WGC&&wgc_ctx){
+                            const uint64_t d_us=wgc_ctx->arr_delta_us.load();
+                            if(d_us>1000&&d_us<500000){
+                                src_interval_ema_ms=src_interval_ema_ms*0.9+((double)d_us/1000.0)*0.1;
+                                sc_delta_ms=(double)d_us/1000.0;
+                            }
+                        } else
 #endif
-                    if(cfg.capture_api==CA_DD){
-                        const uint64_t d_us=dd_arr_delta_us.load();
-                        if(d_us>500&&d_us<500000){
-                            src_interval_ema_ms=src_interval_ema_ms*0.9+((double)d_us/1000.0)*0.1;
-                            sc_delta_ms=(double)d_us/1000.0;
+                        if(cfg.capture_api==CA_DD){
+                            const uint64_t d_us=dd_arr_delta_us.load();
+                            if(d_us>500&&d_us<500000){
+                                src_interval_ema_ms=src_interval_ema_ms*0.9+((double)d_us/1000.0)*0.1;
+                                sc_delta_ms=(double)d_us/1000.0;
+                            }
                         }
                     }
                     src_interval_us.store((uint64_t)(src_interval_ema_ms*1000.0));
@@ -1779,8 +1819,8 @@ void run_present(FgContext& ctx){
                     }
 
                     // ── 3. select the published set whose window contains t_display ─
+                    // (cur_c ya leído arriba en el gate del delta — la misma snapshot del tick.)
                     const uint64_t fs=f_seq.load();
-                    const uint64_t cur_c=c_seq.load();
                     const bool have_interp=(fs>=2);
                     // Newest generation (the freshest set F published).
                     const int f_gen_new=have_interp?(int)((fs-1)%(uint64_t)NS):0;
@@ -1894,6 +1934,19 @@ void run_present(FgContext& ctx){
                                 const uint64_t cand_c=f_pair_cseq_a[cand];
                                 if(tc<=0.0||cand_c==0) continue;          // generation slot never filled
                                 if((double)cand_c>=content_clock){ f_gen=cand; gen_back=g; found=true; break; }
+                            }
+                            // (anti-flap hysteresis) si el pick RETROCEDE respecto al último par PRESENTADO y el
+                            // reloj apenas cruzó el límite (dip < kSelHystSrc), mantener la generación más nueva:
+                            // el flapeo de borde (slew/jitter del PLL a ±0.1-0.4 src-frames) re-seleccionaba el par
+                            // viejo y a fuente rápida (margen D ~2 frames) producía los saltos ±2.0 medidos en el
+                            // CSV de cadencia. Un retroceso GENUINO grande (re-seat) supera el umbral y pasa —
+                            // el freeze-guard de abajo evita renderizarlo igualmente.
+                            constexpr double kSelHystSrc = 0.15;   // src-frames de histéresis anti-flap
+                            if(found && have_last_pres && gen_back>0
+                               && f_pair_cseq_a[f_gen] < last_pres_cseq
+                               && ((double)f_pair_cseq_a[f_gen] - content_clock) < kSelHystSrc){
+                                const int cand2=(f_gen_new-(gen_back-1)+NS*NS)%NS;
+                                if(f_pair_tcap_a[cand2]>0.0 && f_pair_cseq_a[cand2]!=0){ f_gen=cand2; gen_back=gen_back-1; }
                             }
                         } else {
                             for(int g=NS-1;g>=0;--g){
@@ -2123,6 +2176,7 @@ void run_present(FgContext& ctx){
                         const double phase_ms=(phase_global+extrap_amt)*span_ms;   // time into the pair (ASW overshoot)
                         int cand_k=(int)(phase_ms/0.1+0.5);                     // 0.1ms-quantised key
                         bool backwards=false;
+                        bool backstep_freeze=false;   // (freeze-guard) tick de par-VIEJO → congelar re-mostrando el front (vía fdrop_this)
                         if(have_last_pres){
                             if(pair_c<last_pres_cseq) backwards=true;
                             else if(pair_c==last_pres_cseq && cand_k<last_pres_k) backwards=true;
@@ -2133,7 +2187,17 @@ void run_present(FgContext& ctx){
                             // a NEWER pair than last but it computed an earlier time, clamp to the
                             // start of THIS pair so motion still advances forward in content order.
                             if(pair_c==last_pres_cseq){ cand_k=last_pres_k; t_use=(span_ms>1e-6)?((double)cand_k*0.1/span_ms):phase_global; }
-                            else { t_use=phase_global; }
+                            else {
+                                // (freeze-guard WAP — el fix que el path grid ya tenía y el vivo NO) un tick que
+                                // seleccionó un par MÁS VIEJO que el último presentado NUNCA debe renderizarse:
+                                // el path viejo lo presentaba a su fase del reloj y el bookkeeping rebobinaba
+                                // last_pres → el retroceso llegaba al panel (medido: saltos de −2.0 src-frames en
+                                // el CSV de cadencia). Con front async completado → congelar vía el path fdrop
+                                // (do_warp=false, re-show del front, bookkeeping intacto). Sin front (arranque) o
+                                // en el path síncrono se conserva el comportamiento anterior.
+                                if(cfg.async_present && async_front>=0) backstep_freeze=true;
+                                t_use=phase_global;
+                            }
                             if(t_use<0.0) t_use=0.0; if(t_use>1.0) t_use=1.0;
                         }
                         // ── --phase-norm: the NORMALIZED-N frame ladder ──────────────────
@@ -2228,6 +2292,10 @@ void run_present(FgContext& ctx){
                         bool fdrop_this=false;
                         if(cfg.fdrop && have_last_pres && cfg.async_present && async_front>=0)
                             fdrop_this = (pair_c==last_pres_cseq && cand_k==last_pres_k);
+                        // (freeze-guard) el backstep de par-viejo congela por el MISMO path que fdrop:
+                        // do_warp=false → re-show del front completado; el guard !fdrop_this de abajo evita
+                        // rebobinar last_pres_* → el regreso al par nuevo no dispara el guard de nuevo.
+                        if(backstep_freeze) fdrop_this=true;
                         // ── MANDATORY over-production drop — the anti-windup emit gate ──
                         // When the controller is active, drop a tick whose (pair,cand_k) did NOT advance past the last
                         // DELIVERED frame (the N_target even-grid slot did not advance) — re-warping it would over-command
@@ -2469,6 +2537,12 @@ void run_present(FgContext& ctx){
                             // FPS-OVERLAY (--fps-overlay) publish in=cap_fps (real-captured) / out=fps (presented) for the overlay (rounded to uint).
                             g_ov_in.store((uint32_t)(cap_fps+0.5)); g_ov_out.store((uint32_t)(fps+0.5));
                             const double uniq_fps=dt>0?(double)(uniq_ticks-last_uniq)/dt:0; last_uniq=uniq_ticks;
+                            // rdrop = async re-present drops/s (warp in-flight → tick re-shows the stale front;
+                            // uniq NO los ve). Crónico ≈ tick-rate/2 = la mitad de las posiciones calculadas
+                            // nunca llega al panel. Impreso solo cuando ocurre (calma = línea intacta).
+                            const double rdrop_fps=dt>0?(double)(rdrop_ticks-last_rdrop)/dt:0; last_rdrop=rdrop_ticks;
+                            char rdrop_buf[24]="";
+                            if(rdrop_fps>0.5) std::snprintf(rdrop_buf,sizeof(rdrop_buf)," rdrop:%.0f/s",rdrop_fps);
                             const double frz_fps=dt>0?(double)(wap_freeze-last_wap_freeze)/dt:0; last_wap_freeze=wap_freeze;
                             const double slip_avg=slip_n?slip_sum/(double)slip_n:0.0, slip_mx=slip_max;
                             // --csv: forward-fill the per-second rates for the per-present rows.
@@ -2591,8 +2665,8 @@ void run_present(FgContext& ctx){
                                 // --pace-hard, the per-config evidence). Appended to ph_buf; OFF → unchanged (byte-identical).
                                 if(cfg.pace_vblank && n>0 && (size_t)n<sizeof(ph_buf))
                                     std::snprintf(ph_buf+n,sizeof(ph_buf)-(size_t)n," vbl:%lluL/%lluF",(unsigned long long)pv_locks,(unsigned long long)pv_lock_fails); }
-                            std::printf("[ra] %.1f fps (present) | wap tick %.0f/s%s | cap %.0f/s | cons %.0f/s | uniq %.0f/s | frz %.1f/s | warp %.2fms | iter %.2f/worst %.2fms | lat %.1fms | slip %.2f/max %.2fms%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
-                                fps,src_fps,arr_buf,cap_fps,cons_fps,uniq_fps,frz_fps,wap_warp_ema,
+                            std::printf("[ra] %.1f fps (present) | wap tick %.0f/s%s | cap %.0f/s | cons %.0f/s | uniq %.0f/s%s | frz %.1f/s | warp %.2fms | iter %.2f/worst %.2fms | lat %.1fms | slip %.2f/max %.2fms%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
+                                fps,src_fps,arr_buf,cap_fps,cons_fps,uniq_fps,rdrop_buf,frz_fps,wap_warp_ema,
                                 sum_iter/(double)(stat_ticks>0?stat_ticks:1),worst,lat_ema_ms,
                                 slip_avg,slip_mx,gme_buf,bwdsk_buf,lap_buf,tier_buf,mass_buf2,obj_buf,ps_buf,wsub_buf,gpu_buf,fsub_buf,vbhit_buf,rfp_buf,sq_buf,mf_buf,ph_buf);
                             // --latency-trace: the full pipeline latency decomposition. INVISIBLE =

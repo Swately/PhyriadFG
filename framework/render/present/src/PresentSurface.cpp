@@ -79,10 +79,16 @@ RECT pick_monitor(int n) noexcept {
     return c.rc;
 }
 
-// The overlay WndProc: stays non-activating; never owns input. (The DcompCt
-// recipe's WS_EX_TRANSPARENT is what actually grants click-through; this proc
-// just refuses to do anything that would re-acquire focus or the cursor.)
+// The overlay WndProc: stays non-activating; never owns input. Every style of this surface is a
+// NON-INTERACTIVE presentation plane, so hit-testing must always fall through to the window
+// beneath (the game): WM_NCHITTEST → HTTRANSPARENT is the ROBUST click-through — it works for
+// the OwnWindow style, where WS_EX_TRANSPARENT alone does NOT reliably pass the hit-test without
+// WS_EX_LAYERED (and LAYERED is forbidden there: a layered window goes through DWM redirection,
+// killing the flip present / Independent-Flip promotion). Empirically found on HSR: keyboard
+// reached the game (focus never stolen — NOACTIVATE) but MOUSE clicks died on our plane.
+// The DcompCt recipe's LAYERED+TRANSPARENT already passed clicks; HTTRANSPARENT is idempotent there.
 LRESULT CALLBACK overlay_proc(HWND h, UINT m, WPARAM w, LPARAM l) noexcept {
+    if (m == WM_NCHITTEST) return HTTRANSPARENT;
     if (m == WM_DESTROY) return 0;
     return DefWindowProc(h, m, w, l);
 }
@@ -215,6 +221,16 @@ struct PresentSurface::Impl {
     // ── Style::OwnWindow — the displayed-plane + no-lock-out state ──
     bool own_window    = false;  // OwnWindow mode active (the opaque displayed flip plane)
     HWND game_hwnd     = nullptr; // the captured game's HWND (foreground-yield reference; may be null)
+    // (startup focus-restore) al lanzar el FG, la consola/launcher del PROPIO proceso suele robar
+    // la activación → el juego pierde el foco → el yield esconde el plano y, en borderless, el
+    // input sigue llegando al juego: el operador juega SIN el FG en pantalla sin notarlo (medido:
+    // una corrida flapeó DISPLAYED↔YIELDED y pasó tramos largos oculta). Durante los primeros
+    // kFgRestoreMs tras create(), si el foreground no es el juego, se le DEVUELVE el foco
+    // (AttachThreadInput + SetForegroundWindow, best-effort). Ventana corta y una sola vez:
+    // jamás pelea con un alt-tab genuino posterior (el contrato no-lock-out intacto).
+    bool    fg_restore_pending = false;
+    int64_t created_ms         = 0;
+    static constexpr int64_t kFgRestoreMs = 3000;
     std::atomic<bool> yielded{false};       // we have hidden + dropped topmost → submit() is a no-op
     std::atomic<int64_t> heartbeat_ms{0};   // bumped each submit(); the watchdog reads it
     std::atomic<bool> wd_run{false};        // watchdog thread alive flag
@@ -334,24 +350,32 @@ PresentSurface::create(const PresentSurfaceDesc& desc) noexcept {
         ex |= (WS_EX_LAYERED | WS_EX_TRANSPARENT);   // the click-through grant
         impl->click_through = true;
     }
-    // (Style::OwnWindow): an OPAQUE displayed flip plane that is STILL click-through. Click-through is
-    // granted by WS_EX_TRANSPARENT *alone* — it removes the window from hit-testing (mouse/keyboard
-    // fall through to the game beneath), and it is INDEPENDENT of compositing. We must NOT add
-    // WS_EX_LAYERED here: a layered window is composited through DWM's redirection/UpdateLayered path,
-    // which is incompatible with a flip-model (CreateSwapChainForHwnd) present — the flip present would
-    // be ignored/fail and we'd never reach Independent Flip. So: TRANSPARENT yes, LAYERED no → both the
-    // opaque flip present AND input pass-through. NON-ACTIVATING (WS_EX_NOACTIVATE kept) so we never
-    // steal the game's input focus. is_click_through() stays DcompCt-only (it reports the
-    // LAYERED+TRANSPARENT overlay recipe; OwnWindow is a different, opaque kind of click-through).
+    // (Style::OwnWindow): an OPAQUE displayed flip plane that is STILL click-through. HONESTY
+    // CORRECTION (refuted on the rig, HSR 2026-07-02): WS_EX_TRANSPARENT *alone* does NOT grant
+    // cross-process hit-test pass-through (mouse clicks died on our plane; the game's hidden cursor
+    // re-appeared over us), and WM_NCHITTEST→HTTRANSPARENT only passes to SAME-THREAD windows. The
+    // only documented cross-process click-through is WS_EX_LAYERED|WS_EX_TRANSPARENT — so OwnWindow
+    // now carries BOTH, with SetLayeredWindowAttributes(alpha=255) below (a layered window renders
+    // NOTHING until its attributes are set; 255 = fully opaque). The old fear ("layered kills the
+    // flip present / Independent Flip promotion") is a MEASURABLE claim, not a law — measured
+    // first-hand right after this change with PresentMon: if the plane still reports
+    // Hardware Composed: Independent Flip, layered+flip coexist on this OS/driver generation.
+    // NON-ACTIVATING (WS_EX_NOACTIVATE kept) so we never steal the game's input focus.
     if (desc.style == Style::OwnWindow) {
-        ex |= WS_EX_TRANSPARENT;       // hit-test pass-through, NO WS_EX_LAYERED (keeps the flip present)
+        ex |= (WS_EX_LAYERED | WS_EX_TRANSPARENT);   // the cross-process click-through grant
         impl->own_window = true;
         impl->game_hwnd  = reinterpret_cast<HWND>(desc.game_hwnd);   // may be null → yield only on !our-window
+        impl->fg_restore_pending = (impl->game_hwnd != nullptr);     // startup focus-restore armed (see Impl)
+        impl->created_ms = (int64_t)GetTickCount64();
     }
     impl->hwnd = CreateWindowExW(ex, impl->cls_name, impl->cls_name, WS_POPUP,
         impl->mon.left, impl->mon.top, (int)impl->W, (int)impl->H,
         nullptr, nullptr, impl->hinst, nullptr);
     if (!impl->hwnd) return bail(phyriad::ErrorCode::SystemError);
+    // (OwnWindow) a WS_EX_LAYERED window renders NOTHING until its layered attributes are set;
+    // alpha 255 = fully opaque plane. LWA_ALPHA at 255 keeps the DXGI flip present visible.
+    if (desc.style == Style::OwnWindow)
+        SetLayeredWindowAttributes(impl->hwnd, 0, 255, LWA_ALPHA);
     ShowWindow(impl->hwnd, SW_SHOWNOACTIVATE);
     SetWindowPos(impl->hwnd, HWND_TOPMOST, impl->mon.left, impl->mon.top,
         (int)impl->W, (int)impl->H, SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -547,7 +571,25 @@ PresentSurface::submit(const SharedFrameHandle& s) noexcept {
     // styles skip it entirely.
     if (impl_->own_window) {
         impl_->heartbeat_ms.store((int64_t)GetTickCount64());  // liveness (default seq_cst, see own_window_last_gasp)
-        const HWND fg = GetForegroundWindow();
+        HWND fg = GetForegroundWindow();
+        // (startup focus-restore) ver el comentario del Impl: dentro de la ventana inicial, si el
+        // foreground no es el juego, devolvérselo — la consola/launcher que nos parió lo robó.
+        if (impl_->fg_restore_pending) {
+            const int64_t nowt = (int64_t)GetTickCount64();
+            if (nowt - impl_->created_ms > Impl::kFgRestoreMs) impl_->fg_restore_pending = false;   // ventana agotada, ceder
+            else if (fg == impl_->game_hwnd)                    impl_->fg_restore_pending = false;   // el juego ya manda
+            else {
+                const DWORD myThread = GetCurrentThreadId();
+                DWORD fgThread = 0;
+                if (fg) fgThread = GetWindowThreadProcessId(fg, nullptr);
+                if (fgThread && fgThread != myThread) AttachThreadInput(myThread, fgThread, TRUE);
+                if (SetForegroundWindow(impl_->game_hwnd)) {
+                    impl_->fg_restore_pending = false;
+                    fg = impl_->game_hwnd;   // esta misma pasada ya evalúa el yield con el foco restaurado
+                }
+                if (fgThread && fgThread != myThread) AttachThreadInput(myThread, fgThread, FALSE);
+            }
+        }
         const bool ours = (fg == impl_->hwnd);
         const bool game = (impl_->game_hwnd && fg == impl_->game_hwnd);
         // game_hwnd set → display only while the game or our window is in front (yield to any other app).
@@ -625,6 +667,10 @@ PresentSurface::submit_at(const SharedFrameHandle& /*src*/, uint64_t /*target_qp
 
 bool PresentSurface::capture_excluded() const noexcept { return impl_ && impl_->wda_ok; }
 bool PresentSurface::is_click_through() const noexcept { return impl_ && impl_->click_through; }
+// (Style::OwnWindow) yield-state diagnostic: submit() in the yielded state early-returns SUCCESS
+// (present-nothing = passthrough, the no-lock-out contract), so ps-ok counters cannot distinguish
+// displayed from hidden — this accessor is the consumer's only truth for "is my plane on the panel".
+bool PresentSurface::is_yielded() const noexcept { return impl_ && impl_->own_window && impl_->yielded.load(); }
 // The actual present format (post-fallback). The consumer reads this to match its producer bridge
 // texture format: true → FP16 bridge, false → 8-bit bridge.
 bool PresentSurface::present_is_fp16() const noexcept { return impl_ && impl_->present_is_fp16; }
@@ -685,6 +731,7 @@ PresentSurface::submit_at(const SharedFrameHandle&, uint64_t) noexcept {
 }
 bool PresentSurface::capture_excluded() const noexcept { return false; }
 bool PresentSurface::is_click_through() const noexcept { return false; }
+bool PresentSurface::is_yielded() const noexcept { return false; }  // is_yielded() stub
 bool PresentSurface::present_is_fp16() const noexcept { return false; }
 bool PresentSurface::device_lost() const noexcept { return false; }  // device_lost() stub
 std::optional<PresentSurface::FlipStats> PresentSurface::last_flip_qpc() const noexcept { return std::nullopt; }  // last_flip_qpc() stub

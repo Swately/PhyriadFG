@@ -69,7 +69,7 @@ struct Config {
                                     // a format mismatch. Soft: the surface falls back to BGRA8 if FP16 create fails; a
                                     // post-create disagreement is a named clean quit (no in-thread rebuild). INERT
                                     // without an HDR display + HDR content. DEFAULT 0 (byte-identical).
-    bool  present_own_window=false; // --present-own-window: present our OWN opaque borderless flip-model HWND swapchain
+    bool  present_own_window=true; // --present-own-window: present our OWN opaque borderless flip-model HWND swapchain
                                     // (Style::OwnWindow) instead of the DComp composition overlay → we become the
                                     // displayed Independent-Flip plane → demote the game to Composed → pace it down.
                                     // Click-through (WS_EX_TRANSPARENT, input still reaches the game) + non-activating
@@ -84,9 +84,12 @@ struct Config {
                                     // drawn TOP-LEFT on Apresent (RGBA8) by a compute RMW INSIDE bridge_present_src —
                                     // the safe present path (NOT the WAP warp path, which faults DEVICE_LOST). DEFAULT
                                     // OFF → no overlay barrier/dispatch + Apresent created as usual (byte-identical).
-    CaptureApi capture_api=CA_DD;
-    char  window_substr[256]={};  // non-empty → capture the MONITOR that window is on, via DDA (default; resolved in
-                                  // main()→cap_mon). WGC window-only ONLY with --capture-api wgc.
+    CaptureApi capture_api=CA_WGC; // DEFAULT WGC (flip 2026-07): con el PLL alimentado post-dedup + el
+                                   // MinUpdateInterval derivado del panel capturado, WGC entrega a tasa de
+                                   // composición Y captura solo-la-ventana con --window (el path limpio).
+                                   // --capture-api dd conserva la ruta DDA de monitor completo.
+    char  window_substr[256]={};  // non-empty → window-only capture via WGC (default), o el MONITOR completo
+                                  // de esa ventana vía DDA con --capture-api dd (resolved in main()→cap_mon).
     bool  dpi_probe=false;        // --dpi-probe: read-only diagnostic — logs GetClientRect / GetDpiForWindow /
                                   // cap_item.Size() / first frame.ContentSize() to diagnose the high-DPI capture-crop.
                                   // Default off → byte-identical.
@@ -130,13 +133,13 @@ struct Config {
                                     // blend_result (the un-warped cross-fade) = gravity cancellation (static bg →
                                     // clean, object stays sharp). Reuses binding-11 (the iGPU field) + blend_result;
                                     // no gme model needed. `--band-xfade` sets 1.0, `--band-xfade-strength F` sets it.
-    float ts_smooth=0.1f;           // --ts-smooth: adaptive temporal smoothing gated to garbage pixels (mask
+    float ts_smooth=0.0f;           // --ts-smooth: adaptive temporal smoothing gated to garbage pixels (mask
                                     // disocclusion artifacts, keep clean sharp). DEFAULT 0.1. `--ts-smooth 0` disables
                                     // (byte-identical off); `--ts-smooth F` overrides. The garbage-gate confines the
                                     // blend to low-confidence/disocclusion pixels — a mask for residual gravity
                                     // artifacts, not a fix for generation big-jumps.
     bool  mc_on=false;              // --multicand: scored MULTI-CANDIDATE medoid selection ("generate + discriminate +
-                                    // SELECT" for generation big-jumps). DEFAULT OFF (opt-in). Byte-identical off (the
+                                    // SELECT" for generation big-jumps). DEFAULT ON (flip 2026-07; --no-X opt-out). Byte-identical off (the
                                     // existing soft_gate/hard path runs).
     int   mc_nperturb=2;            // --mc-nperturb: speed-perturbed warp candidates added to {warp,A-only,B-only}: 0,
                                     // 2, or 4. Default 2. Read only when mc_on.
@@ -169,10 +172,10 @@ struct Config {
                                     // Auto-enables --async-present. NEVER caps the game (output-side).
     float  s2_sustain_frac=0.93f;   // --s2-sustain: kSustainFrac — target this fraction of the measured achievable
                                     // rate. Read only when --target-output-fps>0.
-    bool  asw=false;                // --asw: bounded forward EXTRAPOLATION (Oculus-style ASW): when B falls behind and
+    bool  asw=true;                // --asw: bounded forward EXTRAPOLATION (Oculus-style ASW): when B falls behind and
                                     // the sync-clock phase overshoots the held pair, the warp projects cur FORWARD
                                     // along the MV instead of HOLD-at-1 freezing → fills the throughput deficit.
-                                    // DEFAULT OFF (byte-identical off); needs --sync-clock (the content_clock supplies
+                                    // DEFAULT ON (--no-X restores the old path off); needs --sync-clock (the content_clock supplies
                                     // the overshoot). Best with --bg-snap (clean MV).
     float asw_max=1.0f;             // --asw-max: the extrapolation bound in PHASE units (overshoot past 1; 1.0 = up to
                                     // one full source-span forward). Higher = fills deeper deficits but more
@@ -190,7 +193,7 @@ struct Config {
                                    // reaches F/P at today's age). DDA-only (forced OFF for WGC). On raw-ring alloc
                                    // failure → forced OFF (falls back to serial, never crashes). The `acq=` field in
                                    // [ra-cap] shows the acquire rate (vs `in=` convert rate).
-    bool  dedup=false;             // --dedup: DROP content-duplicate captured frames. DDA captures the desktop at the
+    bool  dedup=true;             // --dedup: DROP content-duplicate captured frames. DDA captures the desktop at the
                                    // DWM COMPOSITE rate (= the monitor refresh, e.g. 240Hz) but the game renders fewer
                                    // UNIQUE frames/s → the surplus captures are content-duplicates. The real unique
                                    // capture rate (dd_uniq, the `uniq=` readout) is ALWAYS reported regardless of this
@@ -208,7 +211,7 @@ struct Config {
                                    // freshage split (pickup⊇convert, build, derived detect). Each delta is within ONE
                                    // clock (no cross-clock subtraction); compose uses a QPC↔SystemRelativeTime delta
                                    // with an epoch-mismatch guard (→0 if unavailable). Default OFF, byte-identical.
-    bool  copy_fence=false;        // --copy-fence: event-driven WGC copy-completion pickup — replaces the
+    bool  copy_fence=true;        // --copy-fence: event-driven WGC copy-completion pickup — replaces the
                                    // Map(DO_NOT_WAIT)+Sleep(1) busy-poll with a D3D11 fence+event wait OFF the context
                                    // (the callback Signals after CopyResource; C waits the event). Needs D3D11.4
                                    // (ID3D11Device5/ID3D11DeviceContext4); if unavailable → forced OFF. Default OFF,
@@ -237,13 +240,13 @@ struct Config {
                                    // (default 0.05). Runtime override; default → byte-identical.
     double sc_reseat_err=4.0;      // --sc-reseat: phase-error threshold (source-frames) above which the loop RE-SEATS
                                    // vs slews (default 4.0). Runtime override; default → byte-identical.
-    bool   pace_present=false;     // --pace-present: the metronomic, drift-corrected present pacer. KEEPS the absolute
+    bool   pace_present=true;     // --pace-present: the metronomic, drift-corrected present pacer. KEEPS the absolute
                                    // output-clock grid (tick_t0 + k·tick_period_ms = the metronome) and only SLOWLY
                                    // SLEWS the grid anchor tick_t0 toward the realized achievable cadence (a variance-
                                    // damped SMA10 drift signal), bounded ±a fraction of a tick per tick. It composes
                                    // WITH the output clock (slews the ANCHOR, never replaces the grid with a per-
                                    // present anchor). Never pushes the effective period below the panel tick (no over-
-                                   // production windup). Pure CPU, thread-P-local. DEFAULT OFF → the fixed refresh_hz
+                                   // production windup). Pure CPU, thread-P-local. DEFAULT ON → the fixed refresh_hz
                                    // grid → byte-identical.
     double pp_safety_ms=0.50;      // --pp-safety: safetyMargin (ms) of the variance-damped drift target. Read only
                                    // when --pace-present.
@@ -307,16 +310,16 @@ struct Config {
                                     // tick of that pair; on pair-advance print one ladder line `[ra] phase pair_c=K
                                     // span=S n=T t=[...]` (two decimals, ≤40 values). The fluidity probe: does the
                                     // presented phase sequence per pair cover [0,1)? P-local fixed buffer, zero heap.
-    bool  phase_norm=false;         // --phase-norm: the NORMALIZED-N frame ladder. The content-clock places each
+    bool  phase_norm=true;         // --phase-norm: the NORMALIZED-N frame ladder. The content-clock places each
                                     // presented frame at its jittery sub-phase → the ~refresh/source ticks a pair gets
                                     // land UNEVENLY → juddery even when the fps COUNT is right. phase-norm DECOUPLES
                                     // the displayed intra-pair phase from the clock: tick j of a pair → the EVEN grid
                                     // (j+0.5)/N, N = predicted ticks-this-pair = span·T_robust/tick_period. The clock
                                     // still SELECTS the pair; only the phase is a uniform sweep. Residual: N unknown
                                     // until the pair closes → an N_pred mismatch over/undershoots the last step (the
-                                    // irreducible boundary error, clamped [0,1]). DEFAULT OFF → byte-identical (t_use
+                                    // irreducible boundary error, clamped [0,1]). DEFAULT ON → byte-identical (t_use
                                     // stays the content-clock phase).
-    bool  cphase=false;             // --cphase: velocity-continuous intra-pair phase-rate reshape. --phase-norm evens
+    bool  cphase=true;             // --cphase: velocity-continuous intra-pair phase-rate reshape. --phase-norm evens
                                     // the tick SPACING but the displayed VELOCITY still STEPS at the pair seam (each
                                     // pair warps at its own constant mv; t resets 1→0, mv switches → a first-derivative
                                     // jump). cphase bends the SCALAR t-vs-tick curve t→g(t) so the OPENING slope of a
@@ -598,11 +601,11 @@ struct Config {
     bool  no_change_gate=false;     // --no-change-gate tracking bool
     bool  no_phase_anchor=false;    // --no-phase-anchor tracking bool (the primary MV stays prev-anchored fwd)
     bool  no_ambig=false;           // --no-ambig tracking bool (the matcher's raw pick, no candidate arbitration)
-    bool  low_d=false;             // --low-d: D-anchor span-term floor-trim — cut the input-lag EXCESS WITHOUT a
+    bool  low_d=true;             // --low-d: D-anchor span-term floor-trim — cut the input-lag EXCESS WITHOUT a
                                    // present-before-pair-ready freeze. Trims only the additive SPAN term of the phasefix
                                    // D; KEEPS freshage_ema as the freeze floor (D >= freshage_ema always → selects a
                                    // FRESHER pair → less freeze risk). REQUIRES phasefix (default); a no-op under
-                                   // --no-phasefix. DEFAULT OFF.
+                                   // --no-phasefix. DEFAULT ON.
     double lowd_span_frac=0.5;      // fraction of the span term kept (clamp [0,1]; 1.0 = no trim)
     double lowd_span_cap=1.5;       // growth ceiling for the span term, in source frames (clamp [1,8])
     bool   real_fast_path=false;    // --real-fast-path / --rfp: on a tick that already lands at the freshest captured
@@ -610,7 +613,7 @@ struct Config {
                                     // real presented through the DEDICATED async bslot path (NEVER the synchronous
                                     // do_present_P → use-after-reset). A real needs no interpolation pair → no pair-
                                     // publish wait → minimal D for reals; interp ticks keep the full D-anchored cadence.
-                                    // Crash-class. IMPLIES --async-present. DEFAULT OFF (byte-identical: the override
+                                    // Crash-class. IMPLIES --async-present. DEFAULT ON (--no-X restores the old path: the override
                                     // branch is gated on cfg.real_fast_path).
     float  rfp_window=0.15f;        // phase tolerance for "this tick already ≈ the cur real" (fire only when
                                     // phase_global >= 1 - rfp_window; small + biased to phase~1 so the real never
@@ -623,13 +626,13 @@ struct Config {
                                     // cur_c-1 forces a hard reseat + a freeze). Keeping pair_c means the interp following
                                     // a fresh real steps back to the (stale) pair content = a CONTENT SAWTOOTH (accepted,
                                     // opt-in; the structural freshage gap, fixed only by reducing freshage). Needs --rfp.
-                                    // DEFAULT OFF (read only inside the already-default-off --rfp block).
+                                    // DEFAULT ON (read only inside the already-default-off --rfp block).
     bool   motion_fallback=false;   // --motion-fallback: frame-level fast-motion fallback. When the per-pair gme
                                     // DISPERSION (dis% = % of MV blocks the global affine fails on = fast/incoherent/
                                     // disoccluding motion) exceeds mf_disp, present the FRESHEST captured real via the
                                     // dedicated safe bslot path INSTEAD of a strobing-garbage warp (the per-pixel gates
                                     // cannot save a whole-frame breakdown). Reuses the --rfp machinery; auto-enables
-                                    // --async-present. DEFAULT OFF (the && short-circuits → byte-identical off).
+                                    // --async-present. DEFAULT ON (the && short-circuits → byte-identical off).
     float  mf_disp=50.0f;           // --mf-disp: the dispersion bound, a PERCENT in [0,100] (gme dis% units). Above it →
                                     // present a real, not a warp. Default 50 (half the frame off-model = genuine
                                     // breakdown). Clamp [0,100].
@@ -727,13 +730,13 @@ struct Config {
                                     // depth jitter. Implies --async-present. Crash-class. DEFAULT OFF (byte-identical).
     int   sq_budget_us=350;         // --shallow-queue-budget-us: hard cap (µs) of the early-promote poll. 0 = inert.
                                     // clamp [0,4000] (a 240Hz tick is ~4167µs → always a fraction of a tick).
-    bool  fdrop=false;              // --fdrop: present-side EXACT-DUPLICATE frame discriminator (WAP path). On a tick
+    bool  fdrop=true;              // --fdrop: present-side EXACT-DUPLICATE frame discriminator (WAP path). On a tick
                                     // whose (pair,cand_k) == the last DELIVERED (pair,cand_k) — the backwards-clamp ⇒
                                     // the present would re-warp a byte-identical frame — DROP it: skip the warp record/
                                     // submit (zero 4090 cost) and re-present the completed front slot. A make-space /
                                     // useful-frame-density lever (elides a provably redundant warp). IMPLIES
                                     // --async-present (the drop route reuses the re-present-front path; on the sync path
-                                    // the present lives inside the lambda and the drop is not byte-safe). DEFAULT OFF →
+                                    // the present lives inside the lambda and the drop is not byte-safe). DEFAULT ON →
                                     // byte-identical.
     float fdrop_quiet_ms=0.0f;      // soft near-duplicate quiet-floor — PARSED, logic not yet wired (the soft single-
                                     // stream arm only drops frames the eye sees as a HOLD → stutter doubling with no
@@ -770,13 +773,13 @@ struct Config {
                                     // warp consumes (bilinear float-field sample). ~4 extra pure-SAD blocks at the finest
                                     // level only → DEFAULT ON; --no-mv-subpel reverts to the exact integer best_mv
                                     // (subpel==0 store).
-    bool  mv_candsel=false;         // --mv-candsel: at the finest match level, an AMBIGUOUS textureless-interior /
+    bool  mv_candsel=true;         // --mv-candsel: at the finest match level, an AMBIGUOUS textureless-interior /
                                     // aperture tile ADOPTS the COHERENT coarse region-predictor MV instead of its noisy
                                     // local best (the region holon OFFERS, the tile holon ADOPTS iff its local match is
                                     // not confidently better: best_sad < sad_pred·(1−0.12)). Only the ambiguous
                                     // interiors the symmetric blend crossfades (not always-warp — that hallucinates
                                     // geometry). Composes with --mv-subpel (candsel selects the integer source, subpel
-                                    // refines it). One extra pure-SAD + compare at the finest level only → DEFAULT OFF =
+                                    // refines it). One extra pure-SAD + compare at the finest level only → DEFAULT ON =
                                     // byte-identical (the candsel==0 store is the exact integer best_mv).
     bool  fg_prebake=false;         // --fg-prebake: PRE-BAKE the matcher/warp descriptor sets at init (one collection
                                     // per ping-pong parity) so record_optical_flow SKIPS the per-pair
@@ -784,13 +787,13 @@ struct Config {
                                     // host-CPU relief on the F-thread under GPU saturation. ADDITIVE, default OFF = the
                                     // per-record update path runs as before (byte-identical). Eligible ONLY on the FG
                                     // default (fg_variant active, --no-ambig, no affine); else inert.
-    bool  obj_fill_rim=false;       // --obj-fill-rim: COHERENT-MV INTERIOR INFILL for a RIGID object. The object-holon
+    bool  obj_fill_rim=true;       // --obj-fill-rim: COHERENT-MV INTERIOR INFILL for a RIGID object. The object-holon
                                     // stamps its single slot MV across the WHOLE silhouette INCLUDING the rim band
                                     // (depth-gated), the unreached blocks, and the >static "spurious" annulus where
                                     // aperture-problem flow landed on disc@prev/@next — so A_samp and B_samp ALIGN and
                                     // the symmetric blend cannot double-expose the disc (the half-moon crescent dies).
                                     // RIGIDITY-gated on rim_spread<kObjRimSpreadMin → stands down on a scaling/rotating/
-                                    // articulated rim. DEFAULT OFF (byte-identical when off). CPU-only, runtime ~0.
+                                    // articulated rim. DEFAULT ON (--no-X restores the old path when off). CPU-only, runtime ~0.
     bool  fsub=false;               // --fsub: split the F per-pair time into ` fsub(flow:F pair:F cpu:F)` ms EMAs. flow
                                     // = the BLOCKING fwd fence wait (the 1080 Ti pyramid GPU leg); pair = the full
                                     // F-pair iteration (t_pair_ema, both fits); cpu = pair − flow = the CPU fit/objects/
@@ -808,7 +811,7 @@ struct Config {
                                     // in strict pair order. The bwd pass shares the single ofp + the 2 Bframe slots with
                                     // the fwd match, so a do_bwd pair CANNOT overlap (it drains to the serial path for
                                     // that pair only); the field config (bwd-skip:100%) never hits that drain.
-    bool  fwd_prestage=false;       // --fwd-prestage: collapse the F per-pair build gap. On the serial WAP + iGPU-
+    bool  fwd_prestage=true;       // --fwd-prestage: collapse the F per-pair build gap. On the serial WAP + iGPU-
                                     // convert path the hRP_b[s]→hRP_b_dev[s] device PCIe copy is recorded INLINE into
                                     // cmdF and waited on by the SAME blocking flow submit, so it sits in front of the
                                     // flow compute on EVERY pair (the ~11ms non-compute B-side ingest). ON: that copy is

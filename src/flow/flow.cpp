@@ -1536,19 +1536,32 @@ void run_flow(FgContext& ctx){
                             uint64_t flips=0; const uint8_t* gm=(const uint8_t*)hostDIS[f_gen];
                             for(size_t i=0;i<nblk;++i) if(gm[i]!=gme_vfy_dis[i]) ++flips;
                             ++gme_vfy_n;
+                            // dis% cross-check under the SAME definition as the GPU stat (post-change-gate
+                            // mask fraction) — the gme_fit_affine RETURN is the raw PRE-gate residual count
+                            // (its `dissident` counter increments before the gate zeroes the mask byte), a
+                            // DIFFERENT stat: printing them side-by-side read as a 2x GPU/CPU mismatch while
+                            // flips=0 (measured: GPU~11% vs CPU 21.7%). Keep the raw one, labeled honestly —
+                            // it quantifies how much dissidence the change gate rejects.
+                            const double cdis_mask = gme_dispct_from_mask(gme_vfy_dis.data(),mvw,mvh);
                             if(gme_vfy_n<=5 || (gme_vfy_n%120u)==0u)
-                                std::printf("[ra] gme-gpu-verify[%llu]: model rel-diff=%.3e dis-mask flips=%llu/%zu | GPU t=(%.2f,%.2f) CPU t=(%.2f,%.2f) | dis GPU~%.1f%% CPU%.1f%%\n",
+                                std::printf("[ra] gme-gpu-verify[%llu]: model rel-diff=%.3e dis-mask flips=%llu/%zu | GPU t=(%.2f,%.2f) CPU t=(%.2f,%.2f) | dis GPU~%.1f%% CPU~%.1f%% raw(pre-gate)%.1f%%\n",
                                     (unsigned long long)gme_vfy_n,reldiff,(unsigned long long)flips,nblk,
-                                    m6[0],m6[3],c6[0],c6[3],dis_pct,cdis);
+                                    m6[0],m6[3],c6[0],c6[3],dis_pct,cdis_mask,cdis);
                         }
                     } else {
                         // --load-governor: tier-5 uses the cheapest single-pass CPU fit (gme_iters = 1 at
                         // tier≥5, else 2/3). gme_iters equals cfg.gme_irls2?2:3 when load_governor is off
                         // (tier-5 unreachable).
-                        dis_pct=gme_fit_affine(hostMV[f_gen],
-                                               cfg.change_gate?hostSAD[f_gen]:nullptr,
-                                               mvw,mvh,m6,
-                                               (uint8_t*)hostDIS[f_gen],gme_sub2,(int)gme_iters);
+                        gme_fit_affine(hostMV[f_gen],
+                                       cfg.change_gate?hostSAD[f_gen]:nullptr,
+                                       mvw,mvh,m6,
+                                       (uint8_t*)hostDIS[f_gen],gme_sub2,(int)gme_iters);
+                        // dis_pct = the POST-change-gate mask fraction — the SAME definition as the gme-gpu
+                        // path above, so the dis:NN% telemetry, the CSV column and the --motion-fallback
+                        // threshold keep ONE meaning whichever path ran (the raw gme_fit_affine return is
+                        // the pre-gate residual count, ~2x larger scene-dependently). hostDIS is still
+                        // pristine here (mem_merge/object_repair mutate it below).
+                        dis_pct = gme_dispct_from_mask((const uint8_t*)hostDIS[f_gen],mvw,mvh);
                     }
                     const double gdt=now_ms()-g0;
                     gme_fit_total_ms+=gdt; gme_did_fit=true; gme_dis_pct_fwd=dis_pct;

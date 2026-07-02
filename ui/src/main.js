@@ -34,13 +34,13 @@ const GROUPS = [
     title: "Capture",
     controls: [
       {
-        flag: "--capture-api", type: "select", default: "dd",
+        flag: "--capture-api", type: "select", default: "wgc",
         name: "Capture API",
         options: [
-          { value: "dd", label: "dd (Desktop Duplication)" },
           { value: "wgc", label: "wgc (Windows Graphics Capture)" },
+          { value: "dd", label: "dd (Desktop Duplication)" },
         ],
-        desc: "Capture backend: dd (default) or wgc (HW-accel flip/overlay).",
+        desc: "Capture backend: wgc (default; window-scoped with --window, compose-rate delivery with dedup) or dd (whole-monitor DDA).",
       },
       {
         flag: "--ingest-async", type: "switch", default: false,
@@ -48,14 +48,14 @@ const GROUPS = [
         desc: "Decouples DDA ingest: a thread that only acquires into a ring + a parallel convert worker (drop-to-newest) that publishes instantly. Raises ingest toward the delivered rate (watch capture vs ingest). DDA only; default off.",
       },
       {
-        flag: "--dedup", type: "switch", default: true,
-        name: "Drop duplicates (DDA)",
-        desc: "DDA composes the desktop at the monitor's refresh rate, so many captures are content DUPLICATES (DWM re-composes the same game frame, which renders fewer unique frames). Drops the duplicates from the pipeline so FG interpolates between TRUE uniques instead of zero-motion pairs. The capture readout always shows the real unique rate. DDA only; default off.",
+        flag: "--no-dedup", type: "switch-off", default: true,
+        name: "Drop duplicates",
+        desc: "The compositor delivers content DUPLICATES (same game frame re-composed at the refresh rate). Drops them so FG interpolates between TRUE uniques instead of zero-motion pairs; also unlocks WGC's compose-rate delivery ceiling (MinUpdateInterval derived from the captured panel). Applies to both APIs; the PLL is fed post-dedup (units-consistent). DEFAULT ON.",
       },
       {
         flag: "--window", type: "text", default: "",
         name: "Window (substring)", placeholder: "e.g. Battlefield",
-        desc: "WGC: captures the window whose title contains this substring (implies --capture-api wgc).",
+        desc: "Captures the window whose title contains this substring — window-only under wgc (default), or its whole MONITOR under dd.",
       },
       {
         flag: "--monitor", type: "number", default: "0", min: 0, step: 1,
@@ -78,7 +78,7 @@ const GROUPS = [
         desc: "In-order drain depth of the ingest (1=fresher/more span-2 jumps, 3=smoother/more latency). The DOMINANT lever for freshage/input-lag.",
       },
       {
-        flag: "--copy-fence", type: "switch", default: false, name: "Copy-fence (WGC)",
+        flag: "--no-copy-fence", type: "switch-off", default: true, name: "Copy-fence (WGC)",
         desc: "Event-driven WGC copy pickup (fence+event instead of busy-poll Map). Needs D3D11.4; force-off otherwise.",
       },
       {
@@ -205,7 +205,7 @@ const GROUPS = [
         desc: "Presents an FP16 scRGB swapchain for HDR (alias of --present-fp16). INERT without an HDR display+content.",
       },
       {
-        flag: "--present-own-window", type: "switch", default: false,
+        flag: "--no-present-own-window", type: "switch-off", default: true,
         name: "Own window",
         desc: "Presents our own borderless flip HWND (Independent-Flip plane, LSFG topology). Click-through.",
       },
@@ -303,7 +303,7 @@ const GROUPS = [
     controls: [
       { flag: "--no-mv-subpel", type: "switch-off", default: true, name: "MV sub-pixel",
         desc: "DEFAULT ON. Sub-pixel refinement (parabola of the SAD peak) -> fractional MV. Off = integer best_mv." },
-      { flag: "--mv-candsel", type: "switch", default: true, name: "MV candidate-select",
+      { flag: "--no-mv-candsel", type: "switch-off", default: true, name: "MV candidate-select",
         desc: "Ambiguous interior tiles adopt the coarse region MV (kills the aperture crossfade). Composes with mv-subpel." },
       { flag: "--mv-median", type: "switch", default: false, name: "MV median 3x3",
         desc: "Blind 3x3 vector median over the MV field before the warp (superseded by mv-guided)." },
@@ -366,7 +366,7 @@ const GROUPS = [
         desc: "Contour-distance->[0,1] normalizer of the band ([0.001,1])." },
       { flag: "--band-xfade-strength", type: "number", default: "1.0", min: 0, max: 1, step: 0.05, name: "Band-xfade (gravity)",
         desc: "Gravity-cancellation crossfade in the band (DEFAULT 1.0; 0 = off = equivalent to --no-band-xfade)." },
-      { flag: "--ts-smooth", type: "number", default: "0.1", min: 0, max: 1, step: 0.05, name: "TS-smooth",
+      { flag: "--ts-smooth", type: "number", default: "0", min: 0, max: 1, step: 0.05, name: "TS-smooth",
         desc: "Adaptive temporal smoothing gated to garbage pixels (DEFAULT 0.1; 0 = off; 0.5 over-smooths)." },
       { flag: "--disoccl-hardpick", type: "number", default: "0", min: 0, max: 1, step: 0.05, name: "Disoccl hard-pick",
         desc: "Hard-pick with a Sobel edge gate in the bidir band (0=off; requires bidir + iGPU field)." },
@@ -386,7 +386,7 @@ const GROUPS = [
         desc: "Matte dissent cutoff (R8-norm [0.05,1])." },
       { flag: "--mass-k", type: "number", default: "0.5", min: 0, max: 2, step: 0.1, name: "Matte: mass-k",
         desc: "Matte mass-conservation feedback gain [0,2] (0=off/lerp)." },
-      { flag: "--obj-fill-rim", type: "switch", default: true, name: "Obj fill-rim",
+      { flag: "--no-obj-fill-rim", type: "switch-off", default: true, name: "Obj fill-rim",
         desc: "Coherent MV infill across the ENTIRE interior of a rigid object (kills the half-moon crescent). Gives up on a non-rigid rim." },
       { flag: "--disoccl-commit", type: "switch", default: false, name: "Disoccl-commit",
         desc: "One-sided commit in the disocclusion band (replaces the symmetric blend-fallbacks). Requires --matte." },
@@ -463,9 +463,9 @@ const GROUPS = [
         desc: "PLL frequency EMA weight (T_robust) [0,1]." },
       { flag: "--sc-reseat", type: "number", default: "4.0", min: 0.5, max: 64, step: 0.5, name: "PLL re-seat",
         desc: "Phase-error threshold for re-seat vs slew (source-frames [0.5,64])." },
-      { flag: "--phase-norm", type: "switch", default: true, name: "Phase-norm",
+      { flag: "--no-phase-norm", type: "switch-off", default: true, name: "Phase-norm",
         desc: "Normalized N-ladder: intra-pair phase on a uniform grid (j+0.5)/N. DEFAULT OFF." },
-      { flag: "--cphase", type: "switch", default: true, name: "C-phase (reshape)",
+      { flag: "--no-cphase", type: "switch-off", default: true, name: "C-phase (reshape)",
         desc: "Velocity-continuous reshape of the phase rate (seam-slope match; monotonic cubic). TEXT-safe. DEFAULT OFF." },
       { flag: "--cphase-ease", type: "number", default: "0.25", min: 0.05, max: 0.5, step: 0.05, name: "C-phase: ease",
         desc: "Phase width of the opening ease [0.05,0.5]. Only with cphase." },
@@ -477,7 +477,7 @@ const GROUPS = [
         desc: "FSR3 safetyMargin of --pace-variance (ms). Only with pace-variance." },
       { flag: "--pv-var", type: "number", default: "0.1", min: 0, step: 0.05, name: "PV: var-factor",
         desc: "FSR3 varianceFactor of --pace-variance. Only with pace-variance." },
-      { flag: "--pace-present", type: "switch", default: false, name: "Pace-present (metronome)",
+      { flag: "--no-pace-present", type: "switch-off", default: true, name: "Pace-present (metronome)",
         desc: "Drift-corrected metric pacer: keeps the grid and slews the anchor (MASD->0). DEFAULT OFF." },
       { flag: "--pp-safety", type: "number", default: "0.50", min: 0, max: 8, step: 0.05, name: "PP: safety (ms)",
         desc: "FSR3 safetyMargin of the drift target [0,8]. Only with pace-present." },
@@ -498,7 +498,7 @@ const GROUPS = [
   {
     title: "Latency / Responsiveness",
     controls: [
-      { flag: "--low-d", type: "switch", default: true, name: "Low-D (floor-trim)",
+      { flag: "--no-low-d", type: "switch-off", default: true, name: "Low-D (floor-trim)",
         desc: "Trims the D anchor's span term (less input-lag); freshage_ema remains as the freeze floor. Requires phasefix. DEFAULT OFF." },
       { flag: "--low-d-frac", type: "number", default: "0.5", min: 0, max: 1, step: 0.1, name: "Low-D: frac",
         desc: "Fraction of the span term kept [0,1] (1=no trim). Only with low-d." },
@@ -510,7 +510,7 @@ const GROUPS = [
         desc: "rfp phase tolerance (fires when phase >= 1-window) [0,1]. Only with rfp." },
       { flag: "--rfp-fresh", type: "switch", default: false, name: "RFP-fresh (redesign)",
         desc: "Presents the freshest CAPTURED real (not the pair's). Trade: content sawtooth. Requires --rfp." },
-      { flag: "--asw", type: "switch", default: false, name: "ASW (extrapolation)",
+      { flag: "--no-asw", type: "switch-off", default: true, name: "ASW (extrapolation)",
         desc: "Bounded fwd extrapolation (projects cur forward; fills deficit). Requires sync-clock. DEFAULT OFF." },
       { flag: "--asw-max", type: "number", default: "1.0", min: 0, max: 4, step: 0.5, name: "ASW: max",
         desc: "Extrapolation bound in phase units [0,4]." },
@@ -535,7 +535,7 @@ const GROUPS = [
         desc: "DEFAULT ON. Sheds object_repair/memory in heavy scenes under sustained deficit. Off = no tier-4." },
       { flag: "--no-tiers", type: "switch-off", default: true, name: "Pressure tiers",
         desc: "DEFAULT ON. STAGE-84 pressure tiers (bwd-skip + graduated shed). Off = bwd-skip only." },
-      { flag: "--fdrop", type: "switch", default: false, name: "F-drop (exact dups)",
+      { flag: "--no-fdrop", type: "switch-off", default: true, name: "F-drop (exact dups)",
         desc: "Drops EXACT duplicate frames at present (elides redundant warp). Implies async. DEFAULT OFF." },
       { flag: "--fdrop-quiet-ms", type: "number", default: "0", min: 0, step: 0.5, name: "F-drop quiet (DEFERRED)",
         desc: "Stage-B soft near-dup: PARSED but LOGIC DEFERRED (inert at 0)." },
@@ -543,7 +543,7 @@ const GROUPS = [
         desc: "Stage-B motion sensitivity: PARSED but LOGIC DEFERRED (inert at 0)." },
       { flag: "--upload-xfer", type: "switch", default: false, name: "Upload-xfer (DMA)",
         desc: "Moves the warp upload to the 4090's transfer/DMA queue (overlap). Implies async. Force-off without a transfer family. DEFAULT OFF." },
-      { flag: "--fwd-prestage", type: "switch", default: true, name: "Fwd-prestage",
+      { flag: "--no-fwd-prestage", type: "switch-off", default: true, name: "Fwd-prestage",
         desc: "Prestages the B copy outside the flow submit (collapses the build gap). Serial path + iGPU-convert. DEFAULT OFF." },
       { flag: "--fwd-pipeline", type: "switch", default: false, name: "Fwd-pipeline",
         desc: "Cross-pair fwd pipelining (WAP; +1 pair of publish lag). Opt-in A/B. DEFAULT OFF." },
@@ -963,12 +963,38 @@ function logLine(text, cls) {
 function classify(line) {
   if (line.startsWith("[ra-cap]")) return "cap";
   if (line.startsWith("[ra]")) return "ra";
+  if (line.startsWith("[nota]")) return "sys"; // eco de la nota del operador (observer)
   return "";
 }
 
 document.getElementById("btn-clear").addEventListener("click", () => {
   logEl.innerHTML = "";
 });
+
+// ── Observer: canal ojo→intérprete ───────────────────────────────────────────
+// La nota viaja al backend (observer_note), que la timestampea en el observer log de disco
+// (el mismo stream que la telemetría del FG) y la re-emite como fg-log — el eco visible en
+// este console llega por el listener normal, así que aquí no se duplica localmente.
+const noteInput = document.getElementById("note-input");
+const btnNote = document.getElementById("btn-note");
+
+async function sendNote() {
+  if (!invoke || !noteInput) return;
+  const text = noteInput.value.trim();
+  if (!text) return;
+  noteInput.value = "";
+  try {
+    await invoke("observer_note", { note: text });
+  } catch (e) {
+    logLine("[ui] note error: " + e, "exit");
+  }
+}
+
+if (btnNote) btnNote.addEventListener("click", sendNote);
+if (noteInput)
+  noteInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendNote();
+  });
 
 // ── State / buttons ──────────────────────────────────────────────────────────
 const btnStart = document.getElementById("btn-start");
@@ -1090,6 +1116,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (!invoke) return;
   // Populate the target-window selector once at startup (non-fatal if it fails).
   refreshWindows();
+  // Mostrar dónde vive el observer log (lo que un observador externo debe tailear).
+  try {
+    const p = await invoke("observer_path");
+    if (p) logLine("[ui] observer log: " + p, "sys");
+  } catch {
+    /* sin observer: no-op */
+  }
   try {
     const isUp = await invoke("is_running");
     setRunning(!!isUp);

@@ -5,7 +5,7 @@ already-rendered output, estimates the motion between real frames, synthesizes i
 presents them — with no access to the game engine, its motion vectors, or its depth. One executable, one
 build.
 
-> `0.1.0-experimental` · Windows · student-built, LLM-assisted.
+> `0.2.0-experimental` · Windows · student-built, LLM-assisted.
 
 ## What it is
 

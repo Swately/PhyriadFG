@@ -5,13 +5,13 @@
 // It NEVER writes into the running FG (the FG's Config is startup-set + read unsynchronized);
 // all flags apply at launch.
 
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Default: phyriad_fg.exe in the same directory as ui.exe (portable layout).
 /// Overridable from the UI via the `exe_path` field.
@@ -93,6 +93,63 @@ fn create_job() -> JobState {
     }
 }
 
+/// Observer log — espejo a DISCO de todo lo que ve la UI: el argv exacto de cada
+/// lanzamiento/reinicio, cada línea de stdout/stderr del FG, los eventos de ciclo de vida
+/// (exit/stop) y las NOTAS del operador, todo con timestamp relativo al arranque de la app.
+/// Propósito: que un observador externo (otro humano o un LLM con acceso al filesystem)
+/// pueda seguir una sesión de pruebas en tiempo real con un `tail -f` del archivo, con el
+/// operador marcando momentos ("aquí vibra") desde la propia UI. El archivo vive junto a
+/// ui.exe (`observer-live.log`, append entre sesiones); si no se puede abrir, todo degrada
+/// a no-op y la UI sigue funcionando igual.
+struct ObserverLog {
+    start: std::time::Instant,
+    path: String,
+    file: Mutex<Option<std::fs::File>>,
+}
+
+impl ObserverLog {
+    fn create() -> Arc<ObserverLog> {
+        let path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("observer-live.log")))
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "observer-live.log".to_string());
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok();
+        let log = Arc::new(ObserverLog {
+            start: std::time::Instant::now(),
+            path,
+            file: Mutex::new(file),
+        });
+        let unix_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        log.write("session", &format!("=== UI session start (unix_ms {}) ===", unix_ms));
+        log
+    }
+
+    /// Append `[+  12.345s] [tag] line`. Best-effort: sin archivo, no-op. Cada línea es un
+    /// write directo al SO (File no bufferea en Rust), así el tail externo la ve al instante.
+    fn write(&self, tag: &str, line: &str) {
+        if let Ok(mut g) = self.file.lock() {
+            if let Some(f) = g.as_mut() {
+                let t = self.start.elapsed().as_secs_f64();
+                let _ = writeln!(f, "[+{:>10.3}s] [{}] {}", t, tag, line);
+            }
+        }
+    }
+}
+
+/// Snapshot del observer del `AppHandle` (None si el estado no está gestionado — imposible en
+/// la práctica, pero el acceso degrada limpio en vez de hacer panic).
+fn observer(app: &AppHandle) -> Option<Arc<ObserverLog>> {
+    app.try_state::<Arc<ObserverLog>>().map(|s| s.inner().clone())
+}
+
 /// One enumerated top-level window, surfaced to the UI's target-window selector.
 #[derive(serde::Serialize, Clone)]
 struct WindowInfo {
@@ -137,13 +194,21 @@ fn spawn_fg(
     exe_path: Option<String>,
 ) -> Result<(), String> {
     let exe = resolve_exe(exe_path);
+    let obs = observer(app);
+    if let Some(o) = &obs {
+        o.write("launch", &format!("exe={} argv: {}", exe, args.join(" ")));
+    }
     let mut cmd = Command::new(&exe);
     cmd.args(&args).stdout(Stdio::piped()).stderr(Stdio::piped());
     no_window(&mut cmd);
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to start '{}': {}", exe, e))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        let msg = format!("Failed to start '{}': {}", exe, e);
+        if let Some(o) = &obs {
+            o.write("error", &msg);
+        }
+        msg
+    })?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -156,7 +221,6 @@ fn spawn_fg(
     #[cfg(windows)]
     {
         use std::os::windows::io::AsRawHandle;
-        use tauri::Manager;
         use windows::Win32::Foundation::HANDLE;
         use windows::Win32::System::JobObjects::AssignProcessToJobObject;
         if let Some(job) = app.try_state::<JobState>() {
@@ -197,6 +261,7 @@ fn spawn_fg(
     // o en un error de E/S real.
     if let Some(err) = stderr {
         let app_e = app.clone();
+        let obs_e = obs.clone();
         std::thread::spawn(move || {
             let mut reader = BufReader::new(err);
             let mut buf: Vec<u8> = Vec::new();
@@ -210,6 +275,9 @@ fn spawn_fg(
                             buf.pop();
                         }
                         let line = String::from_utf8_lossy(&buf).into_owned();
+                        if let Some(o) = &obs_e {
+                            o.write("fg-err", &line);
+                        }
                         let _ = app_e.emit("fg-log", line);
                     }
                     Err(_) => break, // error de E/S real
@@ -224,6 +292,7 @@ fn spawn_fg(
         let app_o = app.clone();
         let store = state.child.clone();
         let epoch = state.epoch.clone();
+        let obs_o = obs.clone();
         std::thread::spawn(move || {
             // FIX C — misma lectura tolerante a UTF-8 inválido que en stderr. SOLO el EOF real
             // (Ok(0)) o un error de E/S real terminan el bucle y disparan el reap + fg-exit; un
@@ -239,6 +308,9 @@ fn spawn_fg(
                             buf.pop();
                         }
                         let line = String::from_utf8_lossy(&buf).into_owned();
+                        if let Some(o) = &obs_o {
+                            o.write("fg", &line);
+                        }
                         let _ = app_o.emit("fg-log", line);
                     }
                     Err(_) => break, // error de E/S real
@@ -262,6 +334,9 @@ fn spawn_fg(
                 }
             }
             if emit_exit {
+                if let Some(o) = &obs_o {
+                    o.write("exit", &format!("code={:?}", code));
+                }
                 let _ = app_o.emit("fg-exit", code);
             }
         });
@@ -315,6 +390,9 @@ fn restart(
     args: Vec<String>,
     exe_path: Option<String>,
 ) -> Result<(), String> {
+    if let Some(o) = observer(&app) {
+        o.write("ui", "restart requested (config change)");
+    }
     // Quitar y matar al hijo actual (si lo hay). Ignoramos errores de kill/wait (puede haber
     // muerto solo). El lector de ese hijo seguirá drenándolo hasta EOF; el guard de epoch lo
     // hará salir sin cosechar nada nuevo.
@@ -339,7 +417,10 @@ fn restart(
 
 /// Kill the running FG (if any). The stdout reader thread will then hit EOF and emit fg-exit.
 #[tauri::command]
-fn stop(state: State<'_, FgState>) -> Result<(), String> {
+fn stop(app: AppHandle, state: State<'_, FgState>) -> Result<(), String> {
+    if let Some(o) = observer(&app) {
+        o.write("ui", "stop requested");
+    }
     let child = {
         let mut guard = state.child.lock().map_err(|e| e.to_string())?;
         guard.take()
@@ -349,6 +430,28 @@ fn stop(state: State<'_, FgState>) -> Result<(), String> {
         let _ = ch.wait();
     }
     Ok(())
+}
+
+/// Nota del operador → el observer log + el console de la UI. El canal "ojo → intérprete":
+/// el operador marca el instante de lo que VE ("aquí vibra") y la marca queda timestampeada
+/// en el mismo stream que la telemetría del FG, para correlarla después.
+#[tauri::command]
+fn observer_note(app: AppHandle, note: String) -> Result<(), String> {
+    let text = note.trim().to_string();
+    if text.is_empty() {
+        return Ok(());
+    }
+    if let Some(o) = observer(&app) {
+        o.write("operator", &text);
+    }
+    let _ = app.emit("fg-log", format!("[nota] {}", text));
+    Ok(())
+}
+
+/// Ruta absoluta del observer log (para mostrarla en la UI y que el observador sepa qué tailear).
+#[tauri::command]
+fn observer_path(app: AppHandle) -> String {
+    observer(&app).map(|o| o.path.clone()).unwrap_or_default()
 }
 
 /// True while a child is stored. The reaper thread clears it on exit.
@@ -512,7 +615,8 @@ pub fn run() {
         .manage(FgState {
             child: Arc::new(Mutex::new(None)),
             epoch: Arc::new(AtomicU64::new(0)),
-        });
+        })
+        .manage(ObserverLog::create());
 
     // FIX A — crear el ÚNICO Job Object al arrancar y conservar su handle en estado gestionado
     // durante toda la vida de la app (windows-only). Que viva aquí garantiza la semántica de
@@ -527,7 +631,9 @@ pub fn run() {
             stop,
             is_running,
             list_monitors,
-            list_windows
+            list_windows,
+            observer_note,
+            observer_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -461,7 +461,16 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+/* Nota del operador: ocupa el hueco entre el título y los botones (override del width:100%
+   genérico de .text-input para convivir en la fila flex del log-head). */
+.note-input {
+  flex: 1;
+  width: auto;
+  min-width: 120px;
 }
 
 .log {

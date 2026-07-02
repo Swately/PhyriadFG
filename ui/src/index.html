@@ -94,6 +94,16 @@
     <section class="logwrap card">
       <div class="log-head">
         <span class="field-label">Live output</span>
+        <!-- Canal ojo→intérprete: la nota se timestampea en el observer log (junto a ui.exe),
+             en el MISMO stream que la telemetría del FG, para correlar lo visto con lo medido. -->
+        <input
+          type="text"
+          id="note-input"
+          class="text-input note-input"
+          placeholder="nota del operador (p.ej. 'aquí vibra') — Enter para marcar"
+          spellcheck="false"
+        />
+        <button id="btn-note" class="btn btn-ghost">Mark</button>
         <button id="btn-clear" class="btn btn-ghost">Clear</button>
       </div>
       <div id="log" class="log"></div>

@@ -235,8 +235,9 @@ int main(int argc, char** argv) {
     // ── Capture init ─────────────────────────────────────────────────────────
     D3D d{};
 #ifdef _MSC_VER
-    // DDA-primary: --window (sin --capture-api wgc explícito) captura el MONITOR donde está la ventana,
-    // vía DDA (llega al refresh del panel; WGC-ventana se auto-capa ~125 por el anti-duplicate-flood).
+    // Ruta DDA explícita (--capture-api dd, ya no el default): --window captura el MONITOR completo
+    // donde está la ventana, vía DDA (llega al refresh del panel; el default WGC con --dedup también
+    // llega — MinUpdateInterval derivado del panel capturado; sin --dedup WGC conserva su cap de 8ms).
     if (cfg.capture_api==CA_DD && cfg.window_substr[0]) {
         // --present-own-window con DDA: persistimos el HWND del juego en wgc_target_hwnd para que
         // present.cpp lo pase como psd.game_hwnd → el yield del plano OwnWindow lo reconoce como "frente
@@ -347,6 +348,27 @@ int main(int argc, char** argv) {
     const uint32_t WW_warp=WW/warp_div, WH_warp=WH/warp_div;   // OUR warp's (down)scaled output/dispatch size
 
     std::printf("[ra] capture [%d]: %ux%u DXGI=%d → %s → work %ux%u\n",cfg.cap_mon,NAT_W,NAT_H,(int)d.fmt,rdesc,WW,WH);
+
+    // ── Refresh del monitor CAPTURADO — la base de escalado de la ingesta ─────
+    // El techo físico de entrega de cualquier captura por composición (WGC/DDA) = la tasa de
+    // composición del panel capturado. DERIVADO de la enumeración ya hecha (OutInfo.hz vía
+    // EnumDisplaySettingsEx), nunca un hardcode — escala solo a paneles 240/360/500Hz+.
+    // Preferencia: el monitor de la VENTANA objetivo (--window) > el output DDA elegido >
+    // cfg.refresh_hz (el flag --refresh-hz). Consumido por el ring de captura y por el
+    // MinUpdateInterval de WGC. (Declarado AQUÍ, antes de todo goto de teardown — C2362.)
+    int cap_mon_hz = 0; const char* cap_mon_src = "--refresh-hz fallback";
+#ifdef _MSC_VER
+    if(wgc_target_hwnd){
+        const HMONITOR _hm=MonitorFromWindow(wgc_target_hwnd,MONITOR_DEFAULTTONEAREST);
+        for(const auto& _oi:d.outputs) if(_oi.hmon==_hm && _oi.hz>0){ cap_mon_hz=_oi.hz; cap_mon_src="window monitor"; break; }
+    }
+#endif
+    if(cap_mon_hz<=0 && d.cap_ci>=0 && d.cap_ci<(int)d.outputs.size() && d.outputs[d.cap_ci].hz>0){
+        cap_mon_hz=d.outputs[d.cap_ci].hz; cap_mon_src="DDA output";
+    }
+    if(cap_mon_hz<=0) cap_mon_hz=cfg.refresh_hz;
+    std::printf("[ra] capture-monitor refresh: %d Hz (%s) — the ingest-scaling base (capture ring + WGC MinUpdateInterval)\n",cap_mon_hz,cap_mon_src);
+
     // The commit marker gains the appearance band when appearance is live (commit governs):
     //   commit:0.080(real appear:0.10) / commit:0.080(real) / commit:0.080(appear:0.10) / commit:0.080
     char commit_buf[56]={};
@@ -1002,15 +1024,17 @@ int main(int argc, char** argv) {
         const VkDeviceSize hwork=(wwork+al-1)/al*al;
         // ── Auto-size the capture ring from the RUNTIME regime (NOT the CPU) ──────────────
         // The ring is RAM frame-slots; the depth must cover how many reals advance while B flows the pair
-        // + P consumes it = the source/flow gap. Heuristic: ~1 slot per ~55 source-fps (the source ceiling
-        // = --cap-fps, or ~125 default) + a base of 4, then clamped to [4, kCapSlots(max)] AND to a host-
-        // memory budget (~768MB; each slot ~ W*H*4 * 2.7 for R + packed + field). --cap-slots N overrides
-        // (0 = auto). Deliberately NOT a function of CPU cores/topology: that pillar (HardwareTopology /
-        // Scheduler) governs THREAD-core placement, a separate concern; the ring depth is source/flow/res-
-        // bound. (This is an init-time heuristic from the cap CEILING, not a measured per-run optimum; the
-        // override + the frz/uniq stats are the tuning path.)
+        // + P consumes it = the source/flow gap. The source ceiling = --cap-fps, or the CAPTURED
+        // monitor's compose rate (cap_mon_hz, derived above — uniques can never exceed it; the old
+        // 125 hardcode was the retired WGC anti-flood cap). Base of 4, then clamped to
+        // [4, kCapSlots(max)] AND to a host-memory budget (~768MB; each slot ~ W*H*4 * 2.7 for R +
+        // packed + field). --cap-slots N overrides (0 = auto). Deliberately NOT a function of CPU
+        // cores/topology: that pillar (HardwareTopology / Scheduler) governs THREAD-core placement, a
+        // separate concern; the ring depth is source/flow/res-bound. (This is an init-time heuristic
+        // from the cap CEILING, not a measured per-run optimum; the override + the frz/uniq stats are
+        // the tuning path.)
         {
-            const int src_ceiling = (cfg.cap_fps>0) ? cfg.cap_fps : 125;
+            const int src_ceiling = (cfg.cap_fps>0) ? cfg.cap_fps : cap_mon_hz;
             int want = (cfg.cap_slots>0) ? cfg.cap_slots : (src_ceiling/10 + 4);
             const double slot_bytes = (double)WW*(double)WH*4.0*2.7;            // R + packed + field, approx
             const int mem_cap = (int)(768.0*1024.0*1024.0 / slot_bytes);
@@ -1479,8 +1503,15 @@ int main(int argc, char** argv) {
             // w+1 (== ring_write post-increment) so the C-thread, seeing ring_write==W, can wait fence>=W for
             // the newest slot (W-1)%N whose copy was signaled w+1==W. One fire-and-return enqueue on the
             // already-multithread-protected context (≤125/s) — NEVER blocks the winrt thread.
-            if(cf_on && raw_wctx->ctx4 && raw_wctx->copyFence)
+            // + Flush(): SUBMIT the copy+signal now. Sin él, ambos quedan en el command buffer del
+            // runtime sin enviar (nada más lo envía — el render es Vulkan) → el fence NUNCA alcanza
+            // el target antes del primer Map; el flush implícito del Map FALLIDO era quien lo enviaba
+            // → mapmiss == arr, un miss por frame (medido). El Flush es un submit no-bloqueante,
+            // ≤source-fps/s, seguro en el hilo winrt. Gated en cf_on → path copy-fence-off byte-idéntico.
+            if(cf_on && raw_wctx->ctx4 && raw_wctx->copyFence){
                 raw_wctx->ctx4->Signal(raw_wctx->copyFence,(UINT64)(w+1u));
+                raw_ctx->Flush();
+            }
             ++raw_wctx->arrived;
             // --latency-trace: stamp the WGC-ring slot just written (w%RING_N). submit = steady now (C
             // computes copy-exec = tcap−submit); compose = the QPC delta WGC-compose→this-callback (both
@@ -1496,9 +1527,9 @@ int main(int argc, char** argv) {
                 const double dcm = qpc_ms - srt_ms;
                 raw_wctx->ring_compose_us[w%WgcCtx::RING_N].store((dcm>0.0&&dcm<200.0)?(uint64_t)(dcm*1000.0):0);
             }
-            { const uint64_t t_us=(uint64_t)(now_ms()*1000.0);
-              const uint64_t prev=raw_wctx->last_arr_us.exchange(t_us);
-              if(prev&&t_us>prev) raw_wctx->arr_delta_us.store(t_us-prev); }
+            // (PLL units fix) arr_delta_us ya NO se escribe aquí por-ENTREGA: el delta se mide en la
+            // INGESTA post-dedup (capture.cpp, cola compartida) para que un diluvio de duplicados
+            // (MinUpdateInterval bajo) no envenene la EMA de cadencia del PLL.
             raw_wctx->frame_ready.store(true);
         });
 
@@ -1509,19 +1540,31 @@ int main(int argc, char** argv) {
         // draws above the overlay and shows/hides exactly as the game commands.
         try { wgc_ctx->session.IsCursorCaptureEnabled(false); } catch(...) {}
         // WGC's default MinUpdateInterval (~16.6 ms) caps delivery at ~60/s; Win11 24H2+ exposes the
-        // knob. Requesting 1 ms makes WGC deliver DUPLICATE frames in micro-bursts up to the compose
-        // rate — the burst deltas POISON the arrival-cadence EMA (T_ema collapses → the paced presents
-        // fire back-to-back → MAILBOX latest-wins keeps only the real frame → the interps never reach the
-        // panel). 8 ms caps capture at ~125/s — above any game source we serve, below the duplicate flood.
+        // knob. A low interval makes WGC deliver DUPLICATE frames in micro-bursts up to the compose
+        // rate. Históricamente eso ENVENENABA la EMA de cadencia (los deltas de ráfaga colapsaban
+        // T_ema → presents back-to-back → MAILBOX se quedaba solo con el real) y por eso el default
+        // era un cap fijo de 8 ms (~125/s). Ese veneno está CURADO: el PLL se alimenta de deltas
+        // medidos en la INGESTA post-dedup (capture.cpp), así que con --dedup armado los duplicados
+        // se descartan y el delta cuenta solo únicos → el intervalo se DERIVA del panel capturado:
+        // MEDIO período de composición (cap_mon_hz, detectado arriba — margen anti-cuantización para
+        // que el floor nunca estrangule la entrega a tasa de composición). 240Hz→~2.1ms (entrega
+        // 240/s), 500Hz→1ms (500/s), 1000Hz→0.5ms floor. NUNCA un hardcode — escala con el monitor
+        // del usuario. Clamp [0.5ms, 8ms]: el techo = el viejo default (paneles ≤62Hz, continuidad).
+        // SIN --dedup el diluvio SÍ entraría al pipeline (pares de movimiento-cero) → se conserva 8ms.
         try {
             // --cap-fps N throttles the source to N fps (MinUpdateInterval = 1/N, in 100ns units);
-            // default (cap_fps==0) keeps the 8ms (~125/s) anti-duplicate-flood cap.
-            const long long mui_100ns = (cfg.cap_fps > 0) ? (10000000LL / (long long)cfg.cap_fps) : 80000LL;
+            // default (cap_fps==0): medio período del panel capturado con --dedup; 8ms sin él.
+            const long long half_period_100ns = 10000000LL / (2LL*(long long)(cap_mon_hz>0?cap_mon_hz:60));
+            const long long mui_dedup = half_period_100ns<5000LL?5000LL:(half_period_100ns>80000LL?80000LL:half_period_100ns);
+            const long long mui_100ns = (cfg.cap_fps > 0) ? (10000000LL / (long long)cfg.cap_fps)
+                                       : (cfg.dedup ? mui_dedup : 80000LL);
             wgc_ctx->session.MinUpdateInterval(winrt::Windows::Foundation::TimeSpan{mui_100ns});
             if (cfg.cap_fps > 0)
                 std::printf("[ra] WGC MinUpdateInterval: %.1f ms (--cap-fps %d) — source throttled so the FG interpolates more frames/pair (crescent easier to eyeball)\n", (double)mui_100ns/10000.0, cfg.cap_fps);
+            else if (cfg.dedup)
+                std::printf("[ra] WGC MinUpdateInterval: %.2f ms (half the %d Hz capture-monitor period) — delivery up to the compose rate; --dedup filters the duplicates, the PLL is fed post-dedup (units-consistent)\n", (double)mui_100ns/10000.0, cap_mon_hz);
             else
-                std::printf("[ra] WGC MinUpdateInterval: 8 ms requested (~125/s cap; anti-duplicate-flood)\n");
+                std::printf("[ra] WGC MinUpdateInterval: 8 ms requested (~125/s cap; anti-duplicate-flood — use --dedup to unlock compose-rate delivery)\n");
         } catch(...) { std::printf("[ra] WGC MinUpdateInterval: unavailable (pre-24H2) — default ~60/s cap\n"); }
         wgc_ctx->session.StartCapture();
         std::printf("[ra] WGC session started — frames arriving via free-threaded callback\n");

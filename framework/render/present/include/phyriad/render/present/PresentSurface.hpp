@@ -167,6 +167,13 @@ public:
     // Diagnostics — queryable by the consumer.
     [[nodiscard]] bool capture_excluded() const noexcept; // WDA call succeeded
     [[nodiscard]] bool is_click_through() const noexcept;  // DcompCt style
+    // (Style::OwnWindow) true iff the displayed plane is currently YIELDED (hidden — the foreground
+    // is neither the game nor our window; submit() early-returns SUCCESS in that state, so ps-ok
+    // counters can NOT distinguish displayed from hidden). The consumer polls this per tick to log
+    // yield/re-assert transitions and expose the display state in its stats — without it an own-window
+    // run that never had the game focused reads as "working" while presenting NOTHING. Always false
+    // for the overlay styles.
+    [[nodiscard]] bool is_yielded() const noexcept;
     // True iff the swapchain was actually created at FP16 scRGB (DXGI_FORMAT_R16G16B16A16_FLOAT).
     // When desc.present_format==1 but the FP16 create failed, create() falls back to BGRA8 and this
     // returns false — the consumer reads it to decide whether to widen its producer bridge texture to
