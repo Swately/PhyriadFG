@@ -6,7 +6,10 @@ const TAURI = window.__TAURI__;
 const invoke = TAURI?.core?.invoke;
 const listen = TAURI?.event?.listen;
 
-const DEFAULT_EXE = "G:\\PhyriadFG\\build\\phyriad_fg.exe";
+// Vacío = el backend (lib.rs default_exe) resuelve phyriad_fg.exe JUNTO a ui.exe — el layout
+// portable del zip. NUNCA un path absoluto aquí: el hardcode de dev rompía la UI en toda
+// máquina ajena ("The system cannot find the path specified", issue #1).
+const DEFAULT_EXE = "";
 
 // ── Estado del proceso + auto-reinicio ─────────────────────────────────────────
 // Declarados aquí arriba (no en el bloque de botones) porque updatePreview() —que llama a
@@ -915,7 +918,7 @@ const exeInput = document.getElementById("exe-path");
 
 function updatePreview() {
   const args = buildArgs();
-  const exe = exeBasename(exeInput.value || DEFAULT_EXE);
+  const exe = exeBasename(exeInput.value || DEFAULT_EXE) || "phyriad_fg.exe";
   cmdPreview.textContent = [exe, ...args.map(quoteArg)].join(" ");
   // Ruta común de TODO cambio de flag: si el auto-reinicio está activo y el FG está vivo,
   // programa un reinicio debounced con la nueva config. (No-op si está off o no hay proceso.)
