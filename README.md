@@ -7,6 +7,9 @@ build.
 
 > `0.2.2-experimental` · Windows · student-built, LLM-assisted.
 
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/x6ZsjVchs)
+Questions, testing feedback, and release announcements: **[discord.gg/x6ZsjVchs](https://discord.gg/x6ZsjVchs)**
+
 ## What it is
 
 - A frame generator that works on **any** game because it only sees the final image (like Lossless
