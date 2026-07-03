@@ -383,6 +383,9 @@ int main(int argc, char** argv) {
     char bidir_buf[40]={}; if(cfg.bidir) std::snprintf(bidir_buf,sizeof(bidir_buf)," bidir(occl:%.2fpx%s)",cfg.occl_thresh,cfg.phase_anchor?"+pa":"");   // +pa = phase-anchored primary MV
     char filldiv_buf[40]={}; if(cfg.fill_div) std::snprintf(filldiv_buf,sizeof(filldiv_buf)," fill-div(eps:%.3f)",cfg.div_eps);
     char mvguided_buf[40]={}; if(cfg.mv_guided) std::snprintf(mvguided_buf,sizeof(mvguided_buf)," mv-guided(sim:%.2f)",cfg.mv_sim);
+    char mesnap_buf[56]={}; if(cfg.mv_edge_snap) std::snprintf(mesnap_buf,sizeof(mesnap_buf)," mv-edge-snap(%s sim:%.2f)",cfg.mv_edge_snap==1?"G1-dis":"G2-col",cfg.mv_edge_snap_sim>0.f?cfg.mv_edge_snap_sim:cfg.mv_sim);
+    char strack_buf[24]={}; if(cfg.single_track) std::snprintf(strack_buf,sizeof(strack_buf)," single-track");   // B-track base (marker ⇔ the collapse is live this run)
+    char bgrec_buf[32]={}; if(cfg.bg_reclaim>0.f) std::snprintf(bgrec_buf,sizeof(bgrec_buf)," bg-reclaim(str:%.2f)",cfg.bg_reclaim);   // tile-level gravity fix (marker ⇔ armed; carries the strength)
     char matte_buf[112]={}; if(cfg.matte) std::snprintf(matte_buf,sizeof(matte_buf)," matte(thr:%.2f occ-lerp mass-k:%.2f%s%s%s%s%s)",cfg.matte_thresh,cfg.mass_k,cfg.travel?" travel":"",cfg.crescent?" crescent":"",cfg.contour?" contour":"",cfg.obj_crescent?" objcres":"",cfg.member_commit?" mbb":"");
     char object_buf[80]={}; if(cfg.objects) std::snprintf(object_buf,sizeof(object_buf)," objects(k:%d min:%d inh:%.0fpx shield:%s%s%s)",kObjSlots,kObjMinMass,kObjInhMin,cfg.persist_reset?"hud-only":"per",cfg.shapefield?" shape":"",cfg.scene_memory?" mem:0.55":"");
     char stasis_buf[40]={}; if(cfg.stasis) std::snprintf(stasis_buf,sizeof(stasis_buf)," stasis(thr:%.2f)",cfg.stasis_thresh);
@@ -398,7 +401,7 @@ int main(int argc, char** argv) {
     // cfg.onepos (` 1pos` present ⇔ the collapse is live this run).
     // The 1pos marker carries the band when ≠1 (the dial visible in every log).
     char onepos_buf[24]={}; if(cfg.onepos){ if(cfg.onepos_band!=1.0f) std::snprintf(onepos_buf,sizeof(onepos_buf)," 1pos:%.2f",cfg.onepos_band); else std::snprintf(onepos_buf,sizeof(onepos_buf)," 1pos"); }
-    std::printf("[ra] FG: res_ceil=%.1f conf_improv=%.2f agreement=%.2f%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",cfg.res_ceil,cfg.conf_improv,cfg.agreement,cfg.warp_at_presenter?" wap":"",cfg.soft_gate?" soft":"",cfg.mv_prior?" mv-prior":"",commit_buf,cfg.commit_default?" cdef":"",onepos_buf,bidir_buf,filldiv_buf,cfg.rescue?" rescue":"",(cfg.mv_median&&!cfg.mv_guided)?" mv-median":"",mvguided_buf,gme_buf,matte_buf,object_buf,stasis_buf,inertia_buf,cfg.expire?" expire":"");   // FG markers
+    std::printf("[ra] FG: res_ceil=%.1f conf_improv=%.2f agreement=%.2f%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",cfg.res_ceil,cfg.conf_improv,cfg.agreement,cfg.warp_at_presenter?" wap":"",cfg.soft_gate?" soft":"",cfg.mv_prior?" mv-prior":"",commit_buf,cfg.commit_default?" cdef":"",onepos_buf,bidir_buf,filldiv_buf,cfg.rescue?" rescue":"",(cfg.mv_median&&!cfg.mv_guided)?" mv-median":"",mvguided_buf,mesnap_buf,strack_buf,bgrec_buf,gme_buf,matte_buf,object_buf,stasis_buf,inertia_buf,cfg.expire?" expire":"");   // FG markers
 
     // ── Vulkan instance ───────────────────────────────────────────────────────
     // The WSI surface extensions are still requested (harmless, no swapchain is created — the bridge
@@ -540,6 +543,11 @@ int main(int argc, char** argv) {
     HBuf  raw_astage_a[kRawSlots]{};   // A imports (TRANSFER_SRC)
     HBuf  raw_astage_g[kRawSlots]{};   // G imports (STORAGE) — only when use_igpu_convert
     double raw_tcap[kRawSlots]={};     // per-slot capture timestamp (ms), carried to c_slots[s].t_cap_ms
+    // WGC async lat-trace carry (R6, WGC_INGEST_ASYNC_PLAN.md): the per-slot submit/compose stamps
+    // ride the raw ring to the worker (which folds them into lt_copy_us/lt_compose_us). Always 0 on
+    // DDA (its callback has no such stamps) → the worker's >0 guards make them inert there.
+    double raw_lt_submit[kRawSlots]={};   // now_ms at the WGC callback CopyResource submit (ms)
+    double raw_lt_compose[kRawSlots]={};  // WGC compose→callback delta (µs)
     // Warp-at-presenter host bridges — per generation, F copies B's MV+SAD field out to these
     // (~130KB each at 1080p, RG16F at WW/8×WH/8); A imports them (hMV_a/hSAD_a, below) to upload
     // into its sampled MV/SAD images per pair-advance. Only allocated when WAP is active.
@@ -961,6 +969,14 @@ int main(int argc, char** argv) {
     // this is belt-and-suspenders for a non-flag WAP disable.
     use_mv_guided=cfg.mv_guided&&use_wap;
     if(cfg.mv_guided&&!use_wap) std::printf("[ra] --mv-guided requires --warp-at-presenter (no WAP MV field to guide) — mv-guided disabled\n");
+    // --mv-edge-snap is the WAP-warp's cross-bilateral primary-MV fetch — same WAP requirement as mv-guided.
+    if(cfg.mv_edge_snap&&!use_wap){ std::printf("[ra] --mv-edge-snap requires --warp-at-presenter (no WAP MV field to snap) — mv-edge-snap disabled\n"); cfg.mv_edge_snap=0; }
+    // --single-track lives at the WAP warp's composition — WAP-only.
+    if(cfg.single_track&&!use_wap){ std::printf("[ra] --single-track requires --warp-at-presenter (no WAP warp to base on the B-track) — single-track disabled\n"); cfg.single_track=false; }
+    // --bg-reclaim damps the fringe MV toward the gme model — needs WAP AND gme (the runtime push also
+    // gates on gme_push, so it is inert without a valid model; here we disable early + warn for the banner).
+    if(cfg.bg_reclaim>0.f&&!use_wap){ std::printf("[ra] --bg-reclaim requires --warp-at-presenter (no WAP MV to reclaim) — bg-reclaim disabled\n"); cfg.bg_reclaim=0.f; }
+    if(cfg.bg_reclaim>0.f&&!cfg.gme){ std::printf("[ra] --bg-reclaim requires --gme (the background model) — bg-reclaim disabled\n"); cfg.bg_reclaim=0.f; }
     // The frame-holon (global affine fit + dissidence mask + model rescue + fill-div assist) is WAP-only
     // — the fit reads the shipped fwd MV grid and the model is consumed in A's warp. parse_args already
     // HARD-errored on --gme without --warp-at-presenter; this is belt-and-suspenders for a non-flag WAP
@@ -1135,14 +1151,12 @@ int main(int argc, char** argv) {
            ||!hbuf_import(A,hostA,hab,Astage,VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
            ||(use_igpu_convert&&!hbuf_import(G,hostA,hab,Astage_g,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)))
             { std::printf("[ra] Astage import failed\n"); goto done; }
-        // ── --ingest-async: the RAW host-buffer ring + the 2nd staging texture ─────────
-        // DDA-only: WGC ingests via its own callback ring (the convert is already off the acquire path),
-        // so force the flag off for WGC (byte-identical). On any raw-ring alloc failure we free what we
-        // got and fall back to serial (never abort an opt-in perf flag).
-        if(cfg.ingest_async && cfg.capture_api!=CA_DD){
-            std::printf("[ra] --ingest-async: DDA-only — capture-api is WGC; forcing ingest-async OFF (serial path unchanged)\n");
-            cfg.ingest_async=false;
-        }
+        // ── --ingest-async: the RAW host-buffer ring (+ the 2nd DDA staging texture) ─────────
+        // BOTH APIs (WGC_INGEST_ASYNC_PLAN.md): the raw ring + worker decouple the convert from the
+        // pickup/acquire loop. Only the readback double-buffer (dxgi_stage2) is DDA-specific — WGC
+        // ingests via its own callback staging ring and never touches dxgi_stage/dxgi_stage2. On any
+        // raw-ring alloc failure we free what we got and fall back to serial (never abort an opt-in
+        // perf flag) — the fallback covers both APIs (R4).
         if(cfg.ingest_async){
             bool ok=true;
             for(int _k=0;_k<kRawSlots && ok;++_k){
@@ -1151,15 +1165,16 @@ int main(int argc, char** argv) {
                    && hbuf_import(A,raw_host[_k],hab,raw_astage_a[_k],VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
                    && (!use_igpu_convert || hbuf_import(G,raw_host[_k],hab,raw_astage_g[_k],VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));
             }
-            // The readback double-buffer: a 2nd DDA staging texture (slot-1; dxgi_stage is slot-0).
-            if(ok){ dxgi_stage2=d3d_staging(d,NAT_W,NAT_H); ok=(dxgi_stage2!=nullptr); }
+            // The readback double-buffer: a 2nd DDA staging texture (slot-1; dxgi_stage is slot-0). CA_DD only.
+            if(ok && cfg.capture_api==CA_DD){ dxgi_stage2=d3d_staging(d,NAT_W,NAT_H); ok=(dxgi_stage2!=nullptr); }
             if(!ok){
                 std::printf("[ra] --ingest-async: raw-ring alloc failed — falling back to the serial capture path\n");
                 cfg.ingest_async=false;
                 for(int _k=0;_k<kRawSlots;++_k){ hbuf_destroy(A,raw_astage_a[_k]); if(use_igpu_convert) hbuf_destroy(G,raw_astage_g[_k]); if(raw_host[_k]){ _aligned_free(raw_host[_k]); raw_host[_k]=nullptr; } }
                 if(dxgi_stage2){ rel(dxgi_stage2); dxgi_stage2=nullptr; }
             } else {
-                std::printf("[ra] --ingest-async: ARMED — %d-slot raw ring + readback double-buffer; convert worker thread will spawn\n",kRawSlots);
+                std::printf("[ra] --ingest-async: ARMED (%s) — %d-slot raw ring%s; convert worker thread will spawn\n",
+                    cfg.capture_api==CA_DD?"DDA":"WGC",kRawSlots,cfg.capture_api==CA_DD?" + readback double-buffer":"");
             }
         }
     }
@@ -1496,7 +1511,7 @@ int main(int argc, char** argv) {
             // memory_order_* lives in framework/hal/ only, per the lint_hal rule).
             const uint32_t w=raw_wctx->ring_write.load();
             const uint32_t r=raw_wctx->ring_read.load();
-            if(w-r>=WgcCtx::RING_N){ ++raw_wctx->arrived; return; }  // ring full; drop frame
+            if(w-r>=WgcCtx::RING_N){ ++raw_wctx->arrived; ++raw_wctx->ringfull; return; }  // ring full; drop frame (ringfull counts the SILENT drop arrived++ masks)
             raw_ctx->CopyResource(raw_wctx->ring[w%WgcCtx::RING_N],tex.get());
             ++raw_wctx->ring_write;
             // --copy-fence: enqueue a GPU-timeline Signal AFTER the CopyResource for slot w%N. The value is
@@ -2509,7 +2524,7 @@ int main(int argc, char** argv) {
         // subtraction). compose+copy are PRE-tcap (INVISIBLE to freshage); convert (=c_conv_us) + pickup
         // + fpub are the freshage decomposition. detect is DERIVED in the stats (freshage − fpub). Read by
         // the stats thread when cfg.latency_trace; written by C (compose/copy) and F (pickup/fpub). Lock-free.
-        std::atomic<uint64_t> lt_compose_us{0}, lt_copy_us{0}, lt_pickup_us{0}, lt_fpub_us{0}, lt_preflow_us{0}, lt_spin_us{0};
+        std::atomic<uint64_t> lt_compose_us{0}, lt_copy_us{0}, lt_pickup_us{0}, lt_fpub_us{0}, lt_preflow_us{0}, lt_spin_us{0}, lt_fwake_us{0};   // lt_fwake_us: publish→consume wake = F's now − the consumed slot's t_pub_ms (a SUB-component of pickup)
         // P publishes the f_seq value it is currently presenting so F can detect a ring-overwrite hazard:
         // F must not build into the generation P still holds. With kGenRing=3 this only fires during
         // span≥kGenRing stalls but guards the remaining edge.
@@ -2662,6 +2677,8 @@ int main(int argc, char** argv) {
             .raw_astage_a = raw_astage_a,
             .raw_astage_g = raw_astage_g,
             .raw_tcap = raw_tcap,
+            .raw_lt_submit = raw_lt_submit,
+            .raw_lt_compose = raw_lt_compose,
             .dxgi_stage2 = dxgi_stage2,
             // The FLOW thread's shared main()-locals (bound in struct-declaration order).
             .B = B,
@@ -2766,6 +2783,7 @@ int main(int argc, char** argv) {
             .lt_preflow_us = lt_preflow_us,
             .lt_spin_us = lt_spin_us,
             .lt_fpub_us = lt_fpub_us,
+            .lt_fwake_us = lt_fwake_us,
             .Apresent = Apresent,
             .Gdst = Gdst,
             .Gsrc = Gsrc,

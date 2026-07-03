@@ -41,6 +41,7 @@ IDirect3DDxgiInterfaceAccess : ::IUnknown {
         wgc::GraphicsCaptureSession     session{nullptr};
         std::atomic<bool>   frame_ready{false};
         std::atomic<uint64_t> arrived{0};   // every FrameArrived — vs processed = the drop rate
+        std::atomic<uint64_t> ringfull{0};  // FrameArrived drops when the staging ring is full (w-r>=RING_N) — the SILENT drop arrived++ masks; printed as ringfull=N/s in [ra-cap] (WGC free-threaded callback → atomic)
         // True SOURCE cadence, measured at ARRIVAL (callback thread). Pacing must use this,
         // not the processed cadence: when the loop lags, processed intervals = loop time →
         // an EMA on them ratchets the schedule up in a feedback runaway. Arrival deltas

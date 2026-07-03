@@ -180,19 +180,41 @@ struct Config {
     float asw_max=1.0f;             // --asw-max: the extrapolation bound in PHASE units (overshoot past 1; 1.0 = up to
                                     // one full source-span forward). Higher = fills deeper deficits but more
                                     // extrapolation error on direction changes.
+    // ── --predict: PREDICTIVE presentation (glue the display to real time) ──────────────────────────
+    // Today the display is INTERPOLATION between two reals → it runs ~1 source-span behind real time
+    // (present.cpp t_display=now-D, sync-clock expected=cur_c-lead_frames). Predict RE-ANCHORS the
+    // content_clock ~1 span FORWARD so the freshest real n is presented at its pair endpoint (e=0) the
+    // moment the pair is built, then presents FORWARD PROJECTIONS of n (extrapolation e∈(0,1) past cur,
+    // via the EXISTING --asw path) while real n+1 is in flight → displayed content glued to real time.
+    // Expected added latency ~15ms→~7-9ms at 120 source. REUSES the asw forward-projection shader path
+    // (makes ph>1 the NORM, not the deficit exception) + the vblend predicted-MV plumbing. The ONLY
+    // units-touching change is a +pred_lead term on `expected` (mirror of --vblend-exact's -1.0). Needs
+    // --asw + --sync-clock + --sc-select (all default ON). Force-off contradictory flags in resolve
+    // (--vblend-exact, --rfp/--rfp-fresh, --motion-fallback). DEFAULT OFF, opt-in, byte-identical off.
+    bool  predict=false;            // --predict: predictive presentation mode (forward-project the latest real). DEFAULT OFF.
+    bool  predict_p2=false;         // --predict-p2: constant-ACCELERATION predicted MV (2*mv - mv_prev, the vblend form) at
+                                    // the extrapolation tap, vs the default P1 (constant-VELOCITY = the current pair's own MV).
+                                    // P2 tracks curved motion but overshoots harder on direction changes; the default is
+                                    // picked by data (the -Bounce test). Needs --vblend (default ON) for the prev-pair MV upload;
+                                    // force-off→P1 without it. Implies --predict. DEFAULT OFF (=> P1).
+    float predict_e=0.5f;           // --predict-e: steady-state forward-projection phase past cur, in SOURCE-FRAMES; clamp
+                                    // [0,1]. 0.5 = project half a span ahead (display sits between cur and the predicted next
+                                    // real; the pair takeover covers the rest). Bounded to one span (matches asw_max). Read only
+                                    // under --predict.
     int   cap_slots=0;              // --cap-slots N: OVERRIDE the auto-sized capture-ring depth (0 = auto: ~src/10+4
                                     // from the --cap-fps ceiling, clamped [4, 32] + a ~768MB mem budget). The ring is
                                     // RAM frame-slots sized by the source/flow/resolution gap, NOT CPU topology.
-    bool  ingest_async=false;      // --ingest-async: decouple the DDA capture INGEST so it scales with the rig instead
-                                   // of the serial readback+convert chain. OFF (default) = the strictly serial DDA
-                                   // loop, BYTE-IDENTICAL (no worker thread, no raw ring, no readback double-buffer).
-                                   // ON = the acquire thread does ONLY AcquireNextFrame→CopyResource+Flush→
-                                   // Map(DO_NOT_WAIT, the PREVIOUS slot = readback overlap)→memcpy into a kRawSlots RAW
-                                   // host ring→publish raw_seq, and a NEW convert WORKER thread DROP-TO-NEWEST converts
-                                   // the freshest raw slot, publishing c_seq PROMPTLY on each convert (freshest frame
-                                   // reaches F/P at today's age). DDA-only (forced OFF for WGC). On raw-ring alloc
-                                   // failure → forced OFF (falls back to serial, never crashes). The `acq=` field in
-                                   // [ra-cap] shows the acquire rate (vs `in=` convert rate).
+    bool  ingest_async=false;      // --ingest-async: decouple the capture INGEST (BOTH APIs) so it scales with the
+                                   // rig instead of the serial readback+convert chain. OFF (default) = the strictly
+                                   // serial loop, BYTE-IDENTICAL (no worker thread, no raw ring, no readback
+                                   // double-buffer). ON = the capture thread does ONLY acquire/pickup→memcpy into a
+                                   // kRawSlots RAW host ring→publish raw_seq (DDA: AcquireNextFrame→CopyResource+
+                                   // Flush→Map the PREVIOUS slot = readback overlap; WGC: the staging-ring pickup,
+                                   // dedup+PLL pre-publish — WGC_INGEST_ASYNC_PLAN.md), and a convert WORKER thread
+                                   // DROP-TO-NEWEST converts the freshest raw slot, publishing c_seq PROMPTLY
+                                   // (freshest frame reaches F/P at today's age). On raw-ring alloc failure → forced
+                                   // OFF (falls back to serial, never crashes). The `acq=` field in [ra-cap] shows
+                                   // the pickup rate (vs `in=` convert rate).
     bool  dedup=true;             // --dedup: DROP content-duplicate captured frames. DDA captures the desktop at the
                                    // DWM COMPOSITE rate (= the monitor refresh, e.g. 240Hz) but the game renders fewer
                                    // UNIQUE frames/s → the surplus captures are content-duplicates. The real unique
@@ -294,12 +316,26 @@ struct Config {
     int   objdump_n=0;              // --objdump N: dump N pairs' BLOCK GRIDS to frames/ as tiny BMPs (mvw×mvh): the
                                     // post-repair dissidence mask, |MV|·16 gray, persist[] — the F data plane made
                                     // visible (diagnostic; gitignored).
+    int   mv_audit=0;              // --mv-audit N: DIAGNOSTIC (measurement-only, byte-identical off). For N pairs,
+                                   // compute the OBJECT-cluster |mv.x| statistic (mean/max over tiles with dis-mask
+                                   // byte > matte_thresh·255 — the single moving object in a ball-zoo bench) at three
+                                   // taps: R = RAW matcher output (subpel/candsel per flags, pre-object_repair),
+                                   // O = POST-object_repair (the field uploaded to the presenter), and C-sim = a CPU
+                                   // replica of the present-side color-weighted consensus (mv_median.comp guided path)
+                                   // applied to O over the same object tiles. Prints one line per pair. 0 = OFF.
     int   pairdump_n=0;             // --pairdump: at each WAP pair-advance, dump the TWO full-res frames the warp
                                     // actually receives (hostR[prev_slot]/hostR[cur_slot]) + print
                                     // pair_c/prev_cseq/span/cur_c — the warp INPUT plane made visible.
     int   outdump_n=0;             // dump N presented WARP OUTPUTS (wapOutA readback after the fence, phase t in the
                                    // filename) — the synthesis plane made visible: WHICH pixels/layers paint the
                                    // artifacts, at WHICH phases.
+    int   blend_solo=0;            // --blend-solo N: DIAGNOSTIC (measurement-only). 0 = OFF (DEFAULT, byte-identical:
+                                   // the shader override branch is never entered). 1 = output ONLY the A-track sample
+                                   // (u_prev_real at uv - t·mv, full weight); 2 = output ONLY the B-track sample
+                                   // (u_cur_real at uv + (1-t)·mv, full weight). Bypasses the (1-t)/t blend + ALL
+                                   // downstream commit/matte/onepos/stasis machinery just before imageStore, so the
+                                   // per-track ball position vs phase can be measured in isolation. Pushed as a trailing
+                                   // float (offset 216); not for normal use.
     int   qdump_n=0;               // --qdump N: write ~N held-out TRIPLES to qdump_dir/ — each = (wapPrevA=real N,
                                    // wapOutA=the live FG output, wapCurA=real N+2) as raw RGBA8 .rgba + a truth-less
                                    // manifest line in the fg_quality_scorer format (no mid= — live FG has no held-out
@@ -390,6 +426,33 @@ struct Config {
                                     // when both given. WAP-path only. --no-mv-guided = byte-identical.
     float mv_sim=0.10f;             // color-membership band, max-channel [0,1] units. DEFAULT 0.10. --mv-sim F overrides
                                     // (clamped [0.02,0.5]).
+    int   mv_edge_snap=0;           // --mv-edge-snap {1|2}: 0 = OFF (DEFAULT, byte-identical). 1 = G1 (dissidence-class
+                                    // guidance), 2 = G2 (color guidance). The warp's PRIMARY MV fetch becomes a CROSS-
+                                    // BILATERAL (edge-aware sub-block) joint-bilateral upsample of the 8px MV grid,
+                                    // each corner weighted by spatial-bilinear × a GUIDANCE similarity (silhouette
+                                    // class for G1, cur_real color for G2), so an object-edge pixel draws its MV from
+                                    // the object-side texels instead of the diluted bilinear mix (fixes the convicted
+                                    // silhouette MV-dilution). Supersedes mv_guided's hard single-corner pick when armed;
+                                    // degenerate → plain bilinear (never NaN). G1 needs the dissidence mask (matte/gme);
+                                    // the host auto-falls-back to G2 when it is not valid. sim band = mv_sim. WAP-path only.
+    float mv_edge_snap_sim=0.f;     // resolved guidance band for --mv-edge-snap (0 = use mv_sim; else the --mes-sim override, clamped [0.02,0.5]).
+    bool  single_track=false;       // --single-track: 0 = OFF (DEFAULT, byte-identical). ON = the composite BASE becomes
+                                    // the B-track (cur @ uv+(1-t)*mv); the effective A-weight is collapsed to 0 at the
+                                    // warp_result composition (AFTER onepos, so it cannot re-inject A). The (1-t)/t crossover
+                                    // of two ~3.5px-apart tracks IS the perceived vibration → the single-track base removes it.
+                                    // ALL quality layers (matte/onepos/stasis/inertia/commit/bg_snap/HUD-shield) stay ACTIVE on
+                                    // the base; the A-track is RE-ADMITTED downstream ONLY where the occlusion machinery already
+                                    // owns it (fwd_ok-only round-trip → A_samp; fill-div occlude; commit_use_A). Endpoint: t=1
+                                    // is cur byte-exact; t=0+ pays the full backward warp (the residual per-pair step, v1). WAP-only.
+    float bg_reclaim=0.f;           // --bg-reclaim [strength]: 0 = OFF (DEFAULT, byte-identical). >0 = the gravity fix +
+                                    // carries the STRENGTH scale (parse-clamped [0,4]; default 1.0). A TILE whose content is
+                                    // background-like (its two reals agree under the gme model, disagree under the local mv) yet
+                                    // whose MV is object-like (|mv-gme_model_mv| large) is POLLUTED — the 8px matcher straddled
+                                    // the silhouette and lent the object MV to fringe background. Damp mv toward the model so the
+                                    // fringe takes background motion; both A_samp/B_samp re-sample with the reclaimed mv. SOFT
+                                    // (LSFG-like) at strength~1; HARD snap as strength·bands saturate. Distinct from bg_snap (which
+                                    // gates on the iGPU CONTOUR band — edge pixels only; this is TILE-scale). Needs gme (default
+                                    // ON); the host pushes 0 when the model is stale → inert. Usable independently of --single-track. WAP-only.
     bool  gme=true;                 // the frame-holon — a global affine motion model fitted per pair on the CPU (F
                                     // thread) from the fwd MV grid by IRLS least squares. DEFAULT ON. ON = (a) a per-
                                     // block dissidence mask (|mv − model|) is computed + shipped to wapDISA and the %

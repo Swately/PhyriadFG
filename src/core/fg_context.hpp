@@ -30,7 +30,10 @@ struct NvofaProvider; struct GmePipe; struct MvSmoothPipe; struct MedianPipe;
 struct UpPipe;
 
 // The per-real-capture slot record (named by run_capture).
-struct RealSlot { double t_cap_ms=0.0; };
+// t_pub_ms = now_ms() stamped immediately BEFORE the seq_cst c_seq.fetch_add at the publish site
+// (both publish paths); F reads it at pickup → (now − t_pub_ms) = the publish→consume wake latency
+// (--latency-trace only). The seq_cst fetch_add that follows the store orders it for F (no lock needed).
+struct RealSlot { double t_cap_ms=0.0; double t_pub_ms=0.0; };
 
 // --ingest-async (default OFF): the RAW host-buffer ring between the acquire thread (run_capture's
 // DDA acquire-only loop) and the convert worker (run_convert_worker). RAW_N clones of the Astage
@@ -105,7 +108,9 @@ struct FgContext {
     HBuf*                  raw_astage_a; // kRawSlots A-imports (TRANSFER_SRC) — the A-path convert src
     HBuf*                  raw_astage_g; // kRawSlots G-imports (STORAGE)     — the iGPU-path convert src (only when use_igpu_convert)
     double*                raw_tcap;     // kRawSlots capture timestamps (ms) — carried to c_slots[s].t_cap_ms at publish (freshage parity)
-    ID3D11Texture2D*&      dxgi_stage2;  // the 2nd DDA staging texture (readback double-buffer; null when async off)
+    double*                raw_lt_submit;  // kRawSlots WGC-async lat-trace carry: callback CopyResource submit (ms; 0 on DDA → inert)
+    double*                raw_lt_compose; // kRawSlots WGC-async lat-trace carry: compose→callback delta (µs; 0 on DDA → inert)
+    ID3D11Texture2D*&      dxgi_stage2;  // the 2nd DDA staging texture (readback double-buffer; null when async off / WGC)
 
     // -- FLOW thread (run_flow) -- references to main()'s locals; array members decay to pointers (the
     //    C-thread convention above). Locals SHARED with capture (cfg, c_seq, cap_slots, c_slots, c_cv,
@@ -213,6 +218,7 @@ struct FgContext {
     std::atomic<uint64_t>& lt_preflow_us;
     std::atomic<uint64_t>& lt_spin_us;
     std::atomic<uint64_t>& lt_fpub_us;
+    std::atomic<uint64_t>& lt_fwake_us;   // publish→consume wake EMA (µs) — a sub-component of pickup; written by F, read by the [lat-trace] print
 
     // -- PRESENT thread (run_present) -- references to main()'s locals; array members decay to
     //    pointers (the C/F convention above). Locals SHARED with capture/flow (cfg, the rings,

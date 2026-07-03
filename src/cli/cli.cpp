@@ -171,6 +171,9 @@ void apply_cascades(Config& c, bool announce) {
         if (c.fill_div)  { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: fill-div disabled\n");  c.fill_div=false; c.div_eps=0.f; }
         if (c.rescue)    { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: rescue disabled\n");     c.rescue=false; }
         if (c.mv_guided) { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: mv-guided disabled\n"); c.mv_guided=false; c.mv_sim=0.f; }
+        if (c.mv_edge_snap) { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: mv-edge-snap disabled\n"); c.mv_edge_snap=0; }
+        if (c.single_track) { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: single-track disabled\n"); c.single_track=false; }
+        if (c.bg_reclaim>0.f) { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: bg-reclaim disabled\n"); c.bg_reclaim=0.f; }
         if (c.gme)       { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: gme disabled\n");       c.gme=false; }
         if (c.ambig)     { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: ambiguity disabled\n"); c.ambig=false; }
         if (c.matte)     { if(announce) std::printf("[ra] --no-warp-at-presenter cascade: matte disabled\n");     c.matte=false; c.matte_thresh=0.f; }
@@ -238,6 +241,37 @@ void resolve_config(Config& c, bool announce) {
     if ((c.pace_hard || c.pace_vblank) && !c.present_own_window) {
         std::printf("[ra] WARNING: --pace-hard/--pace-vblank are OWN-WINDOW-ONLY (every consumption site checks present_own_window); INERT under the default DComp overlay — add --present-own-window to arm them.\n");
     }
+    // ── --predict interactions (the clock re-anchor is cadence-critical; force-off contradictory flags) ──
+    // All gated on c.predict → byte-identical without --predict. --predict REQUIRES the forward-projection
+    // path (--asw) + the content_clock that supplies the overshoot (--sync-clock/--sc-select), all default ON.
+    // If any is off, --predict cannot fire → force it off + honest print (never a silent no-op).
+    if (c.predict) {
+        if (c.vblend_exact) {   // vblend-exact leads the clock BACK (exact lookahead); predict leads it FORWARD — contradictory
+            std::printf("[ra] --predict force-off --vblend-exact: they re-anchor the content_clock in OPPOSITE directions (exact leads back for lookahead, predict leads forward to glue-to-real-time). Predict wins.\n");
+            c.vblend_exact = false;
+        }
+        if (!c.asw) {
+            std::printf("[ra] --predict disabled — requires --asw (the forward-projection path predict makes the norm; you passed --no-asw).\n");
+            c.predict = false; c.predict_p2 = false;
+        } else if (!c.sync_clock || !c.sc_select) {
+            std::printf("[ra] --predict disabled — requires --sync-clock + --sc-select (the content_clock that supplies the forward overshoot; one is off).\n");
+            c.predict = false; c.predict_p2 = false;
+        }
+    }
+    if (c.predict) {   // re-check (may have been force-disabled just above); the remaining force-offs are off-cadence real presents
+        if (c.real_fast_path) {
+            std::printf("[ra] --predict force-off --rfp/--real-fast-path: an off-cadence real-present fights the glued-to-real-time forward projection. Predict wins.\n");
+            c.real_fast_path = false; c.rfp_fresh = false;
+        }
+        if (c.motion_fallback) {
+            std::printf("[ra] --predict force-off --motion-fallback: same — an off-cadence real-present on fast motion breaks the projected cadence. Predict wins.\n");
+            c.motion_fallback = false;
+        }
+        if (c.predict_p2 && !c.vblend) {   // P2 needs the prev-pair MV in u_mv_target (the vblend PREDICT upload)
+            std::printf("[ra] --predict-p2 -> P1: the constant-accel MV needs --vblend for the prev-pair upload (you passed --no-vblend); falling back to P1 (constant-velocity, needs no target upload).\n");
+            c.predict_p2 = false;
+        }
+    }
 }
 
 bool parse_args(int argc, char** argv, Config& c) {
@@ -275,6 +309,20 @@ bool parse_args(int argc, char** argv, Config& c) {
             }
             if(!std::strcmp(arg,"--bg-snap-strength")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.bg_snap_strength = f<0.f?0.f:(f>4.f?4.f:f); return 0; } return 1; }   // snap weight scale; the shader clamps w=strength·band·bg to [0,1], so >1 SATURATES w→1 in the band core = HARDER snap. Range [0,4]: 1=soft, 2-4=progressively hard.
             if(!std::strcmp(arg,"--bg-snap-norm")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.bg_snap_norm = f<0.001f?0.001f:(f>1.f?1.f:f); return 0; } return 1; }   // contour-dist->[0,1] band normalizer
+            if(!std::strcmp(arg,"--single-track")){
+                std::printf("[ra] --single-track: the composite BASE becomes the B-track (cur @ uv+(1-t)*mv); the effective A-weight is collapsed to 0 at the warp_result composition (after onepos, so it cannot re-inject A). The (1-t)/t crossover of two ~3.5px-apart tracks IS the perceived vibration → this removes it. All quality layers (matte/onepos/stasis/inertia/commit/bg-snap/HUD-shield) stay ACTIVE on the base; the A-track is RE-ADMITTED downstream only where the occlusion machinery already owns it (trailing disocclusion → prev). Endpoint: t=1 is cur byte-exact; t=0+ pays the full backward warp (the residual per-pair step, v1). Needs --warp-at-presenter. DEFAULT OFF, byte-identical off.\n");
+                c.single_track=true; return 0;
+            }
+            if(!std::strcmp(arg,"--bg-reclaim")){
+                // optional numeric strength: PEEK the next token (do not consume unless it is a number,
+                // so a bare `--bg-reclaim` before another flag defaults to 1.0). i/argc/argv are captured.
+                float f = 1.0f;
+                if(i+1<argc){ char* end=nullptr; float parsed=(float)std::strtod(argv[i+1],&end); if(end && end!=argv[i+1] && *end=='\0'){ ++i; f = parsed<0.f?0.f:(parsed>4.f?4.f:parsed); } }
+                c.bg_reclaim = f<=0.f?0.f:f;
+                std::printf("[ra] --bg-reclaim %.2f: the gravity fix (TILE-scale). A tile whose content is background-like (its two reals agree under the gme model, disagree under the local mv) yet whose MV is object-like (|mv-model| large) is POLLUTED — the 8px matcher lent the object MV to fringe background. Damp mv toward the gme model so the fringe takes background motion (both A/B re-sample with the reclaimed mv). SOFT (LSFG-like) at strength~1; HARD as strength·bands saturate. Distinct from bg-snap (which gates on the iGPU CONTOUR band — edge pixels only; this is TILE-scale). Needs --gme (default ON); inert when the model is stale. DEFAULT OFF, byte-identical off. Strength clamp [0,4].\n", c.bg_reclaim);
+                return 0;
+            }
+            if(!std::strcmp(arg,"--bg-reclaim-strength")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.bg_reclaim = f<0.f?0.f:(f>4.f?4.f:f); std::printf("[ra] --bg-reclaim-strength %.2f: --bg-reclaim damp weight scale (clamp [0,4]; 1=soft LSFG-style, 2-4=progressively hard snap-to-model). Sets/overrides the strength; 0 = OFF.\n", c.bg_reclaim); return 0; } return 1; }
             if(!std::strcmp(arg,"--vblend")){
                 std::printf("[ra] --vblend: velocity-continuity warp (PREDICT). Near a pair's END (high phase t) the warp tilts the effective A/B sample-offset MV toward the PREDICTED next-pair velocity (2*mv - mv_prev, constant-accel extrapolation from the PREV pair in the F->P ring) so the boundary velocity transitions SMOOTHLY instead of STEPPING (the perceived 'pulse'). Prediction is the no-latency path (exact-lookahead would cost ~1 pair latency). Endpoint exact (t=1 -> result still cur). Only the sample offsets tilt; occlusion classification keeps the RAW fields. DEFAULT ON (--no-vblend disables).\n");
                 c.vblend=true; return 0;
@@ -295,6 +343,10 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--mc-disp")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.mc_disp = f<0.f?0.f:(f>2.f?2.f:f); return 0; } return 1; }   // dispersion threshold (no-consensus -> crossfade; clamp [0,2])
             if(!std::strcmp(arg,"--mc-edge")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.mc_edge = f<0.f?0.f:(f>1.f?1.f:f); return 0; } return 1; }   // Sobel edge threshold for the hard-pick gate (clamp [0,1])
             if(!std::strcmp(arg,"--disoccl-hardpick")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.disoccl_hardpick = f<0.f?0.f:(f>1.f?1.f:f); std::printf("[ra] --disoccl-hardpick %.2f: edge-gated HARD-PICK at the bidir reveal band (round-trip consistency + the iGPU image-edge gate). At a TRUE Sobel contour (>= threshold) commit FULLY to the round-trip-consistent side (no soft blend = no smear/step/crescent); flat interior keeps the soft blend; a binary edge-gated pick is also steadier than the ratio-weighted blend (eases the vibration). Needs --bidir (default on) + the iGPU field (default on via bg-snap/band-xfade). 0 = OFF byte-identical. Clamp [0,1].\n", c.disoccl_hardpick); return 0; } return 1; }   // edge-gated disocclusion hard-pick threshold (clamp [0,1])
+            if(!std::strcmp(arg,"--blend-solo")){ if(auto v=next(arg)){ int n=std::atoi(v); c.blend_solo = (n==1||n==2)?n:0; std::printf("[ra] --blend-solo %d: DIAGNOSTIC (measurement-only) — 1=output ONLY the A-track sample (u_prev_real @ uv - t*mv), 2=output ONLY the B-track sample (u_cur_real @ uv + (1-t)*mv), 0=off (blend). Bypasses the (1-t)/t blend + all downstream commit/matte/onepos/stasis machinery just before store, so each track's placement of the moving content can be measured in isolation. NOT for normal use. DEFAULT 0 (byte-identical-off).\n", c.blend_solo); return 0; } return 1; }   // diagnostic track-isolate (0/1/2)
+            if(!std::strcmp(arg,"--mv-edge-snap")){ if(auto v=next(arg)){ int n=std::atoi(v); c.mv_edge_snap = (n==1||n==2)?n:0; std::printf("[ra] --mv-edge-snap %d: CROSS-BILATERAL (edge-aware sub-block) primary MV fetch — the silhouette MV-dilution fix. %s guidance: the 8px MV grid is joint-bilateral-upsampled, each corner weighted by spatial-bilinear × similarity, so an object-edge pixel takes its MV from the object-side texels (not the diluted object/background bilinear mix). Supersedes the mv-guided hard single-corner pick when armed; degenerate → plain bilinear (never NaN); endpoints untouched. G1 needs the dissidence mask (matte/gme) — auto-falls-back to G2 (color) if invalid. WAP-path only. 0 = OFF byte-identical.\n", c.mv_edge_snap, c.mv_edge_snap==1?"G1 (dissidence-class)":c.mv_edge_snap==2?"G2 (color)":"OFF"); return 0; } return 1; }   // cross-bilateral MV upsample (0=off/1=G1 dissidence/2=G2 color)
+            if(!std::strcmp(arg,"--mes-sim")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.mv_edge_snap_sim = f<0.02f?0.02f:(f>0.5f?0.5f:f); std::printf("[ra] --mes-sim %.3f: --mv-edge-snap guidance band override (gaussian falloff sigma, max-channel [0,1] units; clamp [0.02,0.5]). 0/unset → uses --mv-sim.\n", c.mv_edge_snap_sim); return 0; } return 1; }   // edge-snap guidance band override
+            if(!std::strcmp(arg,"--mv-audit")){ if(auto v=next(arg)){ c.mv_audit=std::atoi(v); std::printf("[ra] --mv-audit %d: DIAGNOSTIC (measurement-only) — for %d pairs, print the OBJECT-cluster |mv.x| stat (mean/max over dis-mask>thr tiles) at tap R (raw matcher, pre-object_repair), tap O (post-object_repair), and tap C-sim (CPU replica of the present-side color consensus). For a ball-zoo bench the single mover IS the cluster; truth = SpeedPx/Fps. Byte-identical off.\n", c.mv_audit, c.mv_audit); return 0; } return 1; }   // per-stage MV magnitude autopsy (flow-side + consensus replica)
             if(!std::strcmp(arg,"--pace-variance")){ c.pace_variance=true; std::printf("[ra] --pace-variance: FSR3 variance-aware moving-average present pacer (target = SMA10(present deltas) − varFactor·stddev − safetyMargin; defaults 0.1/0.75ms; reset on >100ms hitch). Smooths the present-interval CoV in the light/stable regime; pair with --async-present for the saturation collapse. Pure CPU; default-off byte-identical.\n"); return 0; }   // FSR3 variance-aware present pacer
             if(!std::strcmp(arg,"--pv-safety")){ if(auto v=next(arg)){ c.pv_safety_ms=std::atof(v); return 0; } return 1; }   // FSR3 safetyMargin override (ms)
             if(!std::strcmp(arg,"--pv-var")){ if(auto v=next(arg)){ c.pv_var_factor=std::atof(v); return 0; } return 1; }   // FSR3 varianceFactor override
@@ -329,6 +381,10 @@ bool parse_args(int argc, char** argv, Config& c) {
                 c.asw=true; return 0;
             }
             if(!std::strcmp(arg,"--asw-max")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.asw_max = f<0.f?0.f:(f>4.f?4.f:f); return 0; } return 1; }   // extrapolation bound in phase units (clamp [0,4])
+            if(!std::strcmp(arg,"--predict")){ c.predict=true; if(!c.async_present){ c.async_present=true; std::printf("[ra] --predict: auto-enabling --async-present (the forward projection presents through the dedicated non-blocking bslot path).\n"); } std::printf("[ra] --predict: PREDICTIVE presentation — lead the content_clock forward by --predict-e src-frames so intermediate ticks FORWARD-PROJECT the freshest real (extrapolation past its pair endpoint, via the --asw path made the norm) instead of interpolating behind it. Shifts the displayed CONTENT MOMENT forward (a prediction). HONEST: this does NOT reduce the measured `lat` metric — lat is freshage-floored, not phase-driven (see docs/planning/PREDICT_MODE_PLAN.md, a measured NO-GO as a latency feature). Cadence-safe (measured clean); opt-in perceptual forward-projection only. Needs --asw + --sync-clock + --sc-select (default ON). Contradicts --vblend-exact/--rfp/--motion-fallback (force-off in resolve). Default P1 (const-velocity MV); --predict-p2 for const-accel. DEFAULT OFF, byte-identical off.\n"); return 0; }   // opt-in predictive presentation; implies --async-present
+            if(!std::strcmp(arg,"--predict-p2")){ c.predict_p2=true; c.predict=true; std::printf("[ra] --predict-p2: constant-ACCELERATION predicted MV (2*mv - mv_prev, the vblend PREDICT form) at the extrapolation tap, vs the default P1 (constant-VELOCITY). Tracks curved motion; overshoots harder on direction changes. Needs --vblend (default ON) for the prev-pair MV; falls back to P1 without it. Implies --predict. DEFAULT OFF.\n"); return 0; }   // const-accel predicted MV; implies --predict
+            if(!std::strcmp(arg,"--predict-e")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.predict_e = f<0.f?0.f:(f>1.f?1.f:f); std::printf("[ra] --predict-e %.2f: steady-state forward-projection phase past cur (source-frames; clamp [0,1]). 0.5 = half a span ahead. Read only under --predict.\n",c.predict_e); return 0; } return 1; }   // forward-projection phase (clamp [0,1])
+            if(!std::strcmp(arg,"--no-predict")){ c.predict=false; c.predict_p2=false; std::printf("[ra] --no-predict: predictive presentation OFF (the interpolation-behind-real-time path). DEFAULT is OFF.\n"); return 0; }   // predict disabler (symmetry; default already off)
             if(!std::strcmp(arg,"--cap-slots")){ if(auto v=next(arg)){ int n=std::atoi(v); c.cap_slots = n<0?0:(n>32?32:n); return 0; } return 1; }   // override the auto-sized capture-ring depth (0=auto, max 32)
             if(!std::strcmp(arg,"--ingest-backlog")){ if(auto v=next(arg)){ int n=std::atoi(v); c.ingest_backlog = n<1?1:(n>3?3:n); std::printf("[ra] --ingest-backlog %d: in-order ingest drain depth (the DOMINANT freshage/input-lag floor lever; F-pair compute ~8.7ms but freshage ~36ms = mostly this backlog). 1=freshest/most span-2 skips, 3=smoothest/most latency. Default 3 (byte-identical).\n",c.ingest_backlog); return 0; } return 1; }   // in-order ingest drain depth (3=kIngestBacklog max; only reduces → torn-read-safe)
             if(!std::strcmp(arg,"--latency-trace")){ c.latency_trace=true; std::printf("[ra] --latency-trace: MEASUREMENT-ONLY pipeline latency decomposition — emits a [lat-trace] line (INVISIBLE compose/copy pre-tcap + freshage split pickup/convert/build/detect). Each delta is single-clock; compose via a guarded QPC delta (0 if epoch-unavailable). Default OFF (byte-identical).\n"); return 0; }   // latency-trace (measurement-only)
@@ -382,7 +438,7 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--no-fg-protect")){    c.fg_protect=false;     std::printf("[ra] --no-fg-protect: paquete de proteccion (MMCSS-composite mode-5 + GAME_FLOOR) OFF. DEFAULT es ON. NOTA: pin_threads/async_present siguen sus propios defaults (ON) — usa --no-pin / --no-async-present para desactivarlos.\n"); return 0; }
             if(!std::strcmp(arg,"--no-load-governor")){ c.load_governor=false;  std::printf("[ra] --no-load-governor: piso de tier graduado por util del 4090 OFF (tier-5 inalcanzable, byte-identical). DEFAULT es ON.\n"); return 0; }
             if(!std::strcmp(arg,"--no-async-present")){ c.async_present=false;   std::printf("[ra] --no-async-present: presentación asíncrona OFF → restaura la ruta SÍNCRONA bloqueante (byte-identical). DEFAULT es ON. NOTA: --target-output-fps/--fdrop/--upload-xfer/--rfp/--motion-fallback/--shallow-queue la AUTO-activan si se pasan DESPUÉS de este flag.\n"); return 0; }
-            if(!std::strcmp(arg,"--ingest-async")){ c.ingest_async=true; std::printf("[ra] --ingest-async: decouple the DDA capture INGEST. The acquire thread does ONLY AcquireNextFrame->CopyResource+Flush->Map(DO_NOT_WAIT the PREVIOUS slot = readback overlap)->memcpy into a 4-slot RAW host ring->publish; a convert WORKER thread DROP-TO-NEWEST converts the freshest raw slot and publishes c_seq PROMPTLY so the freshest frame reaches F/P at minimal age. DDA-only (forced OFF for WGC); raw-ring alloc failure -> forced OFF (serial fallback, never crashes). The [ra-cap] `acq=` field shows the acquire rate vs `in=` (convert rate). DEFAULT OFF (byte-identical).\n"); return 0; }   // ingest-async
+            if(!std::strcmp(arg,"--ingest-async")){ c.ingest_async=true; std::printf("[ra] --ingest-async: decouple the capture INGEST (BOTH APIs). The capture thread does ONLY acquire/pickup->memcpy into a 4-slot RAW host ring->publish (DDA: AcquireNextFrame->CopyResource+Flush->Map the PREVIOUS slot = readback overlap; WGC: staging-ring pickup, dedup+PLL pre-publish); a convert WORKER thread DROP-TO-NEWEST converts the freshest raw slot and publishes c_seq PROMPTLY so the freshest frame reaches F/P at minimal age. Raw-ring alloc failure -> forced OFF (serial fallback, never crashes). The [ra-cap] `acq=` field shows the pickup rate vs `in=` (convert rate). DEFAULT OFF (byte-identical).\n"); return 0; }   // ingest-async
             if(!std::strcmp(arg,"--cap-route-probe")){ c.cap_route_probe=true; std::printf("[ra] --cap-route-probe: print a break-even-style CAPABILITY routing decision over the FG's app-local VDevs (has_fp16/has_dp4a/measured-fp16) + a vendor-NAMED capability manifest. MEASUREMENT-ONLY, byte-identical. HONEST: the decision is INERT — the FG's FIXED A/B/G roles (A=present, B=flow/gme, G=convert) are architecture-forced + the FG's AI~2.5 << the break-even crossover ⇒ offload=false ALWAYS. It ROUTES NOTHING; it only reports what a capability-driven decision WOULD say. DEFAULT OFF.\n"); return 0; }   // capability-routing probe, inert-by-design
             return -1;
         };

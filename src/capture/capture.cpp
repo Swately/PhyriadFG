@@ -234,6 +234,8 @@ void run_capture(FgContext& ctx){
     auto& raw_mtx = ctx.raw_mtx;
     auto& raw_astage_a = ctx.raw_astage_a;
     auto& raw_tcap = ctx.raw_tcap;
+    auto& raw_lt_submit = ctx.raw_lt_submit;
+    auto& raw_lt_compose = ctx.raw_lt_compose;
     auto& dxgi_stage2 = ctx.dxgi_stage2;
 
             // ── Corrección de rotación de pantalla (issue #1) ────────────────────────────
@@ -273,14 +275,16 @@ void run_capture(FgContext& ctx){
             }
             int warmup_c=0;
             double last_dd_arr_ms=0.0;   // (async DD) arrival-ts del último frame PUBLICADO post-dedup (el serial usa last_ing_arr_ms)
-            // ── --ingest-async (DDA-only): the ACQUIRE-ONLY loop ─────────────────────────────────────────
+            // ── --ingest-async (DDA branch): the ACQUIRE-ONLY loop ──────────────────────────────────────
             // This thread does ONLY AcquireNextFrame → CopyResource+Flush → Map(DO_NOT_WAIT the PREVIOUS
             // frame's copy = the readback overlap, removing the blocking-Map stall) → memcpy into the RAW
             // host ring → publish raw_seq. The convert WORKER (run_convert_worker) does the convert + the
             // c_seq publish. No convert here; DROP-TO-NEWEST happens on the worker side (it always converts
             // the freshest published raw slot). When cfg.ingest_async is false this whole block is skipped
-            // and the serial loop below runs byte-identically.
-            if(cfg.ingest_async){
+            // and the serial loop below runs byte-identically. CA_DD-GATED (WGC_INGEST_ASYNC_PLAN.md): this
+            // loop drives d.dup (NULL on WGC — deref = crash); the WGC async deposit lives INSIDE the main
+            // loop's WGC pickup branch below, which feeds the same raw ring + worker.
+            if(cfg.ingest_async && cfg.capture_api==CA_DD){
                 ID3D11Texture2D* ddst[2]={dxgi_stage,dxgi_stage2};
                 double db_arr_ms[2]={0.0,0.0};   // (PLL units) arrival-ts por slot del double-buffer (el frame publica 1 iteración después)
                 uint64_t acq=0;            // monotone frames acquired (drives the double-buffer parity + the raw slot)
@@ -394,11 +398,34 @@ void run_capture(FgContext& ctx){
             // MEDICIÓN serial (etiqueta "[ra-acq] (serial)"): el lazo serial (async NO armado).
             // Desglose 4-way del readback.
             double _sema_acq=0.0,_sema_cp=0.0,_sema_map=0.0,_sema_mc=0.0; uint64_t _sdbg=0;
+            // MEDICIÓN WGC (etiqueta "[ra-acq] (wgc)"): desglose 4-way del pickup WGC, gated en
+            // --latency-trace (cero syscalls de timing con el gate OFF; a diferencia del serial de arriba
+            // el pickup WGC es el hot path por defecto, así que su medición NO es always-on). staging =
+            // spin W1 esperando la entrega del callback | copy = espera del copy-fence event + Map-retry,
+            // INCLUYENDO los ciclos de miss (mapmiss): el runtime D3D11 puede fallar el DO_NOT_WAIT aun con
+            // el fence pasado (medido mapmiss ≈ in-rate) → el ciclo fence-wait+Map+Sleep de cada miss se
+            // acarrea a la figura copy de la siguiente iteración exitosa (sin el acarreo el continue del
+            // miss DESCARTABA el término dominante y copy leía ~0)
+            // | memcpy = readback CPU puro | hash = el dedup-sample-hash del tail compartido.
+            double _wema_st=0.0,_wema_cp=0.0,_wema_mc=0.0,_wema_hs=0.0; uint64_t _wdbg=0;
+            double _w_cp_carry=0.0;   // coste de iteraciones de miss acarreado al próximo copy exitoso
+            // Acumulador+print [ra-acq] (wgc) — UNA copia compartida entre el tail serial y la rama
+            // async (R7, WGC_INGEST_ASYNC_PLAN.md). EMAs 0.9/0.1 (las del serial), print ~1/120 frames.
+            auto _wacq_acc=[&](double st,double cp,double mc,double hs){
+                if(st>=0.0) _wema_st = _wema_st? _wema_st*0.9+st*0.1 : st;
+                if(cp>=0.0) _wema_cp = _wema_cp? _wema_cp*0.9+cp*0.1 : cp;
+                if(mc>=0.0) _wema_mc = _wema_mc? _wema_mc*0.9+mc*0.1 : mc;
+                if(hs>=0.0) _wema_hs = _wema_hs? _wema_hs*0.9+hs*0.1 : hs;
+                if((++_wdbg % 120u)==0u){ const double _loop=_wema_st+_wema_cp+_wema_mc+_wema_hs;
+                    std::printf("[ra-acq] (wgc) staging=%.2fms copy=%.2fms memcpy=%.2fms hash=%.2fms | loop~%.2fms (~%.0ffps)\n",
+                        _wema_st,_wema_cp,_wema_mc,_wema_hs,_loop,_loop>0.0?1000.0/_loop:0.0); } };
+            uint64_t wpub=0;   // (WGC async) contador monotónico de raws PUBLICADOS: rk=wpub%kRawSlots, raw_seq=wpub+1 (analogía de pframe del acquire DDA)
             uint64_t prev_hash=0;   // hash del último frame INGESTADO (persistente entre iteraciones)
             double last_ing_arr_ms=0.0;   // (PLL units) arrival-ts del último frame INGESTADO (post-dedup)
             while(!g_quit&&!g_quit_threads.load()){
                 const int s=(int)(c_seq.load()%(uint64_t)cap_slots);
                 double lt_wgc_submit_ms=0.0, lt_wgc_compose_us=0.0;   // --latency-trace: carried from the consumed WGC slot
+                double _wst_ms=-1.0,_wcp_ms=-1.0,_wmc_ms=-1.0;   // [ra-acq] (wgc): per-frame staging/copy/memcpy (set in the WGC branch; -1 = not measured this iter)
                 double arr_ts=0.0;   // this frame's arrival timestamp (branch-set; consumed post-dedup below)
 #ifdef _MSC_VER
                 if(cfg.capture_api==CA_WGC){
@@ -406,11 +433,14 @@ void run_capture(FgContext& ctx){
                     // (wgc_ctx->cctx == the 2nd device when armed, null/d.ctx when off). cctx is non-null ONLY
                     // when --copy-device armed → byte-identical d.ctx path when off.
                     ID3D11DeviceContext* cap_ctx = wgc_ctx->cctx ? wgc_ctx->cctx : d.ctx;
+                    const double _w_t_st0 = cfg.latency_trace ? now_ms() : 0.0;   // [ra-acq] (wgc) staging-wait: the W1 spin (only clocked when --latency-trace)
                     for(int spin=0;wgc_ctx->ring_write.load()==wgc_ctx->ring_read.load()&&!g_quit;++spin){
                         if(spin>=33) break; Sleep(1); }
+                    if(cfg.latency_trace) _wst_ms=now_ms()-_w_t_st0;
                     const uint32_t w=wgc_ctx->ring_write.load();
                     const uint32_t r=wgc_ctx->ring_read.load();
                     if(w==r) continue;
+                    const double _w_t_cp0 = cfg.latency_trace ? now_ms() : 0.0;   // [ra-acq] (wgc) copy-wait: the fence-event wait (or Map-retry) until the copy is mappable
                     // --copy-fence: event-driven wait for the newest slot's copy. The callback signaled the
                     // fence to (w_local+1) after copying slot (w_local)%N; the newest filled slot is (w-1)%N
                     // (w_local==w-1) → its copy was signaled to value w. So wait fence>=w. We wait on the EVENT
@@ -418,6 +448,7 @@ void run_capture(FgContext& ctx){
                     // CopyResource/Signal concurrently (no capture freeze). Bounded 33ms: on timeout we fall
                     // straight into the existing Map(DO_NOT_WAIT)+older-slot+Sleep(1) path below. If the fence
                     // is already >= w, SetEventOnCompletion fires immediately (no spurious wait).
+                    bool fence_ok=false;   // the validated wait CONFIRMED completion (fence>=w) — arms the post-fence Map retry below
                     if(cfg.copy_fence && wgc_ctx->copyFence && wgc_ctx->ctx4 && wgc_ctx->copyEvt){
                         // Espera VALIDADA y anti-stale. El copyEvt es auto-reset: una SetEventOnCompletion
                         // de un frame ANTERIOR que disparó sin waiter deja el evento señalado → el
@@ -436,6 +467,7 @@ void run_capture(FgContext& ctx){
                             if(el>=33.0) break;
                             if(WaitForSingleObject(wgc_ctx->copyEvt,(DWORD)(33.0-el))==WAIT_TIMEOUT) break;
                         }
+                        fence_ok = wgc_ctx->copyFence->GetCompletedValue()>=tgt;   // passed vs timed-out (one driver read/frame)
                     }
                     // Saturated-primary capture resilience. The callback only SUBMITS the CopyResource — the
                     // 4090 executes it behind a saturated game, so the NEWEST slot's Map(DO_NOT_WAIT) often
@@ -445,16 +477,96 @@ void run_capture(FgContext& ctx){
                     uint32_t use_cnt=w;   // consume-up-to count (mapped slot = (use_cnt-1)%RING_N)
                     D3D11_MAPPED_SUBRESOURCE mr{};
                     HRESULT mhr=cap_ctx->Map(wgc_ctx->ring[(w-1u)%WgcCtx::RING_N],0,D3D11_MAP_READ,D3D11_MAP_FLAG_DO_NOT_WAIT,&mr);
+                    // (A blocking post-fence Map was MEASURED and REJECTED here: holding the multithread
+                    // context lock while the runtime syncs starves the FrameArrived callback's CopyResource —
+                    // arr fell 241→179/s, in 241→112-128/s. DO_NOT_WAIT + the bounded retry below wins.)
+                    // Post-fence bounded retry (no Sleep). fence_ok ⇒ the slot's copy COMPLETED on the GPU
+                    // timeline, so a miss here is only the runtime's Map(DO_NOT_WAIT) bookkeeping lagging the
+                    // fence (medido: un miss+Sleep(1) POR FRAME = ~1.5-1.9ms/frame de tax fijo en el pickup).
+                    // Reintenta el MISMO slot más nuevo en un lazo acotado sin dormir: SwitchToThread cede el
+                    // core sin el piso ~1ms del Sleep; 64×(50 pause + yield + Map) es µs-class y está acotado
+                    // por CONTEO de iteraciones (sin constante de ms afinada a este rig). Si aún falla tras el
+                    // presupuesto → cae al fallback Sleep(1) de abajo (intacto, y el ÚNICO sitio que cuenta
+                    // stat_mapmiss: mapmiss = "el pickup pagó un ciclo de 1ms", ahora ~0 esperado). El path
+                    // sin fence (probe fallido / timeout) es byte-idéntico: fence_ok=false salta este lazo.
+                    if(mhr!=S_OK && fence_ok){
+                        for(int rt=0; rt<64 && mhr!=S_OK; ++rt){
+                            for(int yp=0; yp<50; ++yp) YieldProcessor();
+                            SwitchToThread();
+                            mhr=cap_ctx->Map(wgc_ctx->ring[(w-1u)%WgcCtx::RING_N],0,D3D11_MAP_READ,D3D11_MAP_FLAG_DO_NOT_WAIT,&mr);
+                        }
+                    }
                     if(mhr!=S_OK&&(w-r)>=2u){
                         mhr=cap_ctx->Map(wgc_ctx->ring[(w-2u)%WgcCtx::RING_N],0,D3D11_MAP_READ,D3D11_MAP_FLAG_DO_NOT_WAIT,&mr);
                         if(mhr==S_OK){ use_cnt=w-1u; stat_mapfb.fetch_add(1); }
                     }
-                    // Miss = the in-flight copy needs ~ms anyway; sleeping frees C's core.
-                    if(mhr!=S_OK){ stat_mapmiss.fetch_add(1); Sleep(1); continue; }
+                    // Miss (post-retry) = the copy genuinely is NOT consumable yet — the fence timed out (GPU
+                    // behind a saturated primary: the in-flight copy needs ~ms anyway) or the runtime refused
+                    // past the retry budget. Sleeping frees C's core. The whole miss cycle (fence-wait + Map
+                    // attempts + Sleep) is REAL pickup cost — carried into the NEXT successful iteration's
+                    // copy figure instead of discarded at the continue.
+                    if(mhr!=S_OK){ stat_mapmiss.fetch_add(1); Sleep(1);
+                        if(cfg.latency_trace) _w_cp_carry+=now_ms()-_w_t_cp0; continue; }
+                    if(cfg.latency_trace){ _wcp_ms=(now_ms()-_w_t_cp0)+_w_cp_carry; _w_cp_carry=0.0; }
+                    // ── --ingest-async (WGC): deposit the raw frame + publish to the convert worker.
+                    // INVARIANT (R3, WGC_INGEST_ASYNC_PLAN.md): with --ingest-async armed the WORKER is the
+                    // single owner of the convert state (cmdA/cmdG/fA/fG/Anative/Awork/cpPipe) — every path
+                    // in this block ends in `continue`, so the shared serial tail below (t_cap/lt-EMA/dedup/
+                    // PLL/convert/c_seq publish) is UNREACHABLE in async mode. Mirrors the DDA acquire branch.
+                    if(cfg.ingest_async){
+                        const int rk=(int)(wpub%(uint64_t)kRawSlots);
+                        // Torn-read guard (R1): never overwrite the slot the worker is mid-converting — drop
+                        // this frame (the staging slot IS consumed: Unmap+advance). Counted in stat_mapmiss
+                        // (the DDA-async busy-drop convention, ver el acquire DDA).
+                        if(rk==raw_busy.load()){
+                            stat_mapmiss.fetch_add(1);
+                            cap_ctx->Unmap(wgc_ctx->ring[(use_cnt-1u)%WgcCtx::RING_N],0); wgc_ctx->ring_read.store(use_cnt);
+                            continue;
+                        }
+                        const size_t nat_row=size_t(NAT_W)*nat_bpp;
+                        const double _w_t_mc0 = cfg.latency_trace ? now_ms() : 0.0;
+                        { uint8_t* dst=(uint8_t*)raw_astage_a[rk].mapped;
+                          if(mr.RowPitch==nat_row) std::memcpy(dst,mr.pData,size_t(NAT_H)*nat_row);
+                          else for(uint32_t y=0;y<NAT_H;++y)
+                              std::memcpy(dst+size_t(y)*nat_row,(const uint8_t*)mr.pData+size_t(y)*mr.RowPitch,nat_row); }
+                        if(cfg.latency_trace) _wmc_ms=now_ms()-_w_t_mc0;
+                        cap_ctx->Unmap(wgc_ctx->ring[(use_cnt-1u)%WgcCtx::RING_N],0); wgc_ctx->ring_read.store(use_cnt);
+                        arr_ts=now_ms();   // WGC consume instant (la referencia PLL — mismo instante que el serial)
+                        if(cfg.latency_trace){ const uint32_t cs=(use_cnt-1u)%WgcCtx::RING_N;
+                            lt_wgc_submit_ms =(double)wgc_ctx->ring_submit_us[cs].load()/1000.0;
+                            lt_wgc_compose_us=(double)wgc_ctx->ring_compose_us[cs].load(); }
+                        dd_acq.fetch_add(1);   // acq= (tasa de pickup, pre-dedup — paridad con el tail serial)
+                        // Dedup ANTES de publicar (R5): el worker sólo ve únicos; un duplicado NO publica y
+                        // el slot rk se reutiliza en el próximo frame (wpub no avanza). dd_uniq SIEMPRE.
+                        { double _whs_ms=-1.0;
+                          const double _w_t_hs0 = cfg.latency_trace ? now_ms() : 0.0;
+                          const uint64_t _h=frame_sample_hash((const uint8_t*)raw_astage_a[rk].mapped,size_t(NAT_H)*nat_row);
+                          if(cfg.latency_trace){ _whs_ms=now_ms()-_w_t_hs0; _wacq_acc(_wst_ms,_wcp_ms,_wmc_ms,_whs_ms); }
+                          const bool _dup=(prev_hash!=0 && _h==prev_hash); prev_hash=_h;
+                          if(!_dup) dd_uniq.fetch_add(1);
+                          if(cfg.dedup && _dup) continue; }
+                        // (PLL units, R5) delta entre frames PUBLICADOS (post-dedup), sellado con arr_ts — el
+                        // MISMO stream/instante que el serial; al contador WGC del PLL (wgc_ctx->arr_delta_us).
+                        if(last_ing_arr_ms>0.0){
+                            const double iv=arr_ts-last_ing_arr_ms;
+                            if(iv>0.5&&iv<500.0) wgc_ctx->arr_delta_us.store((uint64_t)(iv*1000.0));
+                        }
+                        last_ing_arr_ms=arr_ts;
+                        raw_tcap[rk]=now_ms();                // freshage anchor (≈ el t_cap del serial; el worker lo lleva a c_slots[s])
+                        raw_lt_submit[rk]=lt_wgc_submit_ms;   // (R6) lat-trace carry al worker (0 con trace off → inerte)
+                        raw_lt_compose[rk]=lt_wgc_compose_us;
+                        // PUBLISH bajo raw_mtx (lost-wakeup-safe — el patrón del acquire DDA); notify fuera del lock.
+                        { std::lock_guard<std::mutex> lk(raw_mtx); raw_seq.store(wpub+1u); }
+                        raw_cv.notify_one();
+                        ++wpub;
+                        continue;   // R3: el tail serial (convert + c_seq publish) NO se alcanza en async
+                    }
                     const size_t nat_row=size_t(NAT_W)*nat_bpp;
+                    const double _w_t_mc0 = cfg.latency_trace ? now_ms() : 0.0;   // [ra-acq] (wgc) memcpy: pure CPU readback of the mapped slot
                     if(mr.RowPitch==nat_row) std::memcpy(Astage.mapped,mr.pData,size_t(NAT_H)*nat_row);
                     else for(uint32_t y=0;y<NAT_H;++y)
                         std::memcpy((uint8_t*)Astage.mapped+size_t(y)*nat_row,(const uint8_t*)mr.pData+size_t(y)*mr.RowPitch,nat_row);
+                    if(cfg.latency_trace) _wmc_ms=now_ms()-_w_t_mc0;
                     cap_ctx->Unmap(wgc_ctx->ring[(use_cnt-1u)%WgcCtx::RING_N],0); wgc_ctx->ring_read.store(use_cnt);
                     arr_ts=now_ms();   // WGC consume instant (≈ delivery + copy; el jitter lo absorbe la EMA+banda)
                     if(cfg.latency_trace){ const uint32_t cs=(use_cnt-1u)%WgcCtx::RING_N;
@@ -544,8 +656,18 @@ void run_capture(FgContext& ctx){
                 // DESCARTA (continue: salta total_real + el convert + el c_seq.fetch_add) → el FG nunca ve
                 // un par de movimiento-cero, e in= cae a la tasa única. El Unmap/ReleaseFrame ya ocurrieron
                 // arriba, así que el continue es LIMPIO (sin fuga; igual que los otros del lazo).
+                double _whs_ms=-1.0;   // [ra-acq] (wgc) hash: dedup-sample-hash time this iter (-1 = not clocked)
                 {
+                    const double _w_t_hs0 = cfg.latency_trace ? now_ms() : 0.0;
                     const uint64_t _h=frame_sample_hash((const uint8_t*)Astage.mapped,size_t(NAT_H)*size_t(NAT_W)*nat_bpp);
+                    if(cfg.latency_trace) _whs_ms=now_ms()-_w_t_hs0;
+                    // MEDICIÓN WGC 4-way: vía _wacq_acc (una copia; también la llama la rama async). Sólo
+                    // WGC + --latency-trace; en DDA-serial estos vars son -1 → no acumula (la rama serial
+                    // imprime su propia línea). Se acumula ANTES del posible dedup-continue para que un
+                    // frame descartado por --dedup también cuente en la EMA del pickup.
+#ifdef _MSC_VER
+                    if(cfg.capture_api==CA_WGC && cfg.latency_trace) _wacq_acc(_wst_ms,_wcp_ms,_wmc_ms,_whs_ms);
+#endif
                     const bool _dup=(prev_hash!=0 && _h==prev_hash); prev_hash=_h;
                     if(!_dup) dd_uniq.fetch_add(1);
                     if(cfg.dedup && _dup) continue;
@@ -658,13 +780,15 @@ void run_capture(FgContext& ctx){
                             std::printf("[ra] igpu-field-verify[slot %d]: %llu/%llu px differ (muestreo step-16), max|d|=%u (CPU Sobel vs GPU)\n",s,(unsigned long long)ndiff,(unsigned long long)npx,dmax);
                     }
                 }
+                if(cfg.latency_trace) c_slots[s].t_pub_ms=now_ms();   // stamp publish instant; the seq_cst fetch_add below orders it for F (publish→consume wake = F's now − this)
                 c_seq.fetch_add(1);
                 c_cv.notify_all();
             }
 }
 
 // ── --ingest-async: the convert WORKER thread ───────────────────────────────────────────────────
-// Only spawned when cfg.ingest_async (DDA). The acquire thread (run_capture's async branch) has
+// Only spawned when cfg.ingest_async (DDA acquire branch OR WGC pickup branch — both deposit into
+// the same raw ring; WGC_INGEST_ASYNC_PLAN.md). The capture thread's async branch has
 // already deposited raw frames into the raw ring + published raw_seq; this worker DROP-TO-NEWEST
 // converts the freshest published raw slot — the EXACT convert tail of run_capture, but reading the
 // convert SRC from the chosen raw slot (A-path: the buffer handle in vkCmdCopyBufferToImage; iGPU
@@ -684,6 +808,10 @@ void run_convert_worker(FgContext& ctx){
     auto& raw_astage_a = ctx.raw_astage_a;
     auto& raw_astage_g = ctx.raw_astage_g;
     auto& raw_tcap = ctx.raw_tcap;
+    auto& raw_lt_submit = ctx.raw_lt_submit;    // (R6) WGC-async lat-trace carry (0 on DDA → inert)
+    auto& raw_lt_compose = ctx.raw_lt_compose;
+    auto& lt_copy_us = ctx.lt_copy_us;
+    auto& lt_compose_us = ctx.lt_compose_us;
     auto& c_seq = ctx.c_seq;
     auto& cap_slots = ctx.cap_slots;
     auto& c_slots = ctx.c_slots;
@@ -737,6 +865,16 @@ void run_convert_worker(FgContext& ctx){
         raw_busy.store(rk);                     // torn-read guard: the acquire will not overwrite rk until we clear it
         const int s=(int)(c_seq.load()%(uint64_t)cap_slots);   // output slot (same convention as the serial loop)
         c_slots[s].t_cap_ms=raw_tcap[rk];       // freshage anchor carried from acquire (parity with serial's t_cap)
+        // (R6) WGC-async lat-trace carry: fold the ridden submit/compose stamps into the same EMAs the
+        // serial tail feeds ([lat-trace] INVISIBLE copy/compose stay truthful in async mode). The >0
+        // guards make this inert on DDA (its stamps are never written → 0).
+        if(cfg.latency_trace){
+            const double tc=raw_tcap[rk], sub=raw_lt_submit[rk], cmp=raw_lt_compose[rk];
+            if(sub>0.0 && tc>sub){ const double cp=(tc-sub)*1000.0;
+                const uint64_t pv=lt_copy_us.load(); lt_copy_us.store(pv?(uint64_t)((double)pv*0.8+cp*0.2):(uint64_t)cp); }
+            if(cmp>0.0){ const uint64_t pv=lt_compose_us.load();
+                lt_compose_us.store(pv?(uint64_t)((double)pv*0.8+cmp*0.2):(uint64_t)cmp); }
+        }
         if(!use_igpu_convert){
             vkResetCommandBuffer(cmdA,0);
             VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdA,&bi);
@@ -817,6 +955,7 @@ void run_convert_worker(FgContext& ctx){
             }
         }
         raw_busy.store(-1);             // convert done — release the slot (the acquire may reuse it)
+        if(cfg.latency_trace) c_slots[s].t_pub_ms=now_ms();   // stamp publish instant; the seq_cst fetch_add below orders it for F (parity with the serial publish)
         total_real.fetch_add(1);        // PROMPT publish
         c_seq.fetch_add(1);
         c_cv.notify_all();

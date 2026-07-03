@@ -124,6 +124,7 @@ void run_present(FgContext& ctx){
     auto& obj_rep_x10 = ctx.obj_rep_x10;
     auto& live_n_atomic = ctx.live_n_atomic;
     auto& lt_pickup_us = ctx.lt_pickup_us;
+    auto& lt_fwake_us = ctx.lt_fwake_us;
     auto& lt_preflow_us = ctx.lt_preflow_us;
     auto& lt_spin_us = ctx.lt_spin_us;
     auto& Apresent = ctx.Apresent;
@@ -840,7 +841,7 @@ void run_present(FgContext& ctx){
             // kQdumpStride=120 ticks ≈ 0.5s at refresh 240 → N triples over ~N×0.5s of footage. qdump_man_open
             // gates the one-time `size W H` manifest header (written on the FIRST dump, after the dir exists).
             int qdump_left=cfg.qdump_n, qdump_idx=0; uint32_t qdump_tick=0; bool qdump_man_open=false;
-            const uint32_t kQdumpStride=120u;   // present ticks between qdump samples (~0.5s @ 240Hz)
+            const uint32_t kQdumpStride=11u;   // present ticks between qdump samples. 11 is coprime with the ~16 phase-steps/span so successive dumps land on DIFFERENT phases (dense phase coverage for the --blend-solo track-vs-phase measurement) while the 1-tick dump stall never accumulates into phase-pinning (unlike --outdump's consecutive dumps). Was 120 (~0.5s @ 240Hz footage-spanning); lowered for phase-sweep diagnostics.
             // --wsub sub-timings of the per-tick warp lambda. These split the `warp` cost EMA
             // (= the wap_warp_present end-to-end) into: rec = CPU cmd record (reset→begin→bind→push→
             // dispatch→barriers→blit→end), gpu = submit + the BLOCKING vkWaitForFences (the warp dispatch
@@ -1069,14 +1070,36 @@ void run_present(FgContext& ctx){
                 // + vblend_exact appended LAST → 44 floats/176B; pcr.size=176 (still well within 256B).
                 // + ts_smooth appended LAST → 45 floats/180B; pcr.size=180 (still well within 256B).
                 // + mc_on/mc_nperturb/mc_perturb/mc_disp/mc_edge appended LAST → 50 floats/200B; pcr.size=200 (still well within 256B).
+                // + cam_lead(clx,cly) + disoccl_hardpick → 53 floats/212B; + predict_p2 appended LAST → 54 floats/216B; pcr.size=216 (still well within 256B). Keep pcr.size in warp_blend.cpp in sync.
                 // --camera-twarp: clx carries the PER-PIXEL lead scalar `amt`; the shader leads each pixel by its OWN
                 // MV (× amt) — NOT a global gme shift (which deformed the non-uniform scene = the "jelly"). No gme dependency now:
                 // clx = cfg.camera_twarp ? amt: 0 (OFF → 0 → the shader's uv==uv0 → BYTE-IDENTICAL). cly unused (the lead vector is
                 // per-pixel, from the MV field, computed shader-side). SIGN: +mv (forward); eye-tunable — negate clx if lag worsens.
                 const float clx = cfg.camera_twarp ? cfg.camera_twarp_amt : 0.f;
                 const float cly = 0.f;
+                // --mv-edge-snap encoding. variant + sim_band: variant 1 (G1 dissidence) requires the
+                // dissidence mask valid THIS generation (gme_push, same gate that uploads wapDISA);
+                // when it is not, auto-fall-back to G2 (color, always available from cur_real) so the
+                // fix still runs instead of guiding on a stale/placeholder mask. sim band = --mes-sim
+                // override else --mv-sim. 0 when off or WAP-invalid (use_mv_guided implies WAP) →
+                // byte-identical. Recovered shader-side as use_dis=(v<2.0), sim=fract(v).
+                float mes_push = 0.f;
+                if (cfg.mv_edge_snap != 0) {
+                    const int   es_var  = (cfg.mv_edge_snap == 1 && !gme_push) ? 2 : cfg.mv_edge_snap;   // G1→G2 when no valid mask
+                    const float es_simb = (cfg.mv_edge_snap_sim > 0.f) ? cfg.mv_edge_snap_sim : cfg.mv_sim;
+                    mes_push = (float)es_var + es_simb;   // e.g. 1.10 = G1@0.10, 2.10 = G2@0.10
+                }
+                // --single-track (offset 224): the composite base becomes the B-track. WARP-LEVEL
+                // (lives at the warp_result composition, matte-independent). 1.0 iff cfg.single_track
+                // AND use_wap. 0 → the shader's wa_eff==wa → byte-identical.
+                const float sto_push = (cfg.single_track && use_wap) ? 1.f : 0.f;
+                // --bg-reclaim (offset 228): the gravity fix. Carries the STRENGTH (>0.001 = ON). Needs
+                // gme_model_mv valid THIS generation (gme_push, same gate that arms the gme block); when
+                // the model is stale push 0 so the reclaim is inert (byte-identical) rather than damping
+                // toward a placeholder model. 0 → mv untouched → byte-identical.
+                const float bgr_push = (cfg.bg_reclaim > 0.f && gme_push && use_wap) ? cfg.bg_reclaim : 0.f;
                 struct{float rc;float ci;float ag;float t;float sg;float ct;float cr;float ol;float de;float re;float mg;
-                       float gon;float ga;float gb;float gc;float gd;float ge;float gf;float mon;float mth;float sth;float sti;float cre;float aon;float aba;float tr;float co;float oc;float pa;float am;float mc;float cd;float op;float ob;float dc;float bs;float bss;float bsn;float ex;float vbon;float vbt0;float vbst;float bxf;float vbe;float tss;float mco;float mcn;float mcp;float mcd;float mce;float clx;float cly;float dhp;}   // +dhp (disoccl_hardpick) appended LAST → 53 floats/212B
+                       float gon;float ga;float gb;float gc;float gd;float ge;float gf;float mon;float mth;float sth;float sti;float cre;float aon;float aba;float tr;float co;float oc;float pa;float am;float mc;float cd;float op;float ob;float dc;float bs;float bss;float bsn;float ex;float vbon;float vbt0;float vbst;float bxf;float vbe;float tss;float mco;float mcn;float mcp;float mcd;float mce;float clx;float cly;float dhp;float pp2;float bso;float mes;float sto;float bgr;}   // +sto (--single-track B-track base) +bgr (--bg-reclaim gravity-fix strength) appended LAST → 58 floats/232B (within the 256B device limit; 8B headroom)
                   pcw{cfg.res_ceil,cfg.conf_improv,cfg.agreement,t,cfg.soft_gate?1.f:0.f,cfg.commit_thresh,cfg.commit_real?1.f:0.f,bwd_push?cfg.occl_thresh:0.f,use_fill_div?cfg.div_eps:0.f,use_rescue?1.f:0.f,use_mv_guided?1.0f+cfg.mv_sim:0.f,
                       gme_push?1.f:0.f,
                       gme_push?gme6[0]:0.f,gme_push?gme6[1]:0.f,gme_push?gme6[2]:0.f,
@@ -1104,7 +1127,12 @@ void run_present(FgContext& ctx){
                       cfg.ts_smooth,   // --ts-smooth: adaptive temporal-smoothing strength (0 = OFF → no blend → byte-identical; >0 = blend toward prev output on garbage/low-conf pixels)
                       ((cfg.mc_on && !warp_light)?1.f:0.f),(float)cfg.mc_nperturb,cfg.mc_perturb,cfg.mc_disp,cfg.mc_edge,   // --multicand: medoid-select gate + #perturbed candidates + perturb-frac + dispersion-threshold + Sobel edge-threshold; mc_on=0 → the shader skips the whole branch → byte-identical; warp-light sheds the medoid under 4090 saturation
                       clx,cly,   // --camera-twarp: the global sample-UV lead (gme affine translation/out_size·amt); (0,0) when --camera-twarp off or gme invalid → the shader's uv+=(0,0) is a no-op → byte-identical. SIGN eye-tunable (negate to flip).
-                      cfg.disoccl_hardpick};   // --disoccl-hardpick: edge-gated hard-pick threshold at the bidir reveal band; 0 → the shader branch is never entered → byte-identical. Appended LAST (offset 208), after cam_lead, so no prior field shifts.
+                      cfg.disoccl_hardpick,   // --disoccl-hardpick: edge-gated hard-pick threshold at the bidir reveal band; 0 → the shader branch is never entered → byte-identical. (offset 208), after cam_lead, so no prior field shifts.
+                      (cfg.predict && cfg.predict_p2)?1.f:0.f,   // --predict-p2: 1.0 = the extrap tap uses mv_target_s (2*mv - mv_prev, const-accel); 0 = P1 (raw mv, const-velocity) = today's ASW tap. Appended (offset 212). Needs vblend armed (default ON) for a valid mv_target_s; gated on cfg.predict so it is 0 without --predict → byte-identical to today's ASW.
+                      (float)cfg.blend_solo,   // --blend-solo DIAGNOSTIC (0=off,1=A-track,2=B-track): (offset 216). 0 → the shader's pre-store override branch is never entered → byte-identical. Measurement-only.
+                      mes_push,   // --mv-edge-snap: cross-bilateral (edge-aware sub-block) primary MV fetch, packed variant+sim (offset 220). 0 → the primary MV keeps its guided/LINEAR fetch → byte-identical.
+                      sto_push,   // --single-track: the composite base becomes the B-track (offset 224). 0 → wa_eff==wa → byte-identical. Quality layers stay active on the base; A re-admitted only where the occlusion machinery owns it.
+                      bgr_push};  // --bg-reclaim: tile-level gravity fix — damp gme-nonconform bg-fringe MV toward the model (offset 228). Carries strength (>0.001=ON). 0 → mv untouched → byte-identical.
                 vkCmdPushConstants(cmdBridge,wapPipeA.layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcw),&pcw);
                 vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);   // dispatch the warp over the SCALED wapOutA extent (one 8×8 workgroup per scaled output tile; the shader's imageSize(u_output) valid-test bounds it). warp_div==1 ⇒ == (WW+7)/8,(WH+7)/8 (byte-identical).
                 // the field VISUALIZER pass — A reads the iGPU contour field (wapFIELDA,
@@ -1306,8 +1334,8 @@ void run_present(FgContext& ctx){
                                 if(warp_div>1u) std::fprintf(mf,"live_div %u %u %u\n",warp_div,WW_warp,WH_warp);
                                 qdump_man_open=true;
                             }
-                            std::fprintf(mf,"triple q%06d prev=q%06d_prev.rgba next=q%06d_next.rgba live=q%06d_live.rgba\n",
-                                         qdump_idx,qdump_idx,qdump_idx,qdump_idx);
+                            std::fprintf(mf,"triple q%06d prev=q%06d_prev.rgba next=q%06d_next.rgba live=q%06d_live.rgba t=%.4f\n",
+                                         qdump_idx,qdump_idx,qdump_idx,qdump_idx,t);   // t=phase appended (DIAGNOSTIC): lets the analyzer plot the live-track position vs phase; parsers ignoring trailing tokens are unaffected.
                             std::fclose(mf);
                         }
                         ++qdump_idx; --qdump_left;
@@ -1916,7 +1944,21 @@ void run_present(FgContext& ctx){
                         // --vblend-exact: track ~1 pair further back so the selector picks gen_back>=1
                         // and the next-fresher published pair (the EXACT lookahead target) is in the F->P ring.
                         // OFF → −0 → byte-identical (the predict path).
-                        const double expected = (double)cur_c - lead_frames - (cfg.vblend_exact ? 1.0 : 0.0);
+                        // --predict: the MIRROR of vblend-exact — lead the content_clock FORWARD by predict_e
+                        // source-frames PAST its normal (interpolating) position so it overshoots the freshest
+                        // published pair's endpoint into EXTRAPOLATION (ph>1 → the --asw forward-projection path made
+                        // the norm). SOURCE-FRAME units (scale-invariant); the PLL slew/reseat below is UNTOUCHED in
+                        // its units — this only shifts the `expected` TARGET the loop chases (err stays steady since
+                        // the acquire seeds content_clock=expected). OFF → +0 → byte-identical (the vblend-exact path).
+                        // NOTE: NOT `lead_frames + predict_e` — that over-leads (the published pair already trails
+                        // cur_c by the pipeline lag, so cancelling lead_frames pushes the clock ~1.5 spans past the
+                        // pair endpoint = extrap saturates at asw_max = a constant MAX guess, not a bounded lead;
+                        // measured + rejected in PREDICT_MODE_PLAN.md S1). Just +predict_e = a bounded, phase-
+                        // continuous overshoot. HONESTY: this re-anchor does NOT reduce the `lat` metric (lat is
+                        // freshage-floored, not phase-driven — see PREDICT_MODE_PLAN.md VERDICT + R5); --predict is a
+                        // measured NO-GO as a latency feature, kept opt-in + default-OFF only.
+                        const double pred_lead = cfg.predict ? (double)cfg.predict_e : 0.0;
+                        const double expected = (double)cur_c - lead_frames - (cfg.vblend_exact ? 1.0 : 0.0) + pred_lead;
                         if(!sc_init){
                             content_clock = expected; sc_init=true; sc_last_c=cur_c;   // acquire
                         } else if(cur_c!=sc_last_c){
@@ -2569,9 +2611,14 @@ void run_present(FgContext& ctx){
                             const uint64_t cap_now=total_real.load();
                             const double cap_fps=dt>0?(double)(cap_now-last_cap_p)/dt:0; last_cap_p=cap_now;
                             // CAPTURE cross-check vs minimal_fg: in=cap_fps (real frames ingested/s = mfg 'in'); arrived=dd_arrived/s; dd_timeouts/s (DDA WAIT_TIMEOUT, 33ms granularity).
+                            char rf_buf[32]="";   // WGC staging-ring-full drop rate (empty on DDA — 0 there by construction, like arr_buf)
+#ifdef _MSC_VER
+                            if(cfg.capture_api==CA_WGC&&wgc_ctx){ static uint64_t _lrf1=0; const uint64_t _rf=wgc_ctx->ringfull.load();
+                                std::snprintf(rf_buf,sizeof(rf_buf)," ringfull=%.0f/s",dt>0?(double)(_rf-_lrf1)/dt:0); _lrf1=_rf; }
+#endif
                             { static uint64_t _lda1=0,_ldt1=0,_ldu1=0; const uint64_t _da=dd_acq.load(),_dto=dd_timeouts.load(),_du=dd_uniq.load();
                               const double _af=dt>0?(double)(_da-_lda1)/dt:0,_tf=dt>0?(double)(_dto-_ldt1)/dt:0,_uf=dt>0?(double)(_du-_ldu1)/dt:0; _lda1=_da; _ldt1=_dto; _ldu1=_du;
-                              std::printf("[ra-cap] in=%.0f/s | acq=%.0f/s uniq=%.0f/s dd_timeouts=%.0f/s dd_lost=%llu\n",cap_fps,_af,_uf,_tf,(unsigned long long)dd_lost.load()); }
+                              std::printf("[ra-cap] in=%.0f/s | acq=%.0f/s uniq=%.0f/s dd_timeouts=%.0f/s dd_lost=%llu%s\n",cap_fps,_af,_uf,_tf,(unsigned long long)dd_lost.load(),rf_buf); }
                             // FPS-OVERLAY (--fps-overlay) publish in=cap_fps (real-captured) / out=fps (presented) for the overlay (rounded to uint).
                             g_ov_in.store((uint32_t)(cap_fps+0.5)); g_ov_out.store((uint32_t)(fps+0.5));
                             const double uniq_fps=dt>0?(double)(uniq_ticks-last_uniq)/dt:0; last_uniq=uniq_ticks;
@@ -2715,6 +2762,7 @@ void run_present(FgContext& ctx){
                             if(cfg.latency_trace){
                                 const double comp=(double)lt_compose_us.load()/1000.0, copy=(double)lt_copy_us.load()/1000.0;
                                 const double conv=(double)c_conv_us.load()/1000.0, pick=(double)lt_pickup_us.load()/1000.0;
+                                const double fwake=(double)lt_fwake_us.load()/1000.0;   // publish→consume wake (sub-component of pickup)
                                 const double fpub=(double)lt_fpub_us.load()/1000.0, fresh=freshage_ema_ms;
                                 const double pre=(double)lt_preflow_us.load()/1000.0, spin=(double)lt_spin_us.load()/1000.0;
                                 const double bld=fpub>pick?fpub-pick:0.0, det=fresh>fpub?fresh-fpub:0.0;
@@ -2722,8 +2770,8 @@ void run_present(FgContext& ctx){
                                 const double mfb=dt>0?(double)(stat_mapfb.load()-last_mapfb_lt)/dt:0.0;     // the +11.6ms older-slot fallback rate (copy-fence gate)
                                 const double mms=dt>0?(double)(stat_mapmiss.load()-last_mapmiss_lt)/dt:0.0; // the Sleep-retry rate
                                 last_mapfb_lt=stat_mapfb.load(); last_mapmiss_lt=stat_mapmiss.load();
-                                std::printf("[lat-trace] INVISIBLE(compose:%.1f copy:%.1f) | freshage=%.1f [pickup:%.1f(conv:%.1f) build:%.1f(preflow:%.1f[spin:%.1f] compute:%.1f) detect~%.1f] | game->screen~%.1f | mapfb:%.0f/s mapmiss:%.0f/s\n",
-                                    comp,copy,fresh,pick,conv,bld,pre,spin,cmp,det,comp+copy+fresh,mfb,mms);
+                                std::printf("[lat-trace] INVISIBLE(compose:%.1f copy:%.1f) | freshage=%.1f [pickup:%.1f(conv:%.1f fwake:%.1f) build:%.1f(preflow:%.1f[spin:%.1f] compute:%.1f) detect~%.1f] | game->screen~%.1f | mapfb:%.0f/s mapmiss:%.0f/s\n",
+                                    comp,copy,fresh,pick,conv,fwake,bld,pre,spin,cmp,det,comp+copy+fresh,mfb,mms);
                             }
                             sum_iter=0; worst=0; slip_sum=slip_max=0; slip_n=0;
                             stat_ticks=0;
@@ -2825,9 +2873,14 @@ void run_present(FgContext& ctx){
                         const uint64_t cap_now=total_real.load();
                         const double cap_fps=dt>0?(double)(cap_now-last_cap_p)/dt:0; last_cap_p=cap_now;
                         // CAPTURE cross-check vs minimal_fg: in=cap_fps (real frames ingested/s = mfg 'in'); arrived=dd_arrived/s; dd_timeouts/s (DDA WAIT_TIMEOUT, 33ms granularity).
+                        char rf_buf[32]="";   // WGC staging-ring-full drop rate (empty on DDA — 0 there by construction, like arr_buf)
+#ifdef _MSC_VER
+                        if(cfg.capture_api==CA_WGC&&wgc_ctx){ static uint64_t _lrf2=0; const uint64_t _rf=wgc_ctx->ringfull.load();
+                            std::snprintf(rf_buf,sizeof(rf_buf)," ringfull=%.0f/s",dt>0?(double)(_rf-_lrf2)/dt:0); _lrf2=_rf; }
+#endif
                         { static uint64_t _lda2=0,_ldt2=0,_ldu2=0; const uint64_t _da=dd_acq.load(),_dto=dd_timeouts.load(),_du=dd_uniq.load();
                           const double _af=dt>0?(double)(_da-_lda2)/dt:0,_tf=dt>0?(double)(_dto-_ldt2)/dt:0,_uf=dt>0?(double)(_du-_ldu2)/dt:0; _lda2=_da; _ldt2=_dto; _ldu2=_du;
-                          std::printf("[ra-cap] in=%.0f/s | acq=%.0f/s uniq=%.0f/s dd_timeouts=%.0f/s dd_lost=%llu\n",cap_fps,_af,_uf,_tf,(unsigned long long)dd_lost.load()); }
+                          std::printf("[ra-cap] in=%.0f/s | acq=%.0f/s uniq=%.0f/s dd_timeouts=%.0f/s dd_lost=%llu%s\n",cap_fps,_af,_uf,_tf,(unsigned long long)dd_lost.load(),rf_buf); }
                         // FPS-OVERLAY (--fps-overlay) publish in=cap_fps (real-captured) / out=fps (presented) for the overlay (rounded to uint).
                         g_ov_in.store((uint32_t)(cap_fps+0.5)); g_ov_out.store((uint32_t)(fps+0.5));
                         const double uniq_fps=dt>0?(double)(uniq_ticks-last_uniq)/dt:0; last_uniq=uniq_ticks;

@@ -584,6 +584,7 @@ void run_flow(FgContext& ctx){
     auto& obj_rep_x10 = ctx.obj_rep_x10;
     auto& live_n_atomic = ctx.live_n_atomic;
     auto& lt_pickup_us = ctx.lt_pickup_us;
+    auto& lt_fwake_us = ctx.lt_fwake_us;
     auto& lt_preflow_us = ctx.lt_preflow_us;
     auto& lt_spin_us = ctx.lt_spin_us;
     auto& lt_fpub_us = ctx.lt_fpub_us;
@@ -752,6 +753,23 @@ void run_flow(FgContext& ctx){
             // frames/ (gitignored); OFF unless --objdump N.
             std::vector<uint8_t> objdump_rgba; int objdump_left=cfg.objdump_n; uint64_t objdump_idx=0;
             if(cfg.objdump_n>0){ objdump_rgba.assign((size_t)mvw_f*(size_t)mvh_f*4u,(uint8_t)0); CreateDirectoryA("frames",nullptr); }
+            // --mv-audit: OBJECT-cluster |mv.x| statistic over an MV field, gated by the dis-mask (the same
+            // OBJECT cutoff object_repair/matte use: dis byte > matte_thresh·255). For a ball-zoo bench the
+            // single mover IS the only dissident cluster, so mean/max |mv.x| over its tiles = the effective
+            // horizontal MV magnitude, comparable to the true SpeedPx/Fps. Measurement-only; zero cost when off.
+            int mv_audit_left=cfg.mv_audit;
+            auto mv_audit_stat=[&](const void* mv_field, const uint8_t* dis, float thr_byte,
+                                   double* out_mean, float* out_max, uint32_t* out_n){
+                const uint16_t* hmv=(const uint16_t*)mv_field;
+                const size_t nblk=(size_t)mvw_f*(size_t)mvh_f;
+                double sx=0.0; float mx=0.f; uint32_t n=0;
+                for(size_t i=0;i<nblk;++i){
+                    if((float)dis[i] <= thr_byte) continue;                 // not an OBJECT tile
+                    const float ax=std::fabs(half_to_float(hmv[i*2u+0u]));
+                    sx+=ax; if(ax>mx) mx=ax; ++n;
+                }
+                *out_mean = n?sx/(double)n:0.0; *out_max=mx; *out_n=n;
+            };
             auto objdump_grid=[&](const char* tag, auto getv){
                 const size_t n=(size_t)mvw_f*(size_t)mvh_f;
                 for(size_t bi=0;bi<n;++bi){ const uint8_t v=getv(bi);
@@ -1575,6 +1593,14 @@ void run_flow(FgContext& ctx){
                         mem_merge((uint8_t*)hostDIS[f_gen],hostMV[f_gen],mem_prior.data());
                         obj_cost_ms+=now_ms()-mc0;
                     }
+                    // --mv-audit tap R: RAW matcher output (subpel/candsel per flags), pre-object_repair,
+                    // over the OBJECT tiles the gme dis-mask just marked. hostDIS is pristine here (repair
+                    // mutates it below). span-normalize to px/source-frame so the number is comparable to
+                    // the ball's per-frame truth regardless of pair span.
+                    double auR_mean=0.0; float auR_max=0.f; uint32_t auR_n=0;
+                    const float au_thr=cfg.matte_thresh*255.0f;
+                    const double au_span=(double)(span?span:1);
+                    if(mv_audit_left>0){ mv_audit_stat(hostMV[f_gen],(const uint8_t*)hostDIS[f_gen],au_thr,&auR_mean,&auR_max,&auR_n); }
                     if(use_objects && !holon_skip_pair){
                         const double o0=now_ms();
                         uint32_t live=0,rep=0,infill=0;
@@ -1585,6 +1611,68 @@ void run_flow(FgContext& ctx){
                                       nullptr,nullptr);
                         obj_cost_ms+=now_ms()-o0;
                         obj_live_pair=live; obj_rep_pair+=rep; obj_infill_pair+=infill;
+                    }
+                    // --mv-audit tap O: POST-object_repair (the field uploaded to the presenter). The dis-mask
+                    // may have been rewritten by repair; use it as-is (the object footprint after repair).
+                    if(mv_audit_left>0){
+                        double auO_mean=0.0; float auO_max=0.f; uint32_t auO_n=0;
+                        mv_audit_stat(hostMV[f_gen],(const uint8_t*)hostDIS[f_gen],au_thr,&auO_mean,&auO_max,&auO_n);
+                        // tap C-sim: CPU replica of the present-side color-weighted 3x3 consensus (mv_median.comp
+                        // guided path, DEFAULT ON). For a single uniform mover the color cohort ≈ the OBJECT
+                        // tiles (dis>thr): each object tile takes the marginal .x-median over its object-tile 3x3
+                        // neighbours (self always in; <3 object-neighbours → keep own value, mirroring the shader's
+                        // "no cohort → fallback", which for the ball degenerates to self since the blind-9 median
+                        // over a mostly-object window is still ~ball). Reports mean|mvx| over object tiles AFTER
+                        // this consensus — the magnitude the WARP actually samples on the default path.
+                        double auC_mean=0.0; float auC_max=0.f; uint32_t auC_n=0;
+                        {
+                            const uint16_t* hmv=(const uint16_t*)hostMV[f_gen];
+                            const uint8_t*  dis=(const uint8_t*)hostDIS[f_gen];
+                            const uint32_t MW=mvw_f, MH=mvh_f;
+                            double sx=0.0; float mx=0.f; uint32_t nn=0;
+                            for(uint32_t gy=0; gy<MH; ++gy) for(uint32_t gx=0; gx<MW; ++gx){
+                                const size_t ci=(size_t)gy*MW+gx;
+                                if((float)dis[ci]<=au_thr) continue;             // object tiles only
+                                float xs[9]; int nc=0;
+                                for(int dy=-1;dy<=1;++dy) for(int dx=-1;dx<=1;++dx){
+                                    const int nx=(int)gx+dx, ny=(int)gy+dy;
+                                    if(nx<0||ny<0||nx>=(int)MW||ny>=(int)MH) continue;
+                                    const size_t ni=(size_t)ny*MW+nx;
+                                    const bool self=(dx==0&&dy==0);
+                                    if(self || (float)dis[ni]>au_thr)            // cohort = self + object neighbours
+                                        xs[nc++]=half_to_float(hmv[ni*2u+0u]);
+                                }
+                                float cmv;
+                                if(nc>=4){ for(int a=1;a<nc;++a){ float k=xs[a]; int b=a-1; while(b>=0&&xs[b]>k){xs[b+1]=xs[b];--b;} xs[b+1]=k; } cmv=xs[nc/2]; }
+                                else cmv=half_to_float(hmv[ci*2u+0u]);           // no cohort → keep own
+                                const float ax=std::fabs(cmv); sx+=ax; if(ax>mx)mx=ax; ++nn;
+                            }
+                            auC_mean = nn?sx/(double)nn:0.0; auC_max=mx; auC_n=nn;
+                        }
+                        // INTERIOR-only |mv.x| (object tiles whose 4-neighbours are ALL object tiles): isolates
+                        // the ball CORE from the silhouette edge tiles. If interior ≈ truth while the full mean
+                        // is short, the gap is edge-dilution of the block grid, not a magnitude defect.
+                        double auI_mean=0.0; uint32_t auI_n=0;
+                        {
+                            const uint16_t* hmv=(const uint16_t*)hostMV[f_gen];
+                            const uint8_t*  dis=(const uint8_t*)hostDIS[f_gen];
+                            const uint32_t MW=mvw_f, MH=mvh_f; double sx=0.0; uint32_t nn=0;
+                            for(uint32_t gy=1; gy+1<MH; ++gy) for(uint32_t gx=1; gx+1<MW; ++gx){
+                                const size_t ci=(size_t)gy*MW+gx;
+                                if((float)dis[ci]<=au_thr) continue;
+                                if((float)dis[ci-1]<=au_thr||(float)dis[ci+1]<=au_thr||(float)dis[ci-MW]<=au_thr||(float)dis[ci+MW]<=au_thr) continue;
+                                sx+=std::fabs(half_to_float(hmv[ci*2u+0u])); ++nn;
+                            }
+                            auI_mean=nn?sx/(double)nn:0.0; auI_n=nn;
+                        }
+                        std::printf("[ra] mv-audit pair=%llu span=%.0f | R(raw): mean|mvx|=%.2f max=%.2f n=%u | O: mean=%.2f n=%u | C-sim: mean=%.2f n=%u | INTERIOR: mean=%.2f n=%u | R/span=%.2f INT/span=%.2f\n",
+                            (unsigned long long)cur_c, au_span,
+                            auR_mean, (double)auR_max, auR_n,
+                            auO_mean, auO_n,
+                            auC_mean, auC_n,
+                            auI_mean, auI_n,
+                            auR_mean/au_span, auI_mean/au_span);
+                        --mv_audit_left;
                     }
                     f_pair_mfwd_a[f_gen]=(float)matte_mass_count((const uint8_t*)hostDIS[f_gen],mvw,mvh,cfg.matte_thresh);
                     if(objdump_left>0){
@@ -1756,7 +1844,12 @@ void run_flow(FgContext& ctx){
                 double lt_pickup_now=0.0;
                 if(cfg.latency_trace){ lt_pickup_now=now_ms(); const double tc=c_slots[s].t_cap_ms;
                     if(tc>0.0){ const double pw=(lt_pickup_now-tc)*1000.0; if(pw>0.0&&pw<2000000.0){
-                        const uint64_t pv=lt_pickup_us.load(); lt_pickup_us.store(pv?(uint64_t)((double)pv*0.8+pw*0.2):(uint64_t)pw); } } }
+                        const uint64_t pv=lt_pickup_us.load(); lt_pickup_us.store(pv?(uint64_t)((double)pv*0.8+pw*0.2):(uint64_t)pw); } }
+                    // publish→consume wake = now − the consumed slot's t_pub_ms (a SUB-component of pickup). Reuses
+                    // lt_pickup_now → no extra syscall. seq_cst c_seq ordered t_pub_ms before F saw this slot.
+                    const double tp=c_slots[s].t_pub_ms;
+                    if(tp>0.0){ const double fw=(lt_pickup_now-tp)*1000.0; if(fw>0.0&&fw<2000000.0){
+                        const uint64_t pv=lt_fwake_us.load(); lt_fwake_us.store(pv?(uint64_t)((double)pv*0.8+fw*0.2):(uint64_t)fw); } } }
                 // the GPU-write gen. SERIAL derives it from f_seq (record+publish lockstep); PIPELINED derives
                 // it from the GPU-record counter g_seq (which leads f_seq by one while the just-recorded pair's
                 // CPU/publish are still deferred) so cur's GPU writes a DIFFERENT gen slot than the pair being
