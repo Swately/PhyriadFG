@@ -1089,10 +1089,14 @@ void run_present(FgContext& ctx){
                     const float es_simb = (cfg.mv_edge_snap_sim > 0.f) ? cfg.mv_edge_snap_sim : cfg.mv_sim;
                     mes_push = (float)es_var + es_simb;   // e.g. 1.10 = G1@0.10, 2.10 = G2@0.10
                 }
-                // --single-track (offset 224): the composite base becomes the B-track. WARP-LEVEL
-                // (lives at the warp_result composition, matte-independent). 1.0 iff cfg.single_track
-                // AND use_wap. 0 → the shader's wa_eff==wa → byte-identical.
-                const float sto_push = (cfg.single_track && use_wap) ? 1.f : 0.f;
+                // --single-track (offset 224): v3 — the pre-store B-track override (the exact
+                // --blend-solo 2 site + value: B_samp) + staged re-admissions. ENCODING: 0 = OFF
+                // (byte-identical); 1.0 = v3.1 (stasis re-admitted at the site — proven-static pixels
+                // present crisp cur[uv]; THE SHIPPING CANDIDATE, the --single-track default); 2.0 =
+                // v3.0 (--st-no-stasis: pure B_samp, byte-equal to --blend-solo 2 — the
+                // indistinguishability eye-gate). Both values (>0.5) also arm the upstream v1/v2
+                // gates, now shadowed by the final override (harmless; they save dead work).
+                const float sto_push = (cfg.single_track && use_wap) ? (cfg.st_no_stasis ? 2.f : 1.f) : 0.f;
                 // --bg-reclaim (offset 228): the gravity fix. Carries the STRENGTH (>0.001 = ON). Needs
                 // gme_model_mv valid THIS generation (gme_push, same gate that arms the gme block); when
                 // the model is stale push 0 so the reclaim is inert (byte-identical) rather than damping

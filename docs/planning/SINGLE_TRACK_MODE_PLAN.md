@@ -3,21 +3,27 @@
 - **Type:** Tier-1 plan (substantial, single-shader + host-flag change; no crash/concurrency/
   data-loss/device-loss risk → no RISK_REGISTER required). Two coupled deliverables, one flag family.
 - **Flags:**
-  - `--single-track` (default OFF, byte-identical off): the composite's BASE becomes the B-track
-    sample (`cur @ uv+(1−t)·mv`); the A-track is re-admitted ONLY where the occlusion machinery says
-    B lacks the content. All quality layers (matte/onepos/stasis/inertia/commit/HUD-shield/bg_snap)
-    stay ACTIVE on the composite.
-  - `--bg-reclaim` (default OFF, byte-identical off; **usable independently** of `--single-track`):
-    the gravity fix — a per-tile-scale in-warp weighting that detects the pollution signature (a tile
-    whose *content* is background-like but whose *MV* is object-like) and damps that MV toward the
-    global background model (`gme_model_mv`). Kept a separate flag, not folded into `--single-track`,
-    because the pollution is a *matcher/grid* defect independent of which track paints — it helps the
-    default blend path too, and the operator asked to gate "by measurement".
-- **Status:** `measured` — both features implemented, OFF byte-identical, cost/stability gates pass.
-  The gravity metric shows a **robust ~59% mean reduction** (bg-reclaim cluster disjoint from the
-  baseline range) at 15fps mid-screen; single-track alone removes the crossover but its gravity effect
-  is inside the bench noise. Ships behind the two default-OFF flags for the operator's eye. Full
-  numbers in §8.
+  - `--single-track` — **DEFAULT ON** (v3.1 semantics, §3.5): the pre-store B-track override
+    (`result = B_samp`, exactly what `--blend-solo 2` outputs) + ONLY the stasis re-admission
+    (proven-static pixels present crisp `cur[uv]` — the HUD/grid protection). `--no-single-track`
+    restores the A/B blend world exactly; `--st-no-stasis` isolates stage v3.0 (the pure mirror).
+    (The v0/v1/v2 designs described in §3.1–§3.4 are the superseded history — kept as the audit
+    trail; their gates remain upstream, shadowed by the final override.)
+  - `--bg-reclaim [strength]` — **DEFAULT ON at 4.0** (hard snap; **usable independently** of
+    `--single-track`): the gravity fix — a per-tile-scale in-warp weighting that detects the pollution
+    signature (a tile whose *content* is background-like but whose *MV* is object-like) and damps that
+    MV toward the global background model (`gme_model_mv`). `--no-bg-reclaim` / `--bg-reclaim 0`
+    disables. Kept a separate flag because the pollution is a *matcher/grid* defect independent of
+    which track paints — it helps the default blend path too, gated by measurement (§8).
+- **Status:** **SHIPPING, DEFAULT-ON** (2026-07-03). Operator verdict on v3.1 + `--bg-reclaim 4.0`,
+  verbatim: **"la alucinación es mejor que LSFG"** — smooth, no crossfade/vibration, statics crisp.
+  Defaults flipped (`single_track=true`, `bg_reclaim=4.0f`); UI switches synced (the default-ON
+  pattern: emit nothing when ON, the off-flag when OFF). The gravity metric: **~59% mean outside-gold
+  reduction**, ranges disjoint from baseline (§8). The road here: THREE operator-eye refutations of
+  subtractive recompositions (v0 crossfade fallback → v1 static-cur fallback → v2 law gates — each
+  still vibrated while `--blend-solo 2` stayed smooth on the same builds) before the **v3 strategy
+  flip (§3.5): build UP from the known-smooth blend-solo-2 base**. Known residuals (operator-observed,
+  non-blockers) in §9.
 - **Scope:** `shaders/wap_warp.comp` (the base-track bias at the warp composition + the reclaim damp
   at the primary-MV fetch), `src/warp_blend/warp_blend.cpp` (`pcr.size`), `src/present/present.cpp`
   (encode + push the two new fields), `src/cli/{cli.hpp,cli.cpp}` (two flags + cascades),
@@ -124,7 +130,7 @@ Each quality layer verified to still make sense with `warp_result` born pure-B:
 | **inertia** (~302) | restricts fast-corner MV lending. | **Unaffected** — acts on `mv`, upstream of composition. |
 | **bg_snap** (~393) | snaps bg-side `mv` toward the model before sampling. | **Unaffected** — acts on `mv`; both A_samp and B_samp then re-sample coherently. Actually *complements* single-track (bg pixels get bg motion → B_samp is clean bg). |
 | **HUD shield** (stasis + the `matte_count` / mass path) | static witnesses. | **Unaffected** — stasis is the shield; single-track never touches it. |
-| **soft/hard select** (~1026) | `result = mix(blend_result, warp_result, w)`. | **Unaffected** — operates on the finished `warp_result`. |
+| **soft/hard select** (~1026) | `result = mix(blend_result, warp_result, w)`. | **THE v1 MISS (corrected):** the selection itself is warp-vs-FALLBACK, and the fallback `blend_result` was still the (1−t)/t crossfade → the crossover re-entered through every low-confidence block. FIXED: under single-track `blend_result`'s base = pure `cur[uv]` (track-consistent). See the §6 risk entry. |
 
 **The one real ordering constraint:** the `wa_eff` collapse to 0 must be applied **after onepos rewrites
 `wa`** and **at the `warp_result` composition line**, so onepos cannot re-inject A-weight. Concretely:
@@ -142,6 +148,102 @@ else is input-independent of `wa`.
   A→B across the low-t band (a `smoothstep(0, t_ease, t)` on `wa_eff`) but that reintroduces a
   controlled crossover — deferred, the operator's eye judges whether the step is worse than the
   vibration it removes.
+
+### 3.4 THE SINGLE-TRACK LAW + the consistency audit (v2 — two operator-eye bisections deep)
+
+**The failure history (the honesty trail):**
+
+1. **v0 (the base collapse, §3.1):** the operator's eye — STILL VIBRATES, even with ALL optional
+   layers disabled (`--no-commit --no-commit-default --no-member-commit --occl-thresh 0 --no-matte
+   --no-phase-anchor --no-soft-gate --no-onepos --no-obj-crescent --no-stasis --no-inertia
+   --no-crescent --no-appearance --no-travel --no-contour --no-ambig --no-rescue --no-band-xfade
+   --no-fill-div --no-vblend --no-bg-snap`), while `--blend-solo 2` stayed smooth on the same build.
+   Root cause: the UNCONDITIONAL final selection's fallback content, `blend_result` = the un-warped
+   (1−t)/t crossfade of the two reals — the crossover re-entering through every low-confidence block.
+2. **v1 (the fallback made pure cur):** the operator's eye — STILL VIBRATES, "looks like a crossfade".
+   Root cause: STATIC cur on MOVING content still positionally disagrees with the warped track at
+   intermediate phases (the textureless ball interior is low-confidence → falls back → sits at cur's
+   position while the warped silhouette advances = content at two positions = the crossfade look).
+   The v1 fix was necessary but not sufficient.
+3. **v2 (this section):** the general law + the forced-warp selection + the injector audit below.
+
+**THE LAW (the v2 spec's core):** *in single-track mode, ONLY warped-at-phase content may paint
+MOVING regions; unwarped real content may paint only where staticity is PROVEN (stasis / the matte's
+model-conforming background). Every layer that substitutes unwarped reals onto arbitrary (possibly
+moving) content re-creates the positional disagreement the mode exists to remove.* The old blend
+world tolerated real-injection because `warp_result` was itself blend-ish; the single-track world
+does not.
+
+**The enforcement (all gated on `pc.single_track > 0.5`; OFF byte-identical):**
+
+1. **The final selection is forced to warp:** `result = warp_result` at the result birth — the ENTIRE
+   selection cascade (multicand medoid / soft gate / hard keep-freeze) is inert. It has NO off-flag
+   (which is exactly why no flag combination could smooth it). NOTE: the medoid (`mc_on`, DEFAULT ON)
+   was the actually-EXECUTING path in the operator's bisection (`--no-multicand` was not in the set);
+   its dispersion guard paints `blend_result` and its candidate set includes `A_samp` + `wa`-blended
+   perturbed warps — all track-inconsistent; the one gate silences all of them.
+2. **The injector audit** — every site that writes real (or lagged) content, classified:
+
+| Layer (shader site) | Paints MOVING content with unwarped/lagged reals? | Verdict / action |
+|---|---|---|
+| final soft/hard selection (result birth) | **YES** — fallback `blend_result` selected BY low confidence; no off-flag | **FORCED INERT** (`result = warp_result`) |
+| multicand medoid (`mc_on`, DEFAULT ON) | **YES** — dispersion guard → `blend_result`; candidates incl. `A_samp` + two-track perturbed blends | **FORCED INERT** (same gate) |
+| commit family (`commit_thresh`, incl. `commit_use_A`/`near_real`, the appear re-blend, rescue) | **YES** — `near_real` = unwarped real at raw uv, selected BY `d_ab` = exactly the moving silhouette + textureless interior; rescue's replacement = a TWO-track candidate average | **GATED OFF** under single-track |
+| ts-smooth (`ts_smooth`, default 0) | **YES when armed** — prev-OUTPUT at same uv trails on moving content; the garbage gate selects moving pixels | **GATED OFF** under single-track |
+| occl winner (one-side-owns branch) | NO — `winner_samp` is a WARPED sample (A/B at phase) | **KEEP** |
+| fill-div (default OFF) | NO — paints model-displaced reals (gme) or warped A/B samples; domain = the disocclusion sliver (background) | **KEEP** |
+| matte BG override (default OFF) | NO — `bg` = blend of MODEL-displaced reals; for model-conforming background both samples show the SAME content (the model is exact there) → an agreeing blend, no positional split; domain = background-classified | **KEEP** |
+| crescent / disoccl-commit / travel / contour / obj-crescent | NO — matte-gated side-weightings among the same model-displaced bg samples (contour's time-nearest real is a REFEREE only, never painted) | **KEEP** |
+| stasis (the FINAL override) | NO — `cur[uv]` on PROVEN-static blocks (`sad_zero ≤ thresh` = the block is identical in both reals) — positionally safe by definition | **KEEP** |
+| disoccl reveal-fill (`bg_snap`/`band_xfade`, default ON) | NO — paints `cur[uv]` ONLY on evidence-gated REVEALED background (the two reals disagree at uv AND dissidence-fwd > bwd = the object left); the painted content is the static revealed bg | **KEEP** |
+| extrap / ASW | NO — cur warped FORWARD along mv = the B-track extended past phase 1 | **KEEP** |
+| ambig / phase-anchor / bg-snap / bg-reclaim / mv-guided / mv-edge-snap / inertia | NO — MV-level (they choose the vector, never inject reals) | **KEEP** |
+| `blend_result` birth (the v1 pure-cur fix) | now a DEAD VALUE under single-track (every consumer inert/gated) | **KEPT** as defense-in-depth (any future consumer inherits track-consistency) |
+
+**Status of the vibration claim:** **v2 REFUTED by the operator's eye — STILL VIBRATES.** Third
+subtractive failure. Superseded by the v3 strategy flip (§3.5).
+
+**THE v2 AUDIT CRITERION WAS WRONG (the correction):** "warped samples = consistent" is INSUFFICIENT.
+The occl winner re-admits PREV-warped (**A-track**) samples — and A-track vs B-track placement
+disagrees by the measured **3.2–4.6px**; likewise the fill-div/matte/crescent **model-displaced**
+samples place the ball at a THIRD (gme-track) position. Three tracks, three positions. The correct
+consistency criterion is: **SAME-TRACK (B: `cur @ uv+(1−t)·mv_local`) or PROVEN-STATIC.** Under that
+bar, the v2 "KEEP" verdicts for the occl winner (A-side winners), fill-div, matte-bg, and the crescent
+family were all still able to inject other-track positions — plausibly the v2 residual vibration.
+
+### 3.5 v3 — THE STRATEGY FLIP: build UP from the known-smooth base
+
+**Rationale:** three subtractive recompositions failed the operator's eye in a row — v0 (crossfade
+fallback), v1 (static-cur fallback), v2 (forced-warp selection + medoid/commit/ts-smooth inerts) —
+while `--blend-solo 2` stayed smooth on the SAME builds every time. Subtracting inconsistency from the
+full pipeline keeps losing to un-audited injectors; v3 inverts the construction: **start from exactly
+what `--blend-solo 2` outputs, and re-admit layers ONE AT A TIME, each operator-eye-gated.**
+
+**The mirror (what `B_samp_final` is, exactly):** `--blend-solo 2` outputs `B_samp` — a `const vec4`
+fetched ONCE at the Gate-2 site (`texture(u_cur_real, uv + inv_t_mv_uv)`,
+`inv_t_mv_uv = (mv_fwd_eff·(1−t))/out_size`), **never mutated after birth** (it is `const`; the blend
+consumes it by value). The blend-solo override is the LAST modification of `result` (after ts-smooth),
+immediately before `imageStore`. v3 overrides at the SAME site with the SAME value, placed just BEFORE
+the blend-solo branch so the diagnostic still wins when both flags are set.
+
+**The stage ladder (each stage eye-gated by the operator; no stage advances without the gate):**
+
+| Stage | Composition at the override site | Flag | Eye gate | Status |
+|---|---|---|---|---|
+| **v3.0** | `result = B_samp` — nothing else; byte-equal to `--blend-solo 2` | `--single-track --st-no-stasis` | must be INDISTINGUISHABLE from `--blend-solo 2` | passed implicitly (v3.1 is v3.0 + stasis and passed outright) |
+| **v3.1** | v3.0 + ONLY the stasis re-admission: `if (stasis) result = cur[uv]` — proven-static (identical-in-both-reals, the main-scope `stasis` bool the block already computes; no hoisting needed) presents the crisp real; moving content stays pure B-track | `--single-track` (**now the shipping DEFAULT-ON**) | still smooth AND the zoo's grid/crosshair crisp | **PASS — operator verdict "la alucinación es mejor que LSFG"; smooth, no crossfade/vibration, statics crisp (with `--bg-reclaim 4.0`)** |
+| v3.2+ | further re-admissions (occlusion one-sided, matte bg, …) — one at a time, LATER | — | one eye gate each | NOT BUILT (deliberate); §9 lists the residual candidates |
+
+**Why v3.1 is the shipping candidate:** HUD protection (static witnesses crisp at source) is what HSR
+needs; the disocclusion look of the pure B-track was already operator-accepted in `--blend-solo 2`.
+`--no-stasis` (stasis_thresh=0) degrades v3.1 to v3.0 shader-side (the `stasis` bool goes
+constant-false).
+
+**Encoding:** the existing `single_track` push float — 0 = OFF, 1.0 = v3.1, 2.0 = v3.0; the shader's
+final override reads `>0.5` (armed) and `<1.5` (v3.1's stasis re-admission). No new push field; the
+block stays 232B. The v1/v2 gates remain upstream (they key on `>0.5`, so both stages arm them) — now
+SHADOWED by the final override: harmless, they save dead work, and their documented rationale stands as
+the audit trail.
 
 ---
 
@@ -261,6 +363,25 @@ so it is byte-identical when the model is stale, exactly like the other gme-gate
 - **onepos re-injects A-weight (the ordering trap).** Mitigation AS DESIGN: apply the `wa_eff→0`
   collapse AT the `warp_result` composition line, AFTER onepos rewrites `wa` (§3.2). Verified by
   reading onepos (it only mutates `wa`, never `warp_result`).
+- **FOUND POST-MEASURE (operator-eye bisection) — the fallback content was TRACK-INCONSISTENT: the
+  vibration re-injection path.** v1 collapsed only `warp_result`'s base; `blend_result` — the fallback
+  content of the UNCONDITIONAL soft/hard final selection (`result = mix(blend_result, warp_result, w)`
+  soft / the binary keep hard) — stayed the un-warped (1−t)/t crossfade of the two reals. Every
+  low-confidence block (the ball's silhouette + textureless interior) fell back to a crossfade of two
+  positions ~22px apart, per-block per-phase = the A/B crossover vibration re-entering through the
+  fallback. Bisected by the operator's eye: `--single-track` vibrated even with ALL optional layers
+  disabled (`--no-commit --no-commit-default --no-member-commit --occl-thresh 0 --no-matte
+  --no-phase-anchor --no-soft-gate --no-onepos --no-obj-crescent --no-stasis --no-inertia --no-crescent
+  --no-appearance --no-travel --no-contour --no-ambig --no-rescue --no-band-xfade --no-fill-div
+  --no-vblend --no-bg-snap`), while `--blend-solo 2` — which bypasses the selection entirely — stayed
+  smooth on the same build. v1 FIX: under `single_track>0.5` the `blend_result` BASE becomes pure
+  `cur[uv]` (track-consistent; precedent — the occl-winner branch already replaces `blend_result` with
+  pure cur/prev reals). **v1 WAS NECESSARY BUT NOT SUFFICIENT** — the operator's eye still saw the
+  vibration ("looks like a crossfade"): STATIC cur on MOVING content still positionally disagrees with
+  the warped track at intermediate phases. The full cure is the v2 LAW recomposition (§3.4): forced-warp
+  final selection + the commit/ts-smooth gates + the injector audit. The v1 pure-cur form is KEPT as
+  defense-in-depth (blend_result is now a dead value under single-track). OFF path keeps the plain
+  crossfade (byte-identical).
 - **Trailing disocclusion loses prev (the A-track carried it).** Mitigation: the occlusion "fwd_ok
   only → prev owns" branch REWRITES `warp_result` toward A_samp regardless of base `wa` (~L686) — that
   path is untouched. Gate 3 (static witnesses) + a visual check on the ball's trailing edge confirm.
@@ -380,3 +501,24 @@ drop the floor, as the sibling plan notes — the current bench is the limiter, 
 - **bg-reclaim on real game content:** the ball zoo has ONE mover on a static grid — the ideal case for
   the gme-nonconform discriminator. On multi-object / moving-background content the `bg_like` ratio gate
   (model-explains-better) is the guard against damping a real fast object; verify on a real capture.
+
+---
+
+## 9. Known residuals (operator-observed; next iteration — neither a blocker)
+
+Both observed by the operator's eye on the shipping default (v3.1 + reclaim 4.0); both accepted for
+this release.
+
+- **(a) Tile-quantized reclaim boundaries.** The reclaim's damping decision inherits the 8px MV-block
+  granularity (the `nonconf`/`bg_like` signature is evaluated on the per-pixel *sampled* MV, but the
+  underlying pollution and the model conformance change block-wise), so the residual gravity snaps to
+  block edges instead of fading smoothly. **Candidate fix:** a per-pixel / bilinear reclaim weight —
+  blend the damp weight `w` across the 4 MV-grid corners (the same footprint the fetch already reads)
+  so the reclaim boundary is sub-tile smooth.
+- **(b) Leading-edge sticky lines.** Tiles the ball is ENTERING are genuinely ambiguous: the object is
+  partially present in the tile's content, so the "background-like" test (`bg_like` — the model
+  explains the pixel better than the local MV) correctly FAILS → no reclaim → the tile carries the
+  object MV and background lines inside it travel briefly until the object fully owns the tile.
+  **Candidate fixes:** temporal hysteresis (a tile that was background last pair needs stronger
+  evidence to adopt an object MV), or an iGPU contour-field assist (the Sobel band marks the true
+  silhouette sub-tile — gate the reclaim's bg-side by it, the same signal `bg_snap` reads).

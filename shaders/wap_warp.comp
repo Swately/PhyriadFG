@@ -130,7 +130,7 @@ layout(push_constant) uniform PushConsts {
     float predict_p2;    // predict_p2 (--predict-p2): 0 = P1 (DEFAULT: the extrapolation tap uses the raw current-pair mv = constant-VELOCITY, today's ASW behavior). >0.5 = P2 (the tap uses mv_target_s = 2*mv - mv_prev = constant-ACCELERATION, the vblend PREDICT form). Read ONLY at the extrap tap when pc.extrap>0.0; host sends 0 unless --predict-p2 -> byte-identical to today's ASW.
     float blend_solo;    // blend_solo (--blend-solo, DIAGNOSTIC): 0 = OFF (DEFAULT: the branch just before imageStore is never entered -> byte-identical). 1 = output ONLY A_samp (the A-track: u_prev_real at uv - t*mv_fwd_eff). 2 = output ONLY B_samp (the B-track: u_cur_real at uv + (1-t)*mv_fwd_eff). Measurement-only: it overrides the fully-composited result (blend + commit/matte/onepos/stasis/extrap/ts-smooth) with the raw single-track sample, so each track's ball position vs phase can be measured in isolation. Host sends 0 unless --blend-solo N.
     float mv_edge_snap;  // mv_edge_snap (--mv-edge-snap): 0 = OFF (DEFAULT: the primary MV keeps its guided/LINEAR fetch -> byte-identical). >0.5 = cross-bilateral (edge-aware sub-block) primary MV: joint-bilateral upsample of the 8px MV grid weighted by a GUIDANCE similarity so an object-edge pixel draws its MV from the object-side texels (fixes the silhouette MV-dilution — the convicted defect). ENCODING: host packs mv_edge_snap = variant + sim_band, variant in {1=G1 dissidence-class, 2=G2 color}; the warp recovers use_dis = (v < 1.5) is FALSE... see the fetch site. Read only at the primary MV fetch; degenerate → plain bilinear (never NaN). Endpoints untouched (the tap still scales mv by t/(1-t)). Supersedes mv_guided's hard single-corner pick for this pixel when armed.
-    float single_track;  // single_track (--single-track): 0 = OFF (DEFAULT: the composite base is the (1-t,t) A/B blend -> byte-identical). >0.5 = the composite BASE becomes the B-track (cur @ uv+(1-t)*mv): the effective A-weight is collapsed to 0 AT the warp_result composition (AFTER onepos rewrites wa, so onepos cannot re-inject A-weight). The A-track is RE-ADMITTED downstream ONLY where the occlusion machinery already decides it owns (fwd_ok-only round-trip -> mix toward A_samp; fill-div occlude; commit_use_A) -- those paths are UNCHANGED. The (1-t)/t crossover of two ~3.5px-apart tracks IS the perceived vibration; the single-track base removes it. Endpoint: at t=1 (1-t)=0 so B_samp==cur[uv] byte-exact; at t=0+ this pays the full backward warp cur[uv+mv] (the residual per-pair step). Read only at the composition line. Requires --warp-at-presenter.
+    float single_track;  // single_track (--single-track): 0 = OFF (DEFAULT: everything below byte-identical). >0.5 = the v2 LAW: the composite BASE becomes the B-track (cur @ uv+(1-t)*mv) and ONLY warped-at-phase content may paint MOVING regions; unwarped reals paint only where staticity is PROVEN. FOUR shader consumers: (1) the composition -- the effective A-weight collapsed to 0 (after onepos, so it cannot re-inject A); (2) the blend_result base becomes pure cur (v1, now defense-in-depth); (3) the FINAL selection (multicand medoid / soft gate / hard keep -- the unconditional cascade with NO off-flag) FORCED to result=warp_result; (4) the commit family + ts-smooth (unwarped/lagged real injectors selected BY low confidence = the moving silhouette) INERT. Staticity-proven layers stay ACTIVE (stasis, matte bg, disoccl reveal-fill; occl winner = warped samples, the A-track re-admission). History + injector audit: docs/planning/SINGLE_TRACK_MODE_PLAN.md 3.4 (two operator-eye bisections: v0 crossfade fallback -> v1 static-cur fallback -> v2 law). Endpoint: t=1 cur byte-exact; t=0+ pays the full backward warp (the residual per-pair step). Requires --warp-at-presenter.
     float bg_reclaim;    // bg_reclaim (--bg-reclaim): 0 = OFF (DEFAULT: the primary MV is untouched -> byte-identical; the shader gates on > 0.001 so 0 is exactly off). >0 = the gravity fix + carries the STRENGTH scale: a TILE whose content is background-like (its two reals agree under the global gme model but disagree under the local mv) yet whose MV is object-like (|mv-gme_model_mv| large) is POLLUTED -- the 8px matcher straddled the silhouette and lent the object MV to fringe background. Damp mv toward gme_model_mv: w = bg_reclaim*nonconform*bg_like; mv = mix(mv, model, w). SOFT (LSFG-like) at strength~1; HARD snap as strength*bands saturate. Both A_samp and B_samp then re-sample with the reclaimed mv. The 4 model/local taps fire only inside nonconform>0 (the static-grid majority mv~model short-circuits). Distinct from bg_snap (which gates on the iGPU CONTOUR band -- edge pixels only; this is TILE-scale). Requires gme_on (host pushes 0 when the model is stale). Read only at the primary MV fetch.
 } pc;
 
@@ -656,8 +656,22 @@ void main() {
     // identical. Every downstream layer (matte/stasis/commit/soft-hard/ts-smooth) runs on this base.
     const float wa_eff = (pc.single_track > 0.5) ? 0.0 : wa;
     vec4 warp_result = wa_eff * A_samp + (1.0 - wa_eff) * B_samp;
-    vec4 blend_result = (1.0 - pc.t) * texture(u_prev_real, uv)
-                      + pc.t * texture(u_cur_real, uv);
+    // --single-track FALLBACK CONSISTENCY (the vibration re-injection fix, operator-eye bisected):
+    // blend_result is the FALLBACK content of the UNCONDITIONAL soft/hard final selection below —
+    // by default the UN-WARPED (1−t)/t phase crossfade of the two reals. Under single-track that
+    // fallback was TRACK-INCONSISTENT: every low-confidence block (the silhouette + textureless
+    // interior) fell back to a crossfade of two positions ~22px apart, per-block per-phase = the A/B
+    // crossover vibration re-entering through the fallback (bisection: vibrates with ALL optional
+    // layers off; --blend-solo 2 — which bypasses the selection — stays smooth). The cure: the
+    // fallback BASE becomes pure cur (track-consistent with the B-track base; precedent — the
+    // occl-winner branch below already replaces blend_result with pure cur/prev reals). Trade:
+    // low-confidence blocks now hold STATIC cur instead of crossfading — consistent with the
+    // B-track's t→1 endpoint. All downstream blend_result mutations (occl winner mix, near_real
+    // commit, matte override) operate on it unchanged. OFF → the plain crossfade (byte-identical).
+    vec4 blend_result = (pc.single_track > 0.5)
+        ? texture(u_cur_real, uv)
+        : ((1.0 - pc.t) * texture(u_prev_real, uv)
+         + pc.t * texture(u_cur_real, uv));
 
     // bidirectional occlusion classification (occl_thresh > 0 selects). Gate the WHOLE block on
     // occl_thresh > 0.0 -> the default is byte-identical (the bwd sampler is never read). All
@@ -764,7 +778,15 @@ void main() {
     // commit-don't-hedge (commit_thresh > 0 selects; 0 = the averages above). Gate the WHOLE
     // override on commit_thresh > 0.0 -> the default is byte-identical even though d_ab > 0 holds
     // wherever the two warped samples differ.
-    if (pc.commit_thresh > 0.0) {
+    // SINGLE-TRACK LAW GATE: the commit family substitutes UNWARPED real content (near_real =
+    // prev/cur at raw uv under commit_real, DEFAULT ON) onto pixels selected BY LOW CONFIDENCE
+    // (d_ab) — i.e. exactly the moving silhouette + textureless interior. A static real on moving
+    // content positionally disagrees with the warped track at intermediate phases = the crossfade
+    // look = the vibration re-injection. Under single-track the whole block (commit + rescue + the
+    // appearance re-blend inside it) is INERT: warp_result stays the B-track base (plus the occl
+    // re-admission). rescue is folded in deliberately — its replacement is a TWO-track candidate
+    // average (wa·A_c + t·B_c), the crossover in miniature. OFF (single_track<=0.5) -> unchanged.
+    if (pc.commit_thresh > 0.0 && pc.single_track <= 0.5) {
         // d_ab = max-channel abs diff between the two warped samples (color units).
         // Max-channel (not luminance): the ghost is a small high-contrast feature whose
         // divergence can live in ONE channel (a coloured detail); luminance's 0.2/0.7/0.1
@@ -1025,6 +1047,27 @@ void main() {
     }
 
     vec4 result;
+    // ── THE SINGLE-TRACK LAW (v2, operator-eye bisected twice) ──────────────────────────────────
+    // In single-track mode ONLY warped-at-phase content may paint MOVING regions; unwarped real
+    // content may paint only where staticity is PROVEN (stasis / the matte's model-conforming
+    // background). Every layer that substitutes unwarped reals onto arbitrary (possibly moving)
+    // content re-creates the positional disagreement the mode exists to remove. The old blend world
+    // tolerated real-injection because warp_result was itself blend-ish; the single-track world does
+    // not. THE ENFORCEMENT: force result = warp_result — the ENTIRE final selection cascade (the
+    // multicand medoid, the soft gate, the hard keep/freeze) is inert under single-track. This is
+    // the unconditional selection with NO off-flag (why no flag combo could smooth it): its fallback
+    // content (blend_result — the (1−t)/t crossfade in v0; STATIC cur after v1) positionally
+    // disagrees with the warped track at intermediate phases on every low-confidence block (the
+    // textureless ball interior) = content at two positions = the crossfade look = the vibration.
+    // NOTE the medoid path was ALSO executing in the operator's bisection (mc_on is DEFAULT ON and
+    // --no-multicand was not in the bisection set): its candidate set includes A_samp + two-track
+    // perturbed blends, and its dispersion guard paints blend_result — all track-inconsistent; this
+    // one gate silences every one of them. warp_result here has already been through the occl-winner
+    // re-admission (warped samples — consistent) and the matte/bg overrides (model-warped, static-
+    // proven domains — consistent). OFF (single_track<=0.5) -> the cascade below runs byte-identical.
+    if (pc.single_track > 0.5) {
+        result = warp_result;
+    } else
     // scored MULTI-CANDIDATE selection -- "generate + discriminate + SELECT" (mc_on > 0.5). The
     // field cannot recover ground truth from two frames; this REDUCES artifacts by picking the most
     // self-consistent candidate. Mechanism = the MEDOID (nearest-to-consensus, robust to one
@@ -1196,7 +1239,11 @@ void main() {
     // on moving content, hence the garbage-gate). garbage_w is built from d_pixel (0 = the two warped
     // anchors agree = clean -> no blend; high = disagree = flow failure -> full blend). MUST be the
     // LAST modification of result. OFF (ts_smooth==0) -> no blend (byte-identical).
-    if (pc.ts_smooth > 0.0) {
+    // SINGLE-TRACK LAW GATE: prev_output trails on moving content (same-uv, no motion-comp) and the
+    // garbage gate selects exactly the low-confidence MOVING pixels — a lagged-position paint = the
+    // positional disagreement the mode removes. Inert under single-track (ts_smooth defaults 0
+    // anyway; this keeps an explicit arm from silently re-injecting). OFF-mode path unchanged.
+    if (pc.ts_smooth > 0.0 && pc.single_track <= 0.5) {
         const float garbage_w = clamp(smoothstep(pc.agreement_threshold, 3.0*pc.agreement_threshold, d_pixel), 0.0, 1.0);
         result = mix(result, texture(u_prev_out, uv), pc.ts_smooth * garbage_w);
     }
@@ -1207,6 +1254,32 @@ void main() {
     // (DEFAULT) never enters this branch -> byte-identical. 1 = A-track (prev @ uv - t*mv); 2 = B-track
     // (cur @ uv + (1-t)*mv). This is the LAST modification of result (after ts-smooth), so no downstream
     // layer perturbs the isolated track.
+    // ── v3 SINGLE-TRACK OVERRIDE (the strategy flip: build UP from the known-smooth base) ─────────
+    // Three subtractive recompositions (v0 fallback→crossfade, v1 fallback→static-cur, v2 law gates)
+    // each still vibrated to the operator's eye; --blend-solo 2 stayed smooth every time. The v2 audit
+    // criterion was also WRONG: "warped = consistent" is insufficient — the occl winner re-admits
+    // PREV-warped (A-track) samples (A vs B placement disagrees by the measured 3.2–4.6px) and the
+    // fill-div/matte/crescent model samples place content at a THIRD (gme-track) position. The correct
+    // criterion: SAME-TRACK (B: cur @ uv+(1−t)·mv_local) or PROVEN-STATIC. So v3 overrides at THIS
+    // site — the exact pre-store site --blend-solo uses — with the exact value --blend-solo 2 outputs:
+    // B_samp, the const Gate-2 fetch (cur @ uv + (1−t)·mv_fwd_eff), never mutated after birth.
+    //   v3.0 (single_track==2.0, --single-track --st-no-stasis): result = B_samp, nothing else —
+    //        byte-equal to --blend-solo 2 (the eye-gate: must be INDISTINGUISHABLE from it).
+    //   v3.1 (single_track==1.0, --single-track, THE SHIPPING CANDIDATE): B_samp + ONLY the stasis
+    //        re-admission, recomposed AT the site: a PROVEN-static pixel (the identical-in-both-reals
+    //        test the stasis block already computed into the main-scope `stasis` bool) presents the
+    //        crisp real cur[uv] (the HUD/grid/crosshair protection HSR needs); moving content stays
+    //        pure B-track. --no-stasis (stasis_thresh=0) → stasis constant-false → v3.1 ≡ v3.0.
+    // The earlier v1/v2 gates (wa_eff collapse, pure-cur blend_result, forced-warp selection, commit/
+    // ts-smooth inerts) remain in place UPSTREAM — now shadowed by this override (harmless; they save
+    // dead work and keep their documented rationale). Placed BEFORE the blend-solo branch so the
+    // DIAGNOSTIC still wins when both are set (blend-solo stays the measurement tool). Further
+    // re-admissions (occlusion, matte, …) happen LATER, one at a time, each operator-eye-gated.
+    // OFF (single_track<=0.5) -> never entered -> byte-identical.
+    if (pc.single_track > 0.5) {
+        result = B_samp;                                              // the known-smooth B-track base
+        if (pc.single_track < 1.5 && stasis) result = texture(u_cur_real, uv);   // v3.1: proven-static → crisp real
+    }
     if (pc.blend_solo > 0.5) {
         result = (pc.blend_solo < 1.5) ? A_samp : B_samp;
     }
