@@ -130,8 +130,8 @@ layout(push_constant) uniform PushConsts {
     float predict_p2;    // predict_p2 (--predict-p2): 0 = P1 (DEFAULT: the extrapolation tap uses the raw current-pair mv = constant-VELOCITY, today's ASW behavior). >0.5 = P2 (the tap uses mv_target_s = 2*mv - mv_prev = constant-ACCELERATION, the vblend PREDICT form). Read ONLY at the extrap tap when pc.extrap>0.0; host sends 0 unless --predict-p2 -> byte-identical to today's ASW.
     float blend_solo;    // blend_solo (--blend-solo, DIAGNOSTIC): 0 = OFF (DEFAULT: the branch just before imageStore is never entered -> byte-identical). 1 = output ONLY A_samp (the A-track: u_prev_real at uv - t*mv_fwd_eff). 2 = output ONLY B_samp (the B-track: u_cur_real at uv + (1-t)*mv_fwd_eff). Measurement-only: it overrides the fully-composited result (blend + commit/matte/onepos/stasis/extrap/ts-smooth) with the raw single-track sample, so each track's ball position vs phase can be measured in isolation. Host sends 0 unless --blend-solo N.
     float mv_edge_snap;  // mv_edge_snap (--mv-edge-snap): 0 = OFF (DEFAULT: the primary MV keeps its guided/LINEAR fetch -> byte-identical). >0.5 = cross-bilateral (edge-aware sub-block) primary MV: joint-bilateral upsample of the 8px MV grid weighted by a GUIDANCE similarity so an object-edge pixel draws its MV from the object-side texels (fixes the silhouette MV-dilution — the convicted defect). ENCODING: host packs mv_edge_snap = variant + sim_band, variant in {1=G1 dissidence-class, 2=G2 color}; the warp recovers use_dis = (v < 1.5) is FALSE... see the fetch site. Read only at the primary MV fetch; degenerate → plain bilinear (never NaN). Endpoints untouched (the tap still scales mv by t/(1-t)). Supersedes mv_guided's hard single-corner pick for this pixel when armed.
-    float single_track;  // single_track (--single-track): 0 = OFF (DEFAULT: everything below byte-identical). >0.5 = the v2 LAW: the composite BASE becomes the B-track (cur @ uv+(1-t)*mv) and ONLY warped-at-phase content may paint MOVING regions; unwarped reals paint only where staticity is PROVEN. FOUR shader consumers: (1) the composition -- the effective A-weight collapsed to 0 (after onepos, so it cannot re-inject A); (2) the blend_result base becomes pure cur (v1, now defense-in-depth); (3) the FINAL selection (multicand medoid / soft gate / hard keep -- the unconditional cascade with NO off-flag) FORCED to result=warp_result; (4) the commit family + ts-smooth (unwarped/lagged real injectors selected BY low confidence = the moving silhouette) INERT. Staticity-proven layers stay ACTIVE (stasis, matte bg, disoccl reveal-fill; occl winner = warped samples, the A-track re-admission). History + injector audit: docs/planning/SINGLE_TRACK_MODE_PLAN.md 3.4 (two operator-eye bisections: v0 crossfade fallback -> v1 static-cur fallback -> v2 law). Endpoint: t=1 cur byte-exact; t=0+ pays the full backward warp (the residual per-pair step). Requires --warp-at-presenter.
-    float bg_reclaim;    // bg_reclaim (--bg-reclaim): 0 = OFF (DEFAULT: the primary MV is untouched -> byte-identical; the shader gates on > 0.001 so 0 is exactly off). >0 = the gravity fix + carries the STRENGTH scale: a TILE whose content is background-like (its two reals agree under the global gme model but disagree under the local mv) yet whose MV is object-like (|mv-gme_model_mv| large) is POLLUTED -- the 8px matcher straddled the silhouette and lent the object MV to fringe background. Damp mv toward gme_model_mv: w = bg_reclaim*nonconform*bg_like; mv = mix(mv, model, w). SOFT (LSFG-like) at strength~1; HARD snap as strength*bands saturate. Both A_samp and B_samp then re-sample with the reclaimed mv. The 4 model/local taps fire only inside nonconform>0 (the static-grid majority mv~model short-circuits). Distinct from bg_snap (which gates on the iGPU CONTOUR band -- edge pixels only; this is TILE-scale). Requires gme_on (host pushes 0 when the model is stale). Read only at the primary MV fetch.
+    float single_track;  // single_track (--single-track, DEFAULT ON as 1.0): 0 = OFF (everything below byte-identical). 1.0 = v3.2 (the SHIPPING DEFAULT): the pre-store override result = B_samp + the per-pixel SCREEN-STATIC evidence mix (d_zero=|cur[uv]-prev[uv]| vs d_warp=d_pixel, winner-with-margin ratio -> w_s; block-proven stasis saturates w_s=1; result = mix(B_samp, cur[uv], w_s)) -- the HSR HUD protection under camera pan (a screen-fixed overlay is gme-nonconform; its polluted-MV tiles would self-ghost toward the motion). 2.0 = v3.0 (--st-no-stasis): pure B_samp, byte-equal to --blend-solo 2 (the diagnostic mirror). The v1/v2 gates stay armed upstream on >0.5 (shadowed by the final override; they save dead work): (1) wa_eff collapsed to 0 after onepos; (2) blend_result base = pure cur; (3) the final selection FORCED to warp_result; (4) commit family + ts-smooth INERT. History + injector audit: docs/planning/SINGLE_TRACK_MODE_PLAN.md 3.4-3.5 + 10 (v0 crossfade fallback -> v1 static-cur fallback -> v2 law -> v3 strategy flip -> v3.2 screen-static evidence). Endpoint: t=1 cur byte-exact; t=0+ pays the full backward warp (the residual per-pair step). Requires --warp-at-presenter.
+    float bg_reclaim;    // bg_reclaim (--bg-reclaim, DEFAULT ON at 4.0): 0 = OFF (the primary MV is untouched -> byte-identical; the shader gates on > 0.001 so 0 is exactly off). >0 = the gravity fix + carries the STRENGTH scale: a TILE whose content is background-like (its two reals agree under the global gme model but disagree under the local mv) yet whose MV is object-like (|mv-gme_model_mv| large) is POLLUTED -- the 8px matcher straddled the silhouette and lent the object MV to fringe background. v3.2 THREE-HYPOTHESIS form: the SCREEN-STATIC (zero-motion) hypothesis d_zero=|cur[uv]-prev[uv]| joins the local/model contest -- st_over_model arbitrates, the damp TARGET slides model->ZERO and the evidence slides bg_like->zero_like, so a screen-fixed overlay (HUD) pixel is damped toward mv=0 instead of toward the CAMERA model (the HSR inverse-crossfade fix; when the model ~0 the v3.1 behavior is preserved by construction, d_mod==d_zero). w = bg_reclaim*nonconform*evid; mv = mix(mv, target, w). SOFT (LSFG-like) at strength~1; HARD snap as strength*bands saturate. Both A_samp and B_samp then re-sample with the reclaimed mv. The 4+2 taps fire only inside nonconform>0 (the model-conforming majority short-circuits). Distinct from bg_snap (which gates on the iGPU CONTOUR band -- edge pixels only; this is TILE-scale). Requires gme_on (host pushes 0 when the model is stale). Read only at the primary MV fetch.
 } pc;
 
 shared float s_d[64];
@@ -345,12 +345,13 @@ void main() {
     // --bg-reclaim: the gravity fix (TILE-scale). A polluted fringe tile has BACKGROUND-like content
     // (its two reals agree under the global gme model, disagree under the local mv) but an OBJECT-like
     // MV (|mv - gme_model_mv| large): the 8px matcher straddled the silhouette and lent the object's MV
-    // to fringe background, dragging grid lines toward the ball. Damp mv toward the background model so
-    // the fringe takes background motion; BOTH A_samp/B_samp then re-sample with the reclaimed mv (one
+    // to fringe background, dragging grid lines toward the ball. Damp mv toward the winning hypothesis
+    // — the background model, or (v3.2) ZERO for screen-static overlay pixels — so the fringe takes the
+    // motion the reals actually support; BOTH A_samp/B_samp then re-sample with the reclaimed mv (one
     // damp, both tracks). SOFT (LSFG-style) at strength~1; HARD snap as strength·bands saturate. Placed
     // AFTER mv_fwd capture (like bg_snap) so the occlusion round-trip keeps the RAW matcher fields; only
-    // the SAMPLING mv is reclaimed. The 4 model/local taps fire only inside nonconf>0 (the static-grid
-    // majority mv≈model short-circuits at nonconf==0 → 0 taps). Gated on bg_reclaim>0.001 (0=OFF, byte-
+    // the SAMPLING mv is reclaimed. The 4+2 evidence taps fire only inside nonconf>0 (the model-conforming
+    // majority short-circuits at nonconf==0 → 0 taps). Gated on bg_reclaim>0.001 (0=OFF, byte-
     // identical) AND gme_on>0.5 (needs the model). Distinct from bg_snap: bg_snap gates on the iGPU
     // CONTOUR band (edge pixels only); this is the whole polluted fringe, contour or not — the fetch-
     // level mv-edge-snap could not fix it because ALL 4 corners are polluted (radius ≥ a full tile).
@@ -369,8 +370,28 @@ void main() {
             // div). A genuinely-fast object has d_mod HIGH (the model does NOT fit) → bg_like→0 → no damp,
             // so the object CORE is exempt by construction; only model-conforming fringe tiles reclaim.
             const float bg_like = smoothstep(1.2, 3.0, (d_loc + 0.02) / (d_mod + 0.02));
-            const float w       = clamp(pc.bg_reclaim * nonconf * bg_like, 0.0, 1.0);
-            mv = mix(mv, model_mv, w);   // hard snap when strength·band saturates; soft LSFG-style decay otherwise
+            // v3.2 SCREEN-STATIC EXEMPTION (the HSR HUD-ghost fix, mechanism (b)): under camera pan the
+            // gme model IS the camera motion, so a screen-fixed overlay (HUD) is a THIRD hypothesis the
+            // two-way d_loc/d_mod contest cannot represent — a translucent/boundary HUD tile whose
+            // visible majority is background reads "model explains it better" (bg_like fires) and was
+            // damped toward the CAMERA model: exactly wrong, the overlay then travels with the world
+            // ("inverse crossfade"). Add the ZERO-motion hypothesis with 2 cheap same-uv taps (only
+            // inside nonconf>0, same budget discipline as the 4 warp taps):
+            //   d_zero = |cur[uv] − prev[uv]| — LOW iff the content at this pixel is screen-static.
+            // st_over_model arbitrates model-vs-zero (the same winner-with-margin ratio idiom); the
+            // reclaim TARGET slides model→ZERO and the evidence term slides bg_like→zero_like (zero
+            // beats the LOCAL mv) accordingly. A pixel the zero hypothesis clearly explains is damped
+            // toward mv=0 (the overlay stops traveling); a true background pixel has d_zero HIGH (the
+            // world moved across it) → st_over_model→0 → byte-equal to the v3.1 reclaim. When the gme
+            // model ≈ 0 (static camera, the non-pan zoo) d_mod ≡ d_zero → ratio 1 → st_over_model = 0
+            // → the v3.1 gravity behavior is preserved BY CONSTRUCTION (the G3 anchor).
+            const float d_zero  = length(texture(u_cur_real, uv).rgb - texture(u_prev_real, uv).rgb);
+            const float st_over_model = smoothstep(1.2, 3.0, (d_mod + 0.02) / (d_zero + 0.02));
+            const float zero_like     = smoothstep(1.2, 3.0, (d_loc + 0.02) / (d_zero + 0.02));
+            const vec2  target = mix(model_mv, vec2(0.0), st_over_model);
+            const float evid   = mix(bg_like, zero_like, st_over_model);
+            const float w      = clamp(pc.bg_reclaim * nonconf * evid, 0.0, 1.0);
+            mv = mix(mv, target, w);   // hard snap when strength·band saturates; soft LSFG-style decay otherwise
         }
     }
     if (pc.phase_anchor_on > 0.5 && pc.occl_thresh > 0.0) {
@@ -1265,11 +1286,32 @@ void main() {
     // B_samp, the const Gate-2 fetch (cur @ uv + (1−t)·mv_fwd_eff), never mutated after birth.
     //   v3.0 (single_track==2.0, --single-track --st-no-stasis): result = B_samp, nothing else —
     //        byte-equal to --blend-solo 2 (the eye-gate: must be INDISTINGUISHABLE from it).
-    //   v3.1 (single_track==1.0, --single-track, THE SHIPPING CANDIDATE): B_samp + ONLY the stasis
-    //        re-admission, recomposed AT the site: a PROVEN-static pixel (the identical-in-both-reals
-    //        test the stasis block already computed into the main-scope `stasis` bool) presents the
-    //        crisp real cur[uv] (the HUD/grid/crosshair protection HSR needs); moving content stays
-    //        pure B-track. --no-stasis (stasis_thresh=0) → stasis constant-false → v3.1 ≡ v3.0.
+    //   v3.2 (single_track==1.0, --single-track, THE SHIPPING DEFAULT): B_samp + the SCREEN-STATIC
+    //        re-admission, recomposed AT the site as ONE unified mix. Stays inside the consistency
+    //        law: unwarped real content may paint only where staticity is PROVEN — v3.2 BROADENS the
+    //        PROOF from the block-level stasis bool to per-pixel THREE-HYPOTHESIS evidence. The HSR
+    //        field defect it cures: under camera pan, gme = camera motion, so a screen-fixed overlay
+    //        (HUD) is gme-NONCONFORM; its tiles inherit polluted background MV and the B-track warp
+    //        displaces HUD pixels toward the motion ("inverse crossfade" self-ghost; worst on
+    //        translucent panels — pan-bench m3 glass-ghost 134.5 px vs the old-world 5.6). Evidence:
+    //          d_zero = |cur[uv] − prev[uv]|      (the SCREEN-STATIC hypothesis: content identical
+    //                                              at this uv in both reals — 2 taps, per-pixel, the
+    //                                              soft/translucent form the block sad_zero cannot see)
+    //          d_warp = d_pixel = |A_samp − B_samp| (the WARP hypothesis: the two tracks agree at the
+    //                                              phase position — ALREADY COMPUTED at ~L501, reused)
+    //        w_s = smoothstep(1.2, 3.0, (d_warp+ε)/(d_zero+ε)) — winner-with-MARGIN (the bg_like ratio
+    //        idiom, NO hard threshold): fires only where static beats warp CLEARLY; translucent pixels
+    //        get intermediate w_s (partial pin: the static tint/text component wins by its share).
+    //        Then result = mix(B_samp, cur[uv], w_s). The old v3.1 strict stasis re-admission is the
+    //        w_s≈1 EXTREME of this mix — UNIFIED, not stacked: the block-proven stasis bool saturates
+    //        w_s to 1 (byte-same as v3.1 on proven-static blocks — the non-pan G3 parity anchor).
+    //        Where mv≈0 the evidence is inert by construction (B_samp==cur[uv], d_warp==d_zero →
+    //        ratio 1 → w_s 0 → same value): it only bites where a WRONG nonzero mv displaces content
+    //        the reals prove static. On MOVING content d_zero is high by construction (the content
+    //        changed at uv) → w_s→0 → the smooth B-track is untouched (the G2 no-crossover gate).
+    //        KNOWN LIMIT: content moving EXACTLY one texture period per pair aliases d_zero≈0 (the
+    //        same two-frame ambiguity the SAD matcher has; the ambig rule exists for the MV side).
+    //        --no-stasis removes only the block-proof saturation; the per-pixel evidence remains.
     // The earlier v1/v2 gates (wa_eff collapse, pure-cur blend_result, forced-warp selection, commit/
     // ts-smooth inerts) remain in place UPSTREAM — now shadowed by this override (harmless; they save
     // dead work and keep their documented rationale). Placed BEFORE the blend-solo branch so the
@@ -1278,7 +1320,13 @@ void main() {
     // OFF (single_track<=0.5) -> never entered -> byte-identical.
     if (pc.single_track > 0.5) {
         result = B_samp;                                              // the known-smooth B-track base
-        if (pc.single_track < 1.5 && stasis) result = texture(u_cur_real, uv);   // v3.1: proven-static → crisp real
+        if (pc.single_track < 1.5) {                                  // v3.2: screen-static evidence mix
+            const vec4  cur0   = texture(u_cur_real,  uv);            // the unwarped real (the mix target)
+            const float d_zero = length(cur0.rgb - texture(u_prev_real, uv).rgb);
+            float w_s = smoothstep(1.2, 3.0, (d_pixel + 0.02) / (d_zero + 0.02));
+            if (stasis) w_s = 1.0;                                    // block-proven static = the w_s=1 extreme
+            result = mix(B_samp, cur0, w_s);
+        }
     }
     if (pc.blend_solo > 0.5) {
         result = (pc.blend_solo < 1.5) ? A_samp : B_samp;

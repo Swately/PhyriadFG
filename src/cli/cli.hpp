@@ -438,32 +438,39 @@ struct Config {
     float mv_edge_snap_sim=0.f;     // resolved guidance band for --mv-edge-snap (0 = use mv_sim; else the --mes-sim override, clamped [0.02,0.5]).
     bool  single_track=true;        // --single-track: DEFAULT ON (operator-eye PASS 2026-07-03: "la alucinación es mejor que
                                     // LSFG" — smooth, no crossfade/vibration; --no-single-track restores the A/B blend world).
-                                    // ON = v3.1 (the strategy flip after THREE subtractive recompositions each failed the
+                                    // ON = v3.2 (the strategy flip after THREE subtractive recompositions each failed the
                                     // operator's eye — v0 crossfade fallback, v1 static-cur fallback, v2 law gates — while
                                     // --blend-solo 2 stayed smooth every time): the pre-store OVERRIDE at the exact
                                     // --blend-solo site with the exact --blend-solo 2 value (result = B_samp, the const
-                                    // Gate-2 fetch cur @ uv+(1-t)*mv_fwd_eff) + ONLY the stasis re-admission (proven-static
-                                    // pixels present crisp cur[uv] — the HUD/grid protection). Consistency criterion (v2's
-                                    // "warped = consistent" was WRONG — A-track and gme-track samples place content
-                                    // 3.2-4.6px off the B-track): SAME-TRACK or PROVEN-STATIC. v3.0 = pure B_samp
-                                    // (byte-equal to --blend-solo 2; isolate via --st-no-stasis). The v1/v2 gates stay
-                                    // upstream, shadowed. History + audit + stage ladder:
-                                    // docs/planning/SINGLE_TRACK_MODE_PLAN.md §3.4/§3.5. Endpoint: t=1 cur byte-exact; t=0+
-                                    // pays the full backward warp (the residual per-pair step). WAP-only (resolve forces it
-                                    // off with a print when the WAP path is unavailable).
+                                    // Gate-2 fetch cur @ uv+(1-t)*mv_fwd_eff) + the SCREEN-STATIC re-admission mix — v3.2
+                                    // per-pixel three-hypothesis evidence (d_zero=|cur[uv]-prev[uv]| vs d_warp=d_pixel,
+                                    // winner-with-margin ratio → w_s; the block-proven stasis bool saturates w_s=1;
+                                    // result = mix(B_samp, cur[uv], w_s)) — the HUD/overlay protection under camera pan
+                                    // (the HSR field fix: a screen-fixed overlay is gme-nonconform and self-ghosted toward
+                                    // the motion under v3.1). Consistency criterion (v2's "warped = consistent" was WRONG —
+                                    // A-track and gme-track samples place content 3.2-4.6px off the B-track): SAME-TRACK or
+                                    // PROVEN-STATIC (v3.2 broadens the PROOF to per-pixel). v3.0 = pure B_samp (byte-equal
+                                    // to --blend-solo 2; isolate via --st-no-stasis). The v1/v2 gates stay upstream,
+                                    // shadowed. History + audit + stage ladder:
+                                    // docs/planning/SINGLE_TRACK_MODE_PLAN.md §3.4/§3.5/§10. Endpoint: t=1 cur byte-exact;
+                                    // t=0+ pays the full backward warp (the residual per-pair step). WAP-only (resolve
+                                    // forces it off with a print when the WAP path is unavailable).
     bool  st_no_stasis=false;       // --st-no-stasis: isolate single-track STAGE v3.0 (pure B_samp at the pre-store site,
-                                    // byte-equal to --blend-solo 2 — the indistinguishability eye-gate). DEFAULT off = v3.1
-                                    // (stasis re-admitted). Only meaningful with --single-track; encoded into the same push
-                                    // float (1.0 = v3.1, 2.0 = v3.0). NOTE --no-stasis (stasis_thresh=0) also degrades v3.1
-                                    // to v3.0 shader-side (the stasis bool goes constant-false).
+                                    // byte-equal to --blend-solo 2 — the indistinguishability eye-gate). DEFAULT off = v3.2
+                                    // (screen-static evidence mix). Only meaningful with --single-track; encoded into the
+                                    // same push float (1.0 = v3.2, 2.0 = v3.0). NOTE --no-stasis (stasis_thresh=0) removes
+                                    // only the block-proof w_s saturation; the per-pixel evidence remains.
     float bg_reclaim=4.0f;          // --bg-reclaim [strength]: DEFAULT ON at strength 4.0 (HARD snap — the operator-eye PASS
                                     // pairing with single-track; measured 59% mean outside-gold reduction, ranges disjoint from
                                     // baseline). 0 / --no-bg-reclaim = OFF (byte-identical). >0 = the gravity fix + carries the
                                     // STRENGTH scale (parse-clamped [0,4]). A TILE whose content is background-like (its two
                                     // reals agree under the gme model, disagree under the local mv) yet whose MV is object-like
                                     // (|mv-gme_model_mv| large) is POLLUTED — the 8px matcher straddled the silhouette and lent
-                                    // the object MV to fringe background. Damp mv toward the model so the fringe takes background
-                                    // motion; both A_samp/B_samp re-sample with the reclaimed mv. SOFT (LSFG-like) at strength~1;
+                                    // the object MV to fringe background. Damp mv toward the winning hypothesis — the model, or
+                                    // (v3.2) ZERO where the screen-static evidence d_zero=|cur[uv]-prev[uv]| beats the model (a
+                                    // screen-fixed HUD/overlay under camera pan; the HSR inverse-crossfade fix — damping an
+                                    // overlay toward the CAMERA model was exactly wrong); both A_samp/B_samp re-sample with the
+                                    // reclaimed mv. SOFT (LSFG-like) at strength~1;
                                     // HARD snap as strength·bands saturate (the shipping default). Distinct from bg_snap (which
                                     // gates on the iGPU CONTOUR band — edge pixels only; this is TILE-scale). Needs gme (default
                                     // ON); the host pushes 0 when the model is stale → inert (no crash path). Usable independently

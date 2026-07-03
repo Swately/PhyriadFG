@@ -28,6 +28,9 @@ param(
   [double]$SpeedPx = 330,
   [int]$Size = 120,
   [switch]$Bounce,
+  [double]$PanPx = 0,   # -PanPx S: the BACKGROUND lattice scrolls left at S px/s (camera-pan analog) while a
+                        # screen-fixed HUD (opaque panel + translucent panel + crosshair) stays put — the
+                        # static-overlay-over-moving-world witness (the HSR HUD-ghosting reproduction case).
   [string]$Title = 'RA Ball Zoo',
   [int]$W = 1280, [int]$H = 720, [int]$X = -1, [int]$Y = -1
 )
@@ -53,16 +56,28 @@ $f.Add_KeyDown({ param($s,$e) if($e.KeyCode -eq 'Escape'){ $f.Close() } })
 $penThin  = New-Object Drawing.Pen([Drawing.Color]::FromArgb(150,150,160),1)
 $penGrid  = New-Object Drawing.Pen([Drawing.Color]::FromArgb(110,110,135),1)   # FINE GRID minor
 $penGridM = New-Object Drawing.Pen([Drawing.Color]::FromArgb(165,165,195),1)   # FINE GRID major (every 96px)
-$bg = New-Object Drawing.Bitmap($W,$H)
+# The lattice is 96px-periodic → a W+96-wide cached tile pans at constant cost (one DrawImage at
+# -(pan mod 96)). The crosshair joins the HUD (screen-fixed) when panning, the lattice when not.
+$bgW = $W + 96
+$bg = New-Object Drawing.Bitmap($bgW,$H)
 $gb = [Drawing.Graphics]::FromImage($bg)
 $gb.Clear([Drawing.Color]::FromArgb(18,18,40))
-for($gx = 0; $gx -le $W; $gx += 24){ $gb.DrawLine($penGrid, [float]$gx, 0, [float]$gx, [float]$H) }
-for($gy = 0; $gy -le $H; $gy += 24){ $gb.DrawLine($penGrid, 0, [float]$gy, [float]$W, [float]$gy) }
-for($gx = 0; $gx -le $W; $gx += 96){ $gb.DrawLine($penGridM, [float]$gx, 0, [float]$gx, [float]$H) }
+for($gx = 0; $gx -le $bgW; $gx += 24){ $gb.DrawLine($penGrid, [float]$gx, 0, [float]$gx, [float]$H) }
+for($gy = 0; $gy -le $H; $gy += 24){ $gb.DrawLine($penGrid, 0, [float]$gy, [float]$bgW, [float]$gy) }
+for($gx = 0; $gx -le $bgW; $gx += 96){ $gb.DrawLine($penGridM, [float]$gx, 0, [float]$gx, [float]$H) }
 for($gy = 0; $gy -le $H; $gy += 96){ $gb.DrawLine($penGridM, 0, [float]$gy, [float]$W, [float]$gy) }
-$gb.DrawLine($penThin, [float]($W/2-6), [float]($H/2-6), [float]($W/2+6), [float]($H/2+6))
-$gb.DrawLine($penThin, [float]($W/2+6), [float]($H/2-6), [float]($W/2-6), [float]($H/2+6))
+if($PanPx -le 0){
+  $gb.DrawLine($penThin, [float]($W/2-6), [float]($H/2-6), [float]($W/2+6), [float]($H/2+6))
+  $gb.DrawLine($penThin, [float]($W/2+6), [float]($H/2-6), [float]($W/2-6), [float]($H/2+6))
+}
 $gb.Dispose()
+# Screen-fixed HUD resources (pan mode only): the opaque stasis witness + the translucent
+# physics-limit witness + fine strokes — gate_zoo's HUD pair, here over a MOVING world.
+$fontHud   = New-Object Drawing.Font('Consolas',13,[Drawing.FontStyle]::Bold)
+$brWhite   = [Drawing.Brushes]::White
+$brHudBg   = New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb(46,46,52))
+$brGlassBg = New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb(90,80,140,255))
+$brGlassTx = New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb(150,255,255,255))
 
 $brGold = [Drawing.Brushes]::Gold
 $step = $SpeedPx / $Fps          # px per rendered frame (uniform-step contract)
@@ -88,9 +103,27 @@ $periodTicks = [long]($freq / $Fps)
 $next = $sw.ElapsedTicks + $periodTicks
 $frames = 0; $statT0 = $sw.ElapsedTicks
 try {
+  $panAccum = 0.0
+  $panStep = if($Fps -gt 0){ $PanPx / $Fps } else { 0.0 }   # px per rendered frame (uniform-step contract)
   while(-not $f.IsDisposed){
-    $g.DrawImageUnscaled($bg, 0, 0)
-    $g.FillEllipse($brGold, [float]$bx, [float]$by, [float]$Size, [float]$Size)
+    if($PanPx -gt 0){
+      $panOff = [int]([Math]::Floor($panAccum)) % 96
+      $g.DrawImageUnscaled($bg, -$panOff, 0)
+      $panAccum += $panStep
+    } else {
+      $g.DrawImageUnscaled($bg, 0, 0)
+    }
+    if($Size -gt 0){ $g.FillEllipse($brGold, [float]$bx, [float]$by, [float]$Size, [float]$Size) }
+    if($PanPx -gt 0){
+      # Screen-fixed HUD over the moving world: opaque panel + strokes, translucent panel, crosshair.
+      $g.FillRectangle($brHudBg, 10, 10, 290, 64)
+      $g.DrawString("HP 100   AMMO 42", $fontHud, $brWhite, 20, 16)
+      $g.DrawString("SCORE 003417",     $fontHud, $brWhite, 20, 42)
+      $g.FillRectangle($brGlassBg, 430, 600, 420, 90)
+      $g.DrawString("TRANSLUCENT HUD  12:34", $fontHud, $brGlassTx, 470, 630)
+      $g.DrawLine($penThin, [float]($W/2-6), [float]($H/2-6), [float]($W/2+6), [float]($H/2+6))
+      $g.DrawLine($penThin, [float]($W/2+6), [float]($H/2-6), [float]($W/2-6), [float]($H/2+6))
+    }
     $buf.Render()
     $frames++
 
@@ -124,4 +157,5 @@ try {
   [void][BZ.WinMM]::timeEndPeriod(1)
   $buf.Dispose(); $gScreen.Dispose(); $bg.Dispose()
   $penThin.Dispose(); $penGrid.Dispose(); $penGridM.Dispose()
+  $fontHud.Dispose(); $brHudBg.Dispose(); $brGlassBg.Dispose(); $brGlassTx.Dispose()
 }

@@ -3,27 +3,33 @@
 - **Type:** Tier-1 plan (substantial, single-shader + host-flag change; no crash/concurrency/
   data-loss/device-loss risk → no RISK_REGISTER required). Two coupled deliverables, one flag family.
 - **Flags:**
-  - `--single-track` — **DEFAULT ON** (v3.1 semantics, §3.5): the pre-store B-track override
-    (`result = B_samp`, exactly what `--blend-solo 2` outputs) + ONLY the stasis re-admission
-    (proven-static pixels present crisp `cur[uv]` — the HUD/grid protection). `--no-single-track`
+  - `--single-track` — **DEFAULT ON** (v3.2 semantics, §3.5 + §10): the pre-store B-track override
+    (`result = B_samp`, exactly what `--blend-solo 2` outputs) + the **screen-static re-admission mix**
+    (per-pixel three-hypothesis evidence `d_zero` vs `d_warp` → `w_s`; the block-proven stasis bool is
+    the `w_s=1` extreme — the HUD/overlay protection, now robust under camera pan). `--no-single-track`
     restores the A/B blend world exactly; `--st-no-stasis` isolates stage v3.0 (the pure mirror).
     (The v0/v1/v2 designs described in §3.1–§3.4 are the superseded history — kept as the audit
     trail; their gates remain upstream, shadowed by the final override.)
   - `--bg-reclaim [strength]` — **DEFAULT ON at 4.0** (hard snap; **usable independently** of
     `--single-track`): the gravity fix — a per-tile-scale in-warp weighting that detects the pollution
     signature (a tile whose *content* is background-like but whose *MV* is object-like) and damps that
-    MV toward the global background model (`gme_model_mv`). `--no-bg-reclaim` / `--bg-reclaim 0`
-    disables. Kept a separate flag because the pollution is a *matcher/grid* defect independent of
-    which track paints — it helps the default blend path too, gated by measurement (§8).
-- **Status:** **SHIPPING, DEFAULT-ON** (2026-07-03). Operator verdict on v3.1 + `--bg-reclaim 4.0`,
-  verbatim: **"la alucinación es mejor que LSFG"** — smooth, no crossfade/vibration, statics crisp.
-  Defaults flipped (`single_track=true`, `bg_reclaim=4.0f`); UI switches synced (the default-ON
+    MV toward the winning hypothesis: the global background model (`gme_model_mv`), or **(v3.2, §10)
+    ZERO where the screen-static evidence beats the model** (a screen-fixed overlay under camera pan
+    must not be damped toward the camera). `--no-bg-reclaim` / `--bg-reclaim 0` disables. Kept a
+    separate flag because the pollution is a *matcher/grid* defect independent of which track paints —
+    it helps the default blend path too, gated by measurement (§8).
+- **Status:** **SHIPPING, DEFAULT-ON — v3.2** (2026-07-03). Operator verdict on v3.1 + `--bg-reclaim
+  4.0`, verbatim: **"la alucinación es mejor que LSFG"** — smooth, no crossfade/vibration, statics
+  crisp. Defaults flipped (`single_track=true`, `bg_reclaim=4.0f`); UI switches synced (the default-ON
   pattern: emit nothing when ON, the off-flag when OFF). The gravity metric: **~59% mean outside-gold
   reduction**, ranges disjoint from baseline (§8). The road here: THREE operator-eye refutations of
   subtractive recompositions (v0 crossfade fallback → v1 static-cur fallback → v2 law gates — each
   still vibrated while `--blend-solo 2` stayed smooth on the same builds) before the **v3 strategy
-  flip (§3.5): build UP from the known-smooth blend-solo-2 base**. Known residuals (operator-observed,
-  non-blockers) in §9.
+  flip (§3.5): build UP from the known-smooth blend-solo-2 base**. The HSR **field report** then
+  convicted a screen-static-overlay regression under camera pan (HUD self-ghost, "inverse crossfade")
+  → **v3.2 (§10): the screen-static evidence re-admission**, bench-gated (pan-bench glass-ghost
+  134.5 → 15.7 px, ~92% of the regression closed; operator eye-test pending). Known residuals
+  (operator-observed, non-blockers) in §9.
 - **Scope:** `shaders/wap_warp.comp` (the base-track bias at the warp composition + the reclaim damp
   at the primary-MV fetch), `src/warp_blend/warp_blend.cpp` (`pcr.size`), `src/present/present.cpp`
   (encode + push the two new fields), `src/cli/{cli.hpp,cli.cpp}` (two flags + cascades),
@@ -231,19 +237,21 @@ the blend-solo branch so the diagnostic still wins when both flags are set.
 | Stage | Composition at the override site | Flag | Eye gate | Status |
 |---|---|---|---|---|
 | **v3.0** | `result = B_samp` — nothing else; byte-equal to `--blend-solo 2` | `--single-track --st-no-stasis` | must be INDISTINGUISHABLE from `--blend-solo 2` | passed implicitly (v3.1 is v3.0 + stasis and passed outright) |
-| **v3.1** | v3.0 + ONLY the stasis re-admission: `if (stasis) result = cur[uv]` — proven-static (identical-in-both-reals, the main-scope `stasis` bool the block already computes; no hoisting needed) presents the crisp real; moving content stays pure B-track | `--single-track` (**now the shipping DEFAULT-ON**) | still smooth AND the zoo's grid/crosshair crisp | **PASS — operator verdict "la alucinación es mejor que LSFG"; smooth, no crossfade/vibration, statics crisp (with `--bg-reclaim 4.0`)** |
-| v3.2+ | further re-admissions (occlusion one-sided, matte bg, …) — one at a time, LATER | — | one eye gate each | NOT BUILT (deliberate); §9 lists the residual candidates |
+| **v3.1** | v3.0 + ONLY the stasis re-admission: `if (stasis) result = cur[uv]` — proven-static (identical-in-both-reals, the main-scope `stasis` bool the block already computes; no hoisting needed) presents the crisp real; moving content stays pure B-track | (superseded by v3.2) | still smooth AND the zoo's grid/crosshair crisp | **PASS — operator verdict "la alucinación es mejor que LSFG"; smooth, no crossfade/vibration, statics crisp (with `--bg-reclaim 4.0`). THEN field-convicted under camera pan (HSR): screen-fixed overlays self-ghost — the block-level proof cannot see gme-nonconform HUD tiles (§10)** |
+| **v3.2** | v3.1 generalized to ONE unified mix: per-pixel three-hypothesis screen-static evidence (`d_zero` vs `d_warp` → `w_s`, stasis = the `w_s=1` extreme; `result = mix(B_samp, cur[uv], w_s)`) + the bg-reclaim screen-static exemption (damp target slides model→ZERO) | `--single-track` (**the shipping DEFAULT-ON**) | pan bench: HUD crisp, world smooth (G1–G4 measured, §10.4) | **BENCH PASS (§10.4); operator eye-test on the pan bench + HSR pending** |
+| v3.3+ | further re-admissions (occlusion one-sided, matte bg, …) — one at a time, LATER | — | one eye gate each | NOT BUILT (deliberate); §9 lists the residual candidates |
 
-**Why v3.1 is the shipping candidate:** HUD protection (static witnesses crisp at source) is what HSR
-needs; the disocclusion look of the pure B-track was already operator-accepted in `--blend-solo 2`.
-`--no-stasis` (stasis_thresh=0) degrades v3.1 to v3.0 shader-side (the `stasis` bool goes
-constant-false).
+**Why v3.2 ships:** HUD protection (static witnesses crisp at source) is what HSR needs — v3.1's
+block-level proof delivered it for a static camera but broke under camera pan (§10); v3.2 broadens the
+staticity PROOF to per-pixel evidence while staying inside the consistency law. The disocclusion look
+of the pure B-track was already operator-accepted in `--blend-solo 2`. `--no-stasis` (stasis_thresh=0)
+now removes only the block-proof `w_s` saturation; the per-pixel evidence remains.
 
-**Encoding:** the existing `single_track` push float — 0 = OFF, 1.0 = v3.1, 2.0 = v3.0; the shader's
-final override reads `>0.5` (armed) and `<1.5` (v3.1's stasis re-admission). No new push field; the
-block stays 232B. The v1/v2 gates remain upstream (they key on `>0.5`, so both stages arm them) — now
-SHADOWED by the final override: harmless, they save dead work, and their documented rationale stands as
-the audit trail.
+**Encoding:** the existing `single_track` push float — 0 = OFF, 1.0 = v3.2 (was v3.1), 2.0 = v3.0; the
+shader's final override reads `>0.5` (armed) and `<1.5` (the screen-static evidence mix). No new push
+field; the block stays 232B. The v1/v2 gates remain upstream (they key on `>0.5`, so both stages arm
+them) — now SHADOWED by the final override: harmless, they save dead work, and their documented
+rationale stands as the audit trail.
 
 ---
 
@@ -522,3 +530,129 @@ this release.
   **Candidate fixes:** temporal hysteresis (a tile that was background last pair needs stronger
   evidence to adopt an object MV), or an iGPU contour-field assist (the Sobel band marks the true
   silhouette sub-tile — gate the reclaim's bg-side by it, the same signal `bg_snap` reads).
+
+---
+
+## 10. v3.2 — the screen-static evidence re-admission (the HSR HUD-ghost fix)
+
+### 10.1 The field report (verbatim) and the convicted mechanism
+
+HSR field result on the shipping v3.1 + bg-reclaim, relayed 2026-07-03:
+
+> moving objects MUCH better (operator), BUT screen-static overlays regressed — the HUD (and
+> semi-static character) self-ghost toward the motion, "an inverse crossfade"; WORSE on translucent
+> elements, but solid HUD shows it too.
+
+**Root cause (two mechanisms, both from the same blind spot):** under camera pan the gme model IS the
+camera motion, so a **screen-fixed overlay is gme-NONCONFORM** — a hypothesis neither v3.1 mechanism
+could represent:
+
+- **(a) The B-track warp displaces HUD pixels whose tile MV is polluted by the moving background**
+  (the matcher block straddles HUD/world; v3.1's stasis re-admission is BLOCK-level `sad_zero`, so
+  exactly those straddling/translucent blocks fail the proof and follow the wrong MV).
+- **(b) bg-reclaim actively damps HUD tiles TOWARD the camera model** — the reclaim's two-way contest
+  (`d_loc` vs `d_mod`) was designed for the object-fringe case; a translucent/boundary HUD tile whose
+  *visible majority* is background reads "the model explains it better" and gets snapped to camera
+  motion: for a screen-static overlay the model is exactly wrong. The operator's report is the (b)
+  signature amplified by (a); translucency is worst because the background component legitimately
+  votes for the camera.
+
+### 10.2 The bench reproduction (now permanent in the zoo)
+
+`tools/ball_zoo.ps1 -PanPx S`: the background lattice scrolls left at S px/s (camera-pan analog; the
+96px-periodic lattice pans via a cached W+96 tile) while a **screen-fixed HUD** stays put: an opaque
+panel with white strokes at `rect(10,10,290,64)`, a translucent panel at `rect(430,600,420,90)`, the
+center crosshair. Repro: `ball_zoo -Fps 60 -PanPx 300` (+ the default ball). Metrics
+(`hud_ghost.py`, session scratchpad): **m2** = mean |live − real| inside the opaque rect (HUD is
+static across the pair, so the real IS ground truth there — crispness); **m3** = glass-tint px in the
+40px band OUTSIDE the translucent rect (the translucent ghost); **m4** = panel-gray px in the band
+OUTSIDE the opaque rect (the solid-edge ghost); crosshair centroid sd; ball centroid ratio-vs-phase
+(the G2 motion witness). NOTE: at 300 px/s / 60 fps the per-pair displacement is 5px, so the
+coordinator's literal white-stroke-outside-rect count (**m1**) is structurally ~0 in every config (the
+text ghosts land INSIDE the rect); m2/m3/m4 carry the signal.
+
+### 10.3 The design (all evidence, no new hard threshold, no new push field)
+
+**The law stands; the PROOF broadens.** Unwarped real content may still paint only where staticity is
+proven — v3.2 replaces the block-level proof with per-pixel **three-hypothesis evidence** at two sites:
+
+1. **The v3 override site** (`wap_warp.comp` final override): `d_zero = |cur[uv] − prev[uv]|` (the
+   screen-static hypothesis; 2 same-uv taps — the per-pixel/soft form the block `sad_zero` cannot
+   give, which is what translucent HUD needs) vs `d_warp = d_pixel = |A_samp − B_samp|` (the warp
+   hypothesis — **REUSED**, already computed for onepos/commit; zero new taps). Winner-with-margin:
+   `w_s = smoothstep(1.2, 3.0, (d_warp+0.02)/(d_zero+0.02))` (the `bg_like` ratio idiom; translucent
+   pixels get intermediate `w_s`), block-proven `stasis` saturates `w_s = 1`, then
+   `result = mix(B_samp, cur[uv], w_s)` — **ONE unified mix; the v3.1 strict re-admission is its
+   `w_s=1` extreme (unified, not stacked)**. Where `mv≈0` the evidence is inert by construction
+   (`B_samp == cur[uv]`, ratio = 1); on moving content `d_zero` is high by construction → `w_s→0`.
+2. **The bg-reclaim exemption** (the reclaim block): the same `d_zero` (2 taps, only inside
+   `nonconf>0` — the existing budget discipline) joins the `d_loc`/`d_mod` contest.
+   `st_over_model = smoothstep(1.2,3.0,(d_mod+0.02)/(d_zero+0.02))` arbitrates model-vs-zero; the damp
+   TARGET slides `model_mv → vec2(0)` and the evidence slides `bg_like → zero_like`, so a
+   screen-static pixel with a polluted MV is damped toward **ZERO** (the overlay stops traveling)
+   instead of toward the camera. **When the model ≈ 0 (static camera) `d_mod ≡ d_zero` → ratio 1 →
+   the v3.1 reclaim is preserved BY CONSTRUCTION** — the non-pan G3 anchor.
+
+Encoding: the existing `single_track` push float, 1.0 now = v3.2 (2.0 stays v3.0); `--no-stasis`
+removes only the block-proof saturation. OFF paths untouched (all new code inside the
+`single_track>0.5 && <1.5` and `bg_reclaim>0.001 && nonconf>0` branches).
+
+**Known limit (documented, accepted):** content moving EXACTLY one texture period per pair aliases
+`d_zero ≈ 0` — the same two-frame ambiguity the SAD matcher has (the ambig rule is its MV-side
+counterpart). Not exercised at 300px/s·60fps (5px/pair vs the 24px period).
+
+### 10.4 Gates (measured 2026-07-03, this session, FRESH zoo per run, 60 qdump triples each)
+
+**G1 — pan bench HUD-ghost** (`ball_zoo -Fps 60 -PanPx 300`, defaults vs references):
+
+| Metric (mean over 60 frames) | old-world (`--no-single-track --no-bg-reclaim`) | v3.1 (pre-change HEAD) | **v3.2 (×2 runs)** | floor (reals) |
+|---|---|---|---|---|
+| m3 glass-ghost band px | 5.6 (max 93) | **134.5** (max 410) | **14.9 / 16.6** (max 89) | 5.4–6.8 |
+| m4 panel-ghost band px | 81.1 (max 597) | **321.4** (max 875) | **125.1 / 106.8** (max 779/735) | 0 |
+| m2 opaque-rect MAD | 0.203 | 0.092 | **0.054 / 0.055** | — |
+| crosshair centroid sd (x px) | 1.71 | 1.90 | **0.58 / 1.20** | — |
+
+m3 closes ~92% of the v3.1 regression (134.5 → 15.7 mean vs the 5.6 baseline); m4 closes ~85%
+(321 → 116 vs 81 — and the old-world class itself swings: a fresh old-world run on the v3.2 build
+measured m4 105.4, m2 0.423). Solid HUD reads crisper than EITHER predecessor (m2 best-of-three), the
+crosshair steadiest. **PASS (near-baseline; residuals honest below).**
+
+**G2 — the moving world stays single-track-smooth:** ball ratio-vs-phase corr 0.969/0.973 (v3.1:
+0.963; old-world: 0.967), span/npx preserved; the panned lattice tracks phase (low-t: |live−prev| 3.41
+< |live−next| 6.25; high-t: 2.41 > 6.49 — NOT pinned to cur; v3.1 measures the same structure with
+LARGER residuals 5.84/4.73, i.e. v3.2 also cleaned spurious damping noise). `d_zero` loses everywhere
+the content moves, as constructed, and the evidence verified it. **PASS.**
+
+**G3 — non-pan regression** (`ball_zoo -Fps 15`, defaults): outside-gold% v3.1 0.343 → v3.2 0.291
+(same-day, same-harness pair — no regression); ratio-vs-phase corr 0.880 → 0.995, ratio climbing 0.15→
+1.00 in both; span_live/prev 127/119 both; npx_live/prev ≈ 11.4k/11.25k both. NOTE the absolute
+outside-gold of BOTH same-day runs sits above the §7.1 v3.1 cluster (0.127–0.185) and inside the
+documented baseline swing (0.29–0.65) — the bench's known run-to-run variance (§8 caveat), not a
+v3.2 effect (the v3.1 comparator was measured the same hour on the same build lineage). **PASS.**
+
+**G4 — cadence CSV / OFF-identity / cost / build:** 15fps `--csv` intact (headers byte-identical
+pre/post, 2876 vs 2878 rows over 12.0s, 0 drops, stats file headers identical). OFF-flags run on the
+v3.2 build: banner carries NO single-track/bg-reclaim markers; metrics land in the old-world class
+(m3 8.4, m4 105.4); structurally byte-identical (all new code branch-gated). Warp cost: pan v3.1
+3.86ms → v3.2 3.99ms (**+0.13ms ≤ +0.5 gate**); non-pan 0.78ms (the pre-change 4.10ms reading was
+present-blocking noise — the `warp ms` stat wraps warp+present and vsync-quantizes to ~4.16ms when the
+present blocks; slip 4.29 vs 0.00 fingerprints it). All runs 240.4–241.0 fps, `er=0`, `to=0`,
+`dd_lost=0`, no device-lost. Build clean (pre-existing warnings only, none in touched files).
+**PASS.**
+
+### 10.5 Honest anomalies / residuals
+
+- **m4 residual ~35px above the old-world mean** (116 vs 81): panel-EDGE tiles remain partially
+  ambiguous (half HUD / half moving lattice — the same class as §9(b) leading-edge tiles). The §9(b)
+  candidates (temporal hysteresis, contour-field assist) apply here too.
+- **m3 residual ~10px above floor:** translucent-edge pixels where the glass tint's share of the
+  evidence is genuinely intermediate — `w_s` partial by design (soft, no hard threshold).
+- **The operator's eye is the final gate** — the bench closes the metric; HSR + pan-bench eye-tests
+  decide the ship verdict on v3.2's look (specifically: the translucent panel's interior now shows the
+  world moving through it at the camera rate with the tint/text pinned — the physically correct
+  single-layer rendering, but a look the operator has not yet judged).
+- **`warp ms` conflation:** the stats-line `warp` wraps `wap_warp_present` (warp + present); under
+  blocking presents it quantizes to the 4.16ms vblank. The §7.4 "0.38–0.50ms" figures and today's
+  pan ~3.9–4.0ms are therefore not directly comparable; the honest cost signal is the same-bench
+  delta (+0.13ms) and the shader-side structure (2 extra same-uv taps per single-track pixel; 2 extra
+  taps inside the reclaim's `nonconf>0` branch).

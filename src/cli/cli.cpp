@@ -310,15 +310,15 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--bg-snap-strength")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.bg_snap_strength = f<0.f?0.f:(f>4.f?4.f:f); return 0; } return 1; }   // snap weight scale; the shader clamps w=strength·band·bg to [0,1], so >1 SATURATES w→1 in the band core = HARDER snap. Range [0,4]: 1=soft, 2-4=progressively hard.
             if(!std::strcmp(arg,"--bg-snap-norm")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.bg_snap_norm = f<0.001f?0.001f:(f>1.f?1.f:f); return 0; } return 1; }   // contour-dist->[0,1] band normalizer
             if(!std::strcmp(arg,"--single-track")){
-                std::printf("[ra] --single-track: already default (v3.1 — pre-store B-track override at the --blend-solo site: result = B_samp, cur @ uv+(1-t)*mv, + ONLY the stasis re-admission for crisp HUD/grid statics; operator-eye PASS: smooth, no crossfade/vibration). --no-single-track restores the A/B blend world; --st-no-stasis isolates STAGE v3.0 (byte-equal to --blend-solo 2). History/audit: docs/planning/SINGLE_TRACK_MODE_PLAN.md.\n");
+                std::printf("[ra] --single-track: already default (v3.2 — pre-store B-track override at the --blend-solo site: result = B_samp, cur @ uv+(1-t)*mv, + the per-pixel SCREEN-STATIC evidence mix (d_zero vs d_warp winner-with-margin; block-proven stasis saturates) for crisp HUD/overlay statics under camera pan; operator-eye PASS on v3.1: smooth, no crossfade/vibration). --no-single-track restores the A/B blend world; --st-no-stasis isolates STAGE v3.0 (byte-equal to --blend-solo 2). History/audit: docs/planning/SINGLE_TRACK_MODE_PLAN.md §10.\n");
                 c.single_track=true; return 0;
             }
             if(!std::strcmp(arg,"--no-single-track")){
-                std::printf("[ra] --no-single-track: single-track synthesis OFF — restores the A/B blend world exactly (the phase-weighted (1-t)/t two-track composite + the full selection cascade, byte-identical to the pre-single-track default). DEFAULT is ON (v3.1).\n");
+                std::printf("[ra] --no-single-track: single-track synthesis OFF — restores the A/B blend world exactly (the phase-weighted (1-t)/t two-track composite + the full selection cascade, byte-identical to the pre-single-track default). DEFAULT is ON (v3.2).\n");
                 c.single_track=false; return 0;
             }
             if(!std::strcmp(arg,"--st-no-stasis")){
-                std::printf("[ra] --st-no-stasis: single-track STAGE v3.0 — pure B_samp at the pre-store site, byte-equal to --blend-solo 2 (the indistinguishability eye-gate; no stasis re-admission, the zoo grid/crosshair follow the B-track). Only meaningful with single-track ON (the default).\n");
+                std::printf("[ra] --st-no-stasis: single-track STAGE v3.0 — pure B_samp at the pre-store site, byte-equal to --blend-solo 2 (the indistinguishability eye-gate; no stasis/screen-static re-admission, the zoo grid/crosshair follow the B-track). Only meaningful with single-track ON (the default).\n");
                 c.st_no_stasis=true; return 0;
             }
             if(!std::strcmp(arg,"--bg-reclaim")){
@@ -327,14 +327,14 @@ bool parse_args(int argc, char** argv, Config& c) {
                 float f = 4.0f;
                 if(i+1<argc){ char* end=nullptr; float parsed=(float)std::strtod(argv[i+1],&end); if(end && end!=argv[i+1] && *end=='\0'){ ++i; f = parsed<0.f?0.f:(parsed>4.f?4.f:parsed); } }
                 c.bg_reclaim = f<=0.f?0.f:f;
-                std::printf("[ra] --bg-reclaim %.2f: the gravity fix (TILE-scale). A tile whose content is background-like (its two reals agree under the gme model, disagree under the local mv) yet whose MV is object-like (|mv-model| large) is POLLUTED — the 8px matcher lent the object MV to fringe background. Damp mv toward the gme model so the fringe takes background motion (both A/B re-sample with the reclaimed mv). SOFT (LSFG-like) at strength~1; HARD as strength·bands saturate. Distinct from bg-snap (contour-band only; this is TILE-scale). Needs --gme (default ON); inert when the model is stale. DEFAULT ON at 4.00 (hard snap, the operator-eye pairing); 0 / --no-bg-reclaim disables. Strength clamp [0,4].\n", c.bg_reclaim);
+                std::printf("[ra] --bg-reclaim %.2f: the gravity fix (TILE-scale). A tile whose content is background-like (its two reals agree under the gme model, disagree under the local mv) yet whose MV is object-like (|mv-model| large) is POLLUTED — the 8px matcher lent the object MV to fringe background. Damp mv toward the winning hypothesis: the gme model, or (v3.2) ZERO where the screen-static evidence |cur[uv]-prev[uv]| beats the model (screen-fixed HUD/overlay under camera pan — the HSR inverse-crossfade fix); both A/B re-sample with the reclaimed mv. SOFT (LSFG-like) at strength~1; HARD as strength·bands saturate. Distinct from bg-snap (contour-band only; this is TILE-scale). Needs --gme (default ON); inert when the model is stale. DEFAULT ON at 4.00 (hard snap, the operator-eye pairing); 0 / --no-bg-reclaim disables. Strength clamp [0,4].\n", c.bg_reclaim);
                 return 0;
             }
             if(!std::strcmp(arg,"--no-bg-reclaim")){
                 std::printf("[ra] --no-bg-reclaim: background-MV reclaim OFF — polluted fringe tiles keep the matcher's object MV (the pre-reclaim gravity behavior; measured ~2.5x more outside-gold on the ball zoo). DEFAULT is ON at strength 4.00. Alias of --bg-reclaim 0.\n");
                 c.bg_reclaim=0.f; return 0;
             }
-            if(!std::strcmp(arg,"--bg-reclaim-strength")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.bg_reclaim = f<0.f?0.f:(f>4.f?4.f:f); std::printf("[ra] --bg-reclaim-strength %.2f: --bg-reclaim damp weight scale (clamp [0,4]; 1=soft LSFG-style, 2-4=progressively hard snap-to-model). Sets/overrides the strength; 0 = OFF.\n", c.bg_reclaim); return 0; } return 1; }
+            if(!std::strcmp(arg,"--bg-reclaim-strength")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.bg_reclaim = f<0.f?0.f:(f>4.f?4.f:f); std::printf("[ra] --bg-reclaim-strength %.2f: --bg-reclaim damp weight scale (clamp [0,4]; 1=soft LSFG-style, 2-4=progressively hard snap to the winning hypothesis: gme model, or zero for screen-static overlay pixels). Sets/overrides the strength; 0 = OFF.\n", c.bg_reclaim); return 0; } return 1; }
             if(!std::strcmp(arg,"--vblend")){
                 std::printf("[ra] --vblend: velocity-continuity warp (PREDICT). Near a pair's END (high phase t) the warp tilts the effective A/B sample-offset MV toward the PREDICTED next-pair velocity (2*mv - mv_prev, constant-accel extrapolation from the PREV pair in the F->P ring) so the boundary velocity transitions SMOOTHLY instead of STEPPING (the perceived 'pulse'). Prediction is the no-latency path (exact-lookahead would cost ~1 pair latency). Endpoint exact (t=1 -> result still cur). Only the sample offsets tilt; occlusion classification keeps the RAW fields. DEFAULT ON (--no-vblend disables).\n");
                 c.vblend=true; return 0;
