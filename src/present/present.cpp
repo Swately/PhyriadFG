@@ -594,7 +594,13 @@ void run_present(FgContext& ctx){
             // destroyed at the present-loop exit (below). The crash-class WAP warp path is NOT touched.
             VkDescriptorSetLayout ov_dsl=VK_NULL_HANDLE; VkPipelineLayout ov_pl_layout=VK_NULL_HANDLE;
             VkPipeline ov_pipeline=VK_NULL_HANDLE; VkDescriptorPool ov_pool=VK_NULL_HANDLE; VkDescriptorSet ov_set=VK_NULL_HANDLE;
-            bool ov_ready=false;
+            // (re-home, gap identificado por Oleksi/chlmateus) segundo set apuntando a wapOutA para que el
+            // overlay TAMBIÉN dibuje en el path WAP/async default (antes: solo el path grid síncrono → verlo
+            // exigía degradar el producto entero con --no-warp-at-presenter). wapOutA es storage por
+            // construcción (el warp le hace imageStore) — el patrón seguro es el de --afill (compute in-place
+            // sobre wapOutA); el DEVICE_LOST histórico era el stamp sobre la imagen bridge COMPARTIDA, no esto.
+            VkDescriptorSet ov_set_wap=VK_NULL_HANDLE;
+            bool ov_ready=false, ov_ready_wap=false;
             if(cfg.fps_overlay && Apresent.view){
                 bool ov_ok=true; VkShaderModule ov_mod=VK_NULL_HANDLE;
                 { VkShaderModuleCreateInfo smci{}; smci.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -612,17 +618,32 @@ void run_present(FgContext& ctx){
                     VkComputePipelineCreateInfo cp{}; cp.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO; cp.stage=st; cp.layout=ov_pl_layout;
                     ov_ok=(vkCreateComputePipelines(A.dev,VK_NULL_HANDLE,1u,&cp,nullptr,&ov_pipeline)==VK_SUCCESS); }
                 if(ov_mod) vkDestroyShaderModule(A.dev,ov_mod,nullptr);
-                if(ov_ok){ const VkDescriptorPoolSize ov_sz{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u };
+                if(ov_ok){ const VkDescriptorPoolSize ov_sz{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2u };
                     VkDescriptorPoolCreateInfo dp{}; dp.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-                    dp.maxSets=1u; dp.poolSizeCount=1u; dp.pPoolSizes=&ov_sz; ov_ok=(vkCreateDescriptorPool(A.dev,&dp,nullptr,&ov_pool)==VK_SUCCESS); }
+                    dp.maxSets=2u; dp.poolSizeCount=1u; dp.pPoolSizes=&ov_sz; ov_ok=(vkCreateDescriptorPool(A.dev,&dp,nullptr,&ov_pool)==VK_SUCCESS); }
                 if(ov_ok){ VkDescriptorSetAllocateInfo da{}; da.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
                     da.descriptorPool=ov_pool; da.descriptorSetCount=1u; da.pSetLayouts=&ov_dsl; ov_ok=(vkAllocateDescriptorSets(A.dev,&da,&ov_set)==VK_SUCCESS); }
                 if(ov_ok){ VkDescriptorImageInfo ii{}; ii.imageView=Apresent.view; ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
                     VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ov_set, 0u, 0u, 1u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &ii, nullptr, nullptr };
                     vkUpdateDescriptorSets(A.dev,1u,&w,0u,nullptr); }
                 ov_ready=ov_ok;
-                std::printf("[ra] --fps-overlay: %s (binding0=Apresent storage RGBA8; rect %ux%u @top-left on the SYNC present path; baked 5x7 font)\n",
-                            ov_ready?"ready":"FAILED -- presenting without the overlay", (unsigned)kOverlayW,(unsigned)kOverlayH);
+                // (re-home) el set del path WAP → wapOutA (mismo layout/pipeline, otra imagen destino).
+                // Guardado en su propio bool: si wapOutA no existe (WAP off) el overlay WAP queda inerte
+                // y el path grid conserva su set de siempre — cada path dibuja sobre SU imagen.
+                if(ov_ok && wapOutA.view){
+                    VkDescriptorSetAllocateInfo da{}; da.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+                    da.descriptorPool=ov_pool; da.descriptorSetCount=1u; da.pSetLayouts=&ov_dsl;
+                    if(vkAllocateDescriptorSets(A.dev,&da,&ov_set_wap)==VK_SUCCESS){
+                        VkDescriptorImageInfo ii{}; ii.imageView=wapOutA.view; ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+                        VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ov_set_wap, 0u, 0u, 1u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &ii, nullptr, nullptr };
+                        vkUpdateDescriptorSets(A.dev,1u,&w,0u,nullptr);
+                        ov_ready_wap=true;
+                    }
+                }
+                std::printf("[ra] --fps-overlay: %s (rect %ux%u @top-left; baked 5x7 font; paths: sync=%s wap/async=%s)\n",
+                            (ov_ready||ov_ready_wap)?"ready":"FAILED -- presenting without the overlay",
+                            (unsigned)kOverlayW,(unsigned)kOverlayH,
+                            ov_ready?"yes":"no", ov_ready_wap?"yes":"no");
             }
             auto bridge_present_src=[&](const HBuf& src_work){
                 if(!surface_ready) return;
@@ -1113,6 +1134,23 @@ void run_present(FgContext& ctx){
                     struct{uint32_t w,h;float fs,en,t,mv_gate;}pcf{(uint32_t)WW_warp,(uint32_t)WH_warp,cfg.afill_strength,cfg.afill_edge_norm,t,cfg.afill_mv_gate};
                     vkCmdPushConstants(cmdBridge,fillPipeA.layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcf),&pcf);
                     vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);
+                }
+                // FPS-OVERLAY en el path WAP (re-home; el gap lo identificó Oleksi/chlmateus): RMW del
+                // contador "in->out" sobre wapOutA IN-PLACE — el MISMO patrón in-place seguro de --afill
+                // (el DEVICE_LOST histórico era el stamp sobre la imagen bridge COMPARTIDA, no un compute
+                // sobre wapOutA). DESPUÉS del warp (+afill), ANTES del barrier GENERAL→TRANSFER_SRC del
+                // blit — el blit existente acarrea el overlay al bridge gratis y lo escala con él. En los
+                // ticks fdrop/async-drop no se graba: el front re-mostrado conserva el último contador
+                // (staleness ≤ una ventana de stats, aceptable). OFF → cero barrier/bind/dispatch.
+                if(cfg.fps_overlay && ov_ready_wap){
+                    VkMemoryBarrier mbo{}; mbo.sType=VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+                    mbo.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; mbo.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT;
+                    vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,1,&mbo,0,nullptr,0,nullptr);
+                    vkCmdBindPipeline(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,ov_pipeline);
+                    vkCmdBindDescriptorSets(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,ov_pl_layout,0,1,&ov_set_wap,0,nullptr);
+                    OverlayFpsPC ovpc{ g_ov_in.load(), g_ov_out.load(), (uint32_t)WW_warp, (uint32_t)WH_warp };
+                    vkCmdPushConstants(cmdBridge,ov_pl_layout,VK_SHADER_STAGE_COMPUTE_BIT,0,(uint32_t)sizeof(ovpc),&ovpc);
+                    vkCmdDispatch(cmdBridge,(kOverlayW+7u)/8u,(kOverlayH+7u)/8u,1u);
                 }
                 // copy the device-local mass counter → the host-coherent buffer so P
                 // reads the result from hostMassPtr after the fence (the SAME read site as before). Barrier
