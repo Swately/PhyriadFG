@@ -383,6 +383,11 @@ void run_present(FgContext& ctx){
             bool surface_ready=false;
             uint64_t ps_ok=0,ps_timeout=0,ps_err=0,last_ps_ok=0;  // submit ok/timeout/err counters
             uint64_t rdrop_ticks=0,last_rdrop=0;   // async re-present drops (warp in-flight → stale front re-shown; uniq es CIEGO a estos) — declarado ANTES del lambda wap_warp_present que lo incrementa
+            // (--load-governor, self-keyed floor) the FG's OWN-slice distress latch: TRUE when freshage or
+            // the warp fence says WE are starved (not merely "the GPU is busy"). Declared BEFORE the warp
+            // lambda so warp_light reads the SAME latched decision the F-thread floor uses (one decision,
+            // two arms). Updated once/util-refresh in the publish block below; false unless load_governor.
+            bool gov_self_distress=false;   // debounced FG-own-slice distress (freshage OR warp inflation)
             {
                 pp::PresentSurfaceDesc psd{};
                 psd.monitor_index=cfg.pres_mon; psd.width=0; psd.height=0;  // full present-monitor extent
@@ -890,7 +895,13 @@ void run_present(FgContext& ctx){
                 const int  gpuA_wl = g_gpu_a_util.load();
                 // control-word: derive warp_light from the SHARED governor decode (floor>=5 ⟺
                 // util>=gov_util) so present + flow read ONE mapping, never two (the load_governor desync).
-                const bool warp_light = cfg.load_governor && (governor_floor_for_util(gpuA_wl, cfg.gov_util) >= 5);
+                // SELF-KEYED default: the deep shed engages only when util says band-5 AND our OWN slice is
+                // distressed (gov_self_distress, latched in the publish block below) — util-high alone with a
+                // healthy FG no longer sheds (the finding-#1 fix). --gov-util-floor restores the pure-util
+                // gate for A/B. Both arms (this warp shed + the F-thread tier floor) read the SAME latch.
+                const bool util_band5   = governor_floor_for_util(gpuA_wl, cfg.gov_util) >= 5;
+                const bool warp_light   = cfg.load_governor && util_band5
+                                        && (cfg.gov_util_floor ? true : gov_self_distress);
                 // Poll the warp submitted on a PRIOR tick. If complete, it is now the freshest presentable frame,
                 // and the mass read (the matte feedback) moves HERE (post-completion) — the data is ready.
                 if(ap && async_inflight>=0){
@@ -1832,10 +1843,55 @@ void run_present(FgContext& ctx){
                             {
                                 static int gov_floor_p = 0; static int gov_dwell_p = 0;
                                 constexpr int kGovDwell = 2;   // util updates (~1Hz) held before lowering the floor
-                                const int target = cfg.load_governor ? governor_floor_for_util((int)gpuA_pct, cfg.gov_util) : 0;
+                                // util supplies the floor's DEPTH (which band); self-distress supplies the GATE.
+                                const int util_floor = governor_floor_for_util((int)gpuA_pct, cfg.gov_util);
+                                // ── FG-OWN-SLICE distress (the finding-#1 re-keying) ──────────────────────
+                                // (a) freshage: our set-detect delay EMA trending above K_fresh × the source
+                                //     period. freshage_ema_ms is one-tick-stale here (updated in step 3 below),
+                                //     fine for a slow EMA. Guarded on delay_init (seeded) + T_src>0.
+                                // (b) warp: the per-tick warp λ cost inflated vs its OWN calm baseline
+                                //     (warp_base, a slow 0.98/0.02 EMA). Seeded + a 0.2ms noise floor.
+                                // util is a CORROBORATOR only: util-high alone (healthy FG) → NO floor.
+                                static double warp_base = 0.0;   // calm-cost baseline (slow EMA of wap_warp_ema)
+                                static int    dist_dwell = 0;    // de-bounce the distress latch (kDistDwell)
+                                constexpr int    kDistDwell = 3; // util updates held before releasing distress
+                                constexpr double kFresh = 3.0;   // freshage > 3× source-period ⇒ genuinely behind
+                                constexpr double kWarp  = 1.6;   // warp λ > 1.6× calm baseline ⇒ our slice squeezed
+                                if(wap_warp_ema > 0.0)
+                                    warp_base = (warp_base > 0.0) ? warp_base*0.98 + wap_warp_ema*0.02 : wap_warp_ema;
+                                const double Tsrc_now  = src_interval_ema_ms;   // live source period (ms)
+                                const bool fresh_dist  = delay_init && Tsrc_now > 0.0
+                                                       && freshage_ema_ms > kFresh * Tsrc_now;
+                                const bool warp_dist   = warp_base > 0.2 && wap_warp_ema > kWarp * warp_base;
+                                const bool dist_now    = fresh_dist || warp_dist;
+                                // latch with dwell: raise instantly, hold for kDistDwell util updates before release
+                                if(dist_now)               { gov_self_distress = true;  dist_dwell = kDistDwell; }
+                                else if(gov_self_distress) { if(dist_dwell>0) --dist_dwell; else gov_self_distress = false; }
+                                // The floor's target: OFF-path (--gov-util-floor) = pure util (today's behavior,
+                                // the A/B baseline). Default = util band GATED by our own-slice distress.
+                                int target = 0;
+                                if(cfg.load_governor)
+                                    target = cfg.gov_util_floor ? util_floor
+                                                                : (gov_self_distress ? util_floor : 0);
+                                const int prev_floor = gov_floor_p;
                                 if(target > gov_floor_p)      { gov_floor_p = target; gov_dwell_p = kGovDwell; }
                                 else if(target < gov_floor_p) { if(gov_dwell_p>0) --gov_dwell_p; else gov_floor_p = target; }
                                 g_gov_floor.store(gov_floor_p);
+                                // Honest prints: name WHICH signal fired on each engage/release edge (the
+                                // operator reads these). Suppressed on the --gov-util-floor A/B path (no distress).
+                                if(cfg.load_governor && !cfg.gov_util_floor && gov_floor_p != prev_floor){
+                                    if(gov_floor_p > prev_floor)
+                                        std::printf("[ra] gov-floor ENGAGE tier:%d (%s%s%sutil %d%% band:%d)\n",
+                                            gov_floor_p,
+                                            fresh_dist ? "freshage " : "", warp_dist ? "warp " : "",
+                                            (fresh_dist||warp_dist) ? "distress; " : "",
+                                            (int)gpuA_pct, util_floor);
+                                    else
+                                        std::printf("[ra] gov-floor RELEASE tier:%d (freshage %.1fms/%.1fx Tsrc %.1fms; warp %.2fms/base %.2fms; util %d%%)\n",
+                                            gov_floor_p, freshage_ema_ms,
+                                            (Tsrc_now>0.0?freshage_ema_ms/Tsrc_now:0.0), Tsrc_now,
+                                            wap_warp_ema, warp_base, (int)gpuA_pct);
+                                }
                             }
                         }
                     }

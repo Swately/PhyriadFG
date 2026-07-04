@@ -793,6 +793,11 @@ struct Config {
                                     // [50,100]) that triggers the tier-5 escalation even when t_pair_ema has not yet
                                     // crossed 1.30×budget (the GPU pegs before the CPU EMA reacts). Default 92. Only read
                                     // when load_governor is set.
+    bool  gov_util_floor=false;     // --gov-util-floor: restore the OLD pure-util governor floor (util band alone drives
+                                    // g_gov_floor, no FG-own-slice distress gate). DEFAULT OFF — the self-keyed floor is
+                                    // the default (the finding-#1 fix: util-high alone with a healthy FG no longer sheds).
+                                    // This flag is the A/B baseline (it reproduces the old tier:5-at-60%-external-load).
+                                    // Only meaningful with load_governor on. See docs/planning/SATURATION_PLAN.md.
     bool  async_present=true;       // --async-present: decouple the WAP per-tick present from the warp GPU fence (the
                                     // DLSS-G / FSR3 pattern). OFF: vkQueueSubmit→vkWaitForFences(UINT64_MAX) on fBridge
                                     // blocks the present thread on the 4090 every tick; under 4090 saturation that wait
