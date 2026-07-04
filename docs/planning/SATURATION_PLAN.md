@@ -285,3 +285,51 @@ own new load) — registered as the next slice's question: **realtime + output-c
 - REALTIME succeeding unelevated (NTSTATUS 0) contradicts the common claim that it requires
   elevation — on this rig (Win 11 Pro 26200) the call was granted to a normal process. Verified
   twice; do not assume it generalizes.
+
+---
+
+## 9. Output-side decimation — the cost-return hypothesis, REFUTED
+
+**Hypothesis (task 3):** `--gpu-priority realtime` cures the collapse but costs the game ~19-33 %
+fps. If we cap our OUTPUT rate (present fewer frames), the freed GPU should return to the game.
+
+**First, a measured negative on the OLD lever.** `--target-output-fps` pre-decimation only ran the
+s2 *content-quantizer*: it re-presented duplicates while the pipeline still ticked+warped at panel
+rate. Sweep (live BF6, realtime + cap {180,160,144}): present stayed 240.6-240.7, `uniq` dropped
+241→235→222→195, game `arr` FLAT at 86-88. Same GPU cost, fewer unique frames — **returns nothing**.
+
+**The fix — TRUE tick decimation.** With a cap set (default mechanism; `--no-decimate` restores the
+s2 quantizer for A/B), the P loop SKIPS warp+present entirely on non-selected vblank slots (flip-chain
+persistence holds the previous frame) so our GPU cost scales with the output rate. v1 snaps the
+request to the nearest exact DIVISOR of `refresh_hz` (the fixed-panel even-vblank constraint; ties
+prefer the lower rate), honest print at present-init. The clock/PLL/NCO/governor all advance every
+tick in panel units (the decimation gate `continue`s AFTER them — the PLL-units invariant); only
+selection/warp/present/bookkeeping decimate. `dec_every==1` (cap≥panel / off) → byte-identical.
+
+Verified (ball zoo, 240 panel): cap 120 → present locks 120.0, cap 80 → 80.1, cap 160 → snaps 120.2,
+all slip 0 / frz 0 / clean cadence; no-cap 240.7 byte-identical. **The mechanism is correct.**
+
+**But the cost hypothesis is REFUTED (measured, live BF6, realtime, ~30 s means + operator's own
+in-game fps counter):**
+
+| config | present | game `arr` | lat mean | lat min | gpu-A |
+|---|---|---|---|---|---|
+| realtime uncapped | 240.7 | 83 | 35.5 (1 hitch 468) | **14.5** | 91 % |
+| realtime + cap 120 | 120.1 | **79** | 22.9 | **18.5** | 88 % |
+
+The game does NOT recover (arr 83→79, within scene variance; operator's own fps counter: unchanged).
+gpu-A barely moves (91→88 %). And the latency FLOOR WORSENS (min 14.5→18.5 ms — at 120 output the
+displayed content updates half as often; the operator felt this as "same or slightly worse"). The
+lower *mean* is only fewer hitches in that window.
+
+**Root cause of the game's cost — it is CAPTURE-side, not OUTPUT-side.** Halving our present/warp
+work returned nothing because the game's saturation tax is the WGC `CopyResource` of every GAME frame
+(scales with the game's fps, not our output) + memory-bandwidth contention — a per-game-frame cost
+decimation cannot touch. This is the irreducible external-capture FG tax; LSFG pays the same. What
+`realtime` buys is making that cost PLAYABLE (a full-rate smooth output), not cheaper.
+
+**Verdict:** decimation ships as an OPT-IN output-rate / power lever (default OFF, byte-identical;
+correct even-divisor lock), NOT as the cost-return solution it was hypothesized to be. **Arc redirect:
+the game-cost lever, if one exists, is on the CAPTURE side** — re-measure `--copy-device` for the
+GAME's fps specifically (task 2 only A/B'd it for OUR latency), and investigate copy-queue / bandwidth
+isolation. Registered as the next 0.4.0 slice.

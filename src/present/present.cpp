@@ -1497,6 +1497,37 @@ void run_present(FgContext& ctx){
                 const double tick_period_ms=1000.0/(double)cfg.refresh_hz;
                 std::printf("[ra] output-clock: timer @ %d Hz (tick %.3f ms) — present cadence = the panel\n",
                     cfg.refresh_hz,tick_period_ms);
+                // ── --target-output-fps DECIMATION (v1: exact panel-rate divisors only) ──────────
+                // TRUE tick decimation: the pacer keeps the panel vblank cadence; on non-selected
+                // slots the tick SKIPS selection+warp+present entirely (the flip chain persists the
+                // previous frame) → the FG's GPU cost scales with the OUTPUT rate. (The old s2
+                // content-quantizer only re-presented duplicates while still ticking+warping at
+                // panel rate — measured to return NOTHING to the game; SATURATION_PLAN.md §9.)
+                // FIXED-PANEL ALIGNMENT: an arbitrary cap on a fixed-Hz panel yields uneven vblank
+                // patterns (160 on 240 = 2:1:2 judder — the known non-integer-ratio frontier), so
+                // v1 snaps the request to the NEAREST divisor of refresh_hz (ties prefer the LOWER
+                // rate — the flag is a cost lever). VRR panels could take any rate — out of scope
+                // v1. dec_every==1 (cap>=panel / off / --no-decimate) → the gate is never taken →
+                // byte-identical.
+                int dec_every=1;
+                if(cfg.target_output_fps>0.f && cfg.decimate){
+                    int bestN=1; double bestErr=1e18;
+                    for(int N=16;N>=1;--N){   // descending: on an exact tie the LARGER N (lower fps) wins
+                        const double err=std::fabs((double)cfg.refresh_hz/(double)N-(double)cfg.target_output_fps);
+                        if(err<bestErr-1e-9){ bestErr=err; bestN=N; }
+                    }
+                    dec_every=bestN;
+                    if(dec_every>1)
+                        std::printf("[ra] decimation: requested %.0f -> snapped to %.0f (%d/%d) — present every %d-th vblank slot; the other %d skip warp+present entirely\n",
+                            (double)cfg.target_output_fps,(double)cfg.refresh_hz/(double)dec_every,cfg.refresh_hz,dec_every,dec_every,dec_every-1);
+                    else
+                        std::printf("[ra] decimation: requested %.0f >= the nearest divisor is the panel rate itself (%d/1) — no slots skipped (cap inert)\n",
+                            (double)cfg.target_output_fps,cfg.refresh_hz);
+                }
+                // The OLD s2 content-quantizer is active ONLY on the --no-decimate A/B path — exactly
+                // one cap mechanism at a time (they'd fight: the quantizer would learn the decimated
+                // present interval as the "achievable rate" and double-throttle the phase grid).
+                const bool s2_quant = (cfg.target_output_fps>0.f) && !cfg.decimate;
                 // Phase-selection state (P-local; reuses the f_pair_* timeline F publishes).
                 // the tick maps to t_display = now − D on the CAPTURE timeline
                 // (tcap shares now_ms()'s steady clock). D is the auto-calibrated pipeline
@@ -1757,7 +1788,7 @@ void run_present(FgContext& ctx){
                             }
                             pv_last=now2;
                         }
-                        if(cfg.target_output_fps>0.f){
+                        if(s2_quant){   // s2 path only (--no-decimate); under decimation the controller is fully inert
                             // STEP2: EMA the realized present interval = the MEASURED achievable rate (the warp/tick ceiling under saturation) → the sustain term. Slow EMA (0.05), skip hitches.
                             const double now2=now_ms();
                             if(s2_last_pres>0.0){ const double d=now2-s2_last_pres; if(d>0.5&&d<100.0) s2_pres_ema=(s2_pres_ema>0.0)?s2_pres_ema*0.95+d*0.05:d; }
@@ -2028,6 +2059,21 @@ void run_present(FgContext& ctx){
                             else                              content_clock += kScPhaseGain*err;  // slow slew (locked)
                         }
                     }
+                    // ── DECIMATION GATE (--target-output-fps, the §9 fix): skip this vblank slot ──
+                    // Everything ABOVE ticks at panel rate EVERY tick — the pacer grid, the own-window
+                    // yield log, the window-death watchdog, the util/governor publish, the PLL frequency
+                    // (T_robust) + NCO advance + phase slew, and the set-detect/freshage EMAs: the
+                    // panel-unit timebases (the PLL-units bug class — decimation must NOT alter the
+                    // clock's timebase). Everything BELOW — selection, phase, upload, warp, present,
+                    // per-present bookkeeping (uniq/lat/CSV/stats) — runs ONLY on the selected slot; on
+                    // skipped slots the flip chain persists the previous frame (NOTHING is dispatched,
+                    // no half-work). Presented phases advance naturally in output-period steps because
+                    // t_display is TIME-driven (now−D), not tick-count-driven. p_presenting (the gen-
+                    // ring guard) holds the LAST PRESENTED set across skipped slots — the correct hold
+                    // (that set is still on the panel). tick_k is the same counter the pacer grid uses,
+                    // so a grid re-seat (tick_k=0) re-aligns the pattern harmlessly. dec_every==1 →
+                    // never taken → byte-identical.
+                    if(dec_every>1 && (tick_k % (uint64_t)dec_every)!=0) continue;
                     // t_display on the capture timeline (tcap shares now_ms()'s steady clock).
                     // Monotone in wall-time: a tick never reads time backwards (the content
                     // monotonicity guard in still protects against content rewind).
@@ -2356,7 +2402,7 @@ void run_present(FgContext& ctx){
                         // N_target = realized_mult·span LOWERS the commanded phase count under saturation → the
                         // over-production drop refuses to over-command the warp (anti-windup; the --pace-variance race fix).
                         double s2_N_over=0.0;
-                        if(cfg.target_output_fps>0.f){
+                        if(s2_quant){   // s2 path only (--no-decimate)
                             const double base_fps    = (T_robust_ms>1e-3) ? 1000.0/T_robust_ms : 0.0;
                             const double sustain_fps = (s2_pres_ema>1e-3) ? 1000.0/s2_pres_ema : (double)cfg.refresh_hz;
                             double target_eff = (double)cfg.refresh_hz;
@@ -2370,9 +2416,9 @@ void run_present(FgContext& ctx){
                             s2_N_over = s2_mult * (double)span;
                             if(s2_N_over<1.0) s2_N_over=1.0;
                         }
-                        if((cfg.phase_norm || cfg.target_output_fps>0.f) && !backwards){     // forces the even-grid ON
+                        if((cfg.phase_norm || s2_quant) && !backwards){     // forces the even-grid ON (s2 path only — decimation keeps the passive t_display phase)
                             if(!pe_have || pair_c!=pe_pair){ pe_pair=pair_c; pe_j=0; pe_have=true; }
-                            double N = (cfg.target_output_fps>0.f && s2_N_over>0.0) ? s2_N_over   // sustainable count
+                            double N = (s2_quant && s2_N_over>0.0) ? s2_N_over   // sustainable count
                                      : ((tick_period_ms>1e-6) ? ((double)span * T_robust_ms / tick_period_ms) : 1.0);   // the passive count (byte-identical off)
                             if(N<1.0) N=1.0;
                             double te = ((double)pe_j + 0.5) / N;
@@ -2442,7 +2488,7 @@ void run_present(FgContext& ctx){
                         // the warp AND re-present a duplicate (the --pace-variance 395fps race). do_warp=false → the async
                         // tail re-shows the completed front. Generalizes --fdrop, made MANDATORY under target>0; the
                         // free-actuator clamp (async_inflight<0) is already in record_this_tick. Counts op_drops.
-                        if(cfg.target_output_fps>0.f && have_last_pres && cfg.async_present && async_front>=0
+                        if(s2_quant && have_last_pres && cfg.async_present && async_front>=0
                            && pair_c==last_pres_cseq && cand_k==last_pres_k){
                             if(!fdrop_this) ++s2_opdrops;
                             fdrop_this=true;

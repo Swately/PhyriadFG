@@ -164,14 +164,21 @@ struct Config {
                                     // --async-present.
     double pv_safety_ms=0.75;       // --pv-safety: safetyMargin (ms). Read only when --pace-variance.
     double pv_var_factor=0.1;       // --pv-var: varianceFactor. Read only when --pace-variance.
-    float  target_output_fps=0.f;   // --target-output-fps: the fractional output-rate controller. 0 = OFF
-                                    // (byte-identical, the passive N). >0 = hold a STEADY sustainable output cadence:
-                                    // realized_mult = clamp(target_eff/base_fps, 1, 8) where target_eff = min(this,
-                                    // refresh, sustain_frac·measured-achievable-rate); N_target = realized_mult·span
-                                    // drives the even grid → the over-production drop refuses to over-command the warp.
-                                    // Auto-enables --async-present. NEVER caps the game (output-side).
+    float  target_output_fps=0.f;   // --target-output-fps: the requested output cap. 0 = OFF (byte-identical).
+                                    // >0 + decimate (the DEFAULT since the §9 fix): TRUE TICK DECIMATION — the request
+                                    // snaps to the nearest exact divisor of refresh_hz (fixed-panel even-vblank
+                                    // constraint, honest print) and the P loop SKIPS warp+present entirely on
+                                    // non-selected vblank slots (flip-chain persistence shows the previous frame) →
+                                    // the FG's GPU cost scales with the OUTPUT rate. >0 + --no-decimate: the OLD s2
+                                    // fractional output-rate controller (content quantizer: realized_mult·span even
+                                    // grid + over-production drop) — measured to return NOTHING to the game (it
+                                    // re-presents duplicates at full tick+warp cost, SATURATION_PLAN.md §9) — kept
+                                    // for A/B. Auto-enables --async-present. Output-side only.
+    bool   decimate=true;           // --no-decimate: with --target-output-fps>0, restore the OLD s2 content-quantizer
+                                    // instead of true tick decimation (they'd fight — exactly one is active). DEFAULT
+                                    // ON (decimation is the default cap mechanism). Dead when target_output_fps==0.
     float  s2_sustain_frac=0.93f;   // --s2-sustain: kSustainFrac — target this fraction of the measured achievable
-                                    // rate. Read only when --target-output-fps>0.
+                                    // rate. Read only when --target-output-fps>0 AND --no-decimate (the s2 path).
     bool  asw=true;                // --asw: bounded forward EXTRAPOLATION (Oculus-style ASW): when B falls behind and
                                     // the sync-clock phase overshoots the held pair, the warp projects cur FORWARD
                                     // along the MV instead of HOLD-at-1 freezing → fills the throughput deficit.
