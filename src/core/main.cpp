@@ -205,6 +205,41 @@ int main(int argc, char** argv) {
     // joins them) — the only quit path. Returns TRUE so the default terminator (a hard process
     // kill) never runs.
     SetConsoleCtrlHandler(console_ctrl_handler, TRUE);
+    // ── --gpu-priority LEVER 1: process GPU scheduling priority (D3DKMT) ──────────────────────
+    // D3DKMTSetProcessSchedulingPriorityClass — the OBS "GPU priority" mechanism: raises this
+    // process's priority in the WDDM GPU scheduler so our submissions preempt/queue ahead of the
+    // saturated game's. Called at startup BEFORE any device creation (this is the earliest point
+    // after parse). Exported from gdi32.dll; prototype + enum verified FIRST-HAND from the WDK
+    // header "C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\d3dkmthk.h"
+    // (enum at :4534-4542, prototype at :5954):
+    //   typedef enum { IDLE=0, BELOW_NORMAL=1, NORMAL=2, ABOVE_NORMAL=3, HIGH=4, REALTIME=5 }
+    //     D3DKMT_SCHEDULINGPRIORITYCLASS;
+    //   NTSTATUS APIENTRY D3DKMTSetProcessSchedulingPriorityClass(HANDLE, D3DKMT_SCHEDULINGPRIORITYCLASS);
+    // REALTIME typically requires elevation (expect STATUS_PRIVILEGE_NOT_HELD 0xC0000061 unelevated)
+    // — print the NTSTATUS honestly and CONTINUE on failure (never abort; the other levers still run).
+#ifdef _WIN32
+    if (cfg.gpu_priority) {
+        typedef LONG (APIENTRY *PFN_D3DKMTSetProcSchedPrioClass)(HANDLE, int);
+        HMODULE hGdi = LoadLibraryA("gdi32.dll");
+        PFN_D3DKMTSetProcSchedPrioClass pSet = hGdi
+            ? (PFN_D3DKMTSetProcSchedPrioClass)GetProcAddress(hGdi, "D3DKMTSetProcessSchedulingPriorityClass")
+            : nullptr;
+        if (pSet) {
+            const int  cls  = (cfg.gpu_priority == 2) ? 5 /*REALTIME*/ : 4 /*HIGH*/;
+            const LONG st   = pSet(GetCurrentProcess(), cls);
+            if (st == 0)
+                std::printf("[ra] --gpu-priority: D3DKMTSetProcessSchedulingPriorityClass(%s) OK (NTSTATUS 0x00000000)\n",
+                            cls == 5 ? "REALTIME=5" : "HIGH=4");
+            else
+                std::printf("[ra] --gpu-priority: D3DKMTSetProcessSchedulingPriorityClass(%s) FAILED — NTSTATUS 0x%08lX%s — continuing (lever 1 inactive)\n",
+                            cls == 5 ? "REALTIME=5" : "HIGH=4", (unsigned long)st,
+                            (unsigned long)st == 0xC0000061ul ? " (STATUS_PRIVILEGE_NOT_HELD: needs elevation)" : "");
+        } else {
+            std::printf("[ra] --gpu-priority: D3DKMTSetProcessSchedulingPriorityClass not exported by this gdi32.dll — lever 1 unavailable, continuing\n");
+        }
+        // hGdi intentionally NOT freed: gdi32 is a permanent dependency of this process anyway.
+    }
+#endif
     // The output clock is always the timer and PresentSurface is the only present path — the
     // support-matrix gates (warp-at-presenter needs a clock; surface needs timer; igpu-present is
     // unsupported under surface) are satisfied by construction. WGC (and so --window, which implies
@@ -252,7 +287,9 @@ int main(int argc, char** argv) {
     }
 #endif
     const bool want_dd = (cfg.capture_api == CA_DD);
-    if (!d3d_init(d, cfg.cap_mon, want_dd)) {
+    // --gpu-priority LEVER 3: +7 GPU thread priority on the D3D11 CAPTURE device (the WGC copy
+    // path — the INVISIBLE staging CopyResource measured 3-8ms behind a saturated game queue).
+    if (!d3d_init(d, cfg.cap_mon, want_dd, /*gpu_thread_prio=*/cfg.gpu_priority ? 7 : 0)) {
         std::printf("[ra] capture output %d unavailable (api=%s)\n",cfg.cap_mon,want_dd?"dd":"wgc");
         // The generic capture-init failure carries a NAMED reason. On a Microsoft-Hybrid laptop dGPU the
         // DD path fails by design (DuplicateOutput → UNSUPPORTED); surface that floor specifically so the
@@ -815,7 +852,9 @@ int main(int argc, char** argv) {
     // no OFA). want_ofa=cfg.nvofa; vdev_create auto-disables (ofaQueue stays null) if A lacks
     // VK_NV_optical_flow. The runtime use is FURTHER gated on single_gpu (FD==A) below — under multi-GPU the
     // flow rides B (no OFA) so NVOFA cannot apply (NVOFA is a single-GPU lever).
-    if(!vdev_create(pA,A,true,/*want_extmem_win32=*/true,/*prefer_same_family_q2=*/true,/*want_xfer_q=*/cfg.upload_xfer,/*want_ofa=*/cfg.nvofa)
+    // --gpu-priority LEVER 2: VK_EXT/KHR_global_priority on device A's queues ONLY (the warp/present
+    // GPU — the one contended by the game); B/G keep default priority (their work is off the game's GPU).
+    if(!vdev_create(pA,A,true,/*want_extmem_win32=*/true,/*prefer_same_family_q2=*/true,/*want_xfer_q=*/cfg.upload_xfer,/*want_ofa=*/cfg.nvofa,/*global_priority=*/cfg.gpu_priority)
        || (!single_gpu && !vdev_create(pB,B,false))){ std::printf("[ra] device creation failed\n"); goto done; }
     // NOTA: el 4090 soporta OFA por HW pero en multi-GPU el flow corre en el 1080 Ti (sin OFA),
     // así que --nvofa no aplica aquí. Avisar la opción (NO auto-activar: la salida OFA está sin calibrar y

@@ -38,7 +38,10 @@ struct D3D {
     std::vector<OutInfo> outputs;
 };
 // want_dup=false: skip DuplicateOutput (WGC path); returns true if D3D11 device created.
-bool d3d_init(D3D& d,int ci,bool want_dup=true);
+// gpu_thread_prio (--gpu-priority LEVER 3): nonzero → IDXGIDevice::SetGPUThreadPriority(prio) on the
+// capture device (range [-7,+7]; we pass +7) so the WGC staging CopyResource schedules ahead of a
+// saturated game queue. 0 = untouched (byte-identical). Failure → honest print, never fatal.
+bool d3d_init(D3D& d,int ci,bool want_dup=true,int gpu_thread_prio=0);
 // Re-arm the output duplication after DXGI_ERROR_ACCESS_LOST (a fullscreen/mode/MPO change silently
 // kills it). Releases the dead dup + re-DuplicateOutput on the persisted output index. true=ok.
 bool dda_rearm(D3D& d);

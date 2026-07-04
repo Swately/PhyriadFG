@@ -798,6 +798,17 @@ struct Config {
                                     // the default (the finding-#1 fix: util-high alone with a healthy FG no longer sheds).
                                     // This flag is the A/B baseline (it reproduces the old tier:5-at-60%-external-load).
                                     // Only meaningful with load_governor on. See docs/planning/SATURATION_PLAN.md.
+    int   gpu_priority=0;           // --gpu-priority {high|realtime}: the GPU scheduling-priority levers for the
+                                    // saturated-game regime (SATURATION_PLAN.md §levers-measured) — 0=off (default),
+                                    // 1=high, 2=realtime. THREE levers under one flag, each with an honest fallback:
+                                    // (1) D3DKMTSetProcessSchedulingPriorityClass (gdi32.dll, the OBS 'GPU priority'
+                                    //     mechanism) at startup BEFORE any device creation — HIGH=4 / REALTIME=5
+                                    //     (enum verified first-hand from WDK d3dkmthk.h; REALTIME typically needs
+                                    //     elevation → print the NTSTATUS honestly and continue).
+                                    // (2) VK_EXT/KHR_global_priority HIGH(512)/REALTIME(1024) on device A's queues
+                                    //     (the warp/present GPU), with a NOT_PERMITTED/missing-ext retry at normal.
+                                    // (3) IDXGIDevice::SetGPUThreadPriority(+7) on the D3D11 CAPTURE device (the
+                                    //     WGC copy path). DEFAULT OFF this iteration; promotion decided by the A/B.
     bool  async_present=true;       // --async-present: decouple the WAP per-tick present from the warp GPU fence (the
                                     // DLSS-G / FSR3 pattern). OFF: vkQueueSubmit→vkWaitForFences(UINT64_MAX) on fBridge
                                     // blocks the present thread on the 4090 every tick; under 4090 saturation that wait

@@ -62,5 +62,9 @@ struct VDev { VkPhysicalDevice phys=VK_NULL_HANDLE; VkDevice dev=VK_NULL_HANDLE;
     bool has_dp4a=false;            // shaderIntegerDotProduct supported (the DP4a cross-vendor int8 key)
     bool fp16_storage=false;        // the 16-bit-storage sub-feature (storageBuffer16BitAccess)
     float fp16_gflops=0.0f; };      // measured fp16 packed-math throughput; 0 == not characterized
-bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_win32=false,bool prefer_same_family_q2=false,bool want_xfer_q=false,bool want_ofa=false);
+// global_priority (--gpu-priority LEVER 2): 0=off (byte-identical device create), 1=request
+// VK_QUEUE_GLOBAL_PRIORITY_HIGH(512), 2=REALTIME(1024) via VK_EXT/KHR_global_priority on EVERY queue
+// create-info of this device. Missing extension → honest print, normal create. Create failure with the
+// priority chained (VK_ERROR_NOT_PERMITTED or any other) → honest print + ONE retry at normal priority.
+bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_win32=false,bool prefer_same_family_q2=false,bool want_xfer_q=false,bool want_ofa=false,int global_priority=0);
 void vdev_destroy(VDev& d);

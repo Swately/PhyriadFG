@@ -4,7 +4,9 @@ Tier-1 planning doc (`*_MASTER_PLAN` + `*_IMPLEMENTATION_STRATEGIES` fused — o
 substantial but not risk-bearing: the governor floor is an **advisory** lock-free control word with an
 unchanged producer/consumer contract; no crash/device-loss/concurrency/data-loss surface is touched,
 and the OLD behavior stays reachable behind a flag for A/B). Status: **measured — finding #1 fix
-DESIGNED + implemented + bench-gated this session.** The arc header for the 0.4.0 work.
+DESIGNED + implemented + bench-gated (§1-§7), and the `--gpu-priority` levers implemented + A/B'd on
+LIVE BF6 (§8): `realtime` cures the collapse (mult 0.84→2.76) at a -18.6 % game cost → OPT-IN.** The
+arc header for the 0.4.0 work.
 
 The key words MUST / MUST NOT / SHOULD / MAY are BCP-14. Every number below the "MEASURED" heading was
 taken first-hand on the bench this session (`tools/gpu_load.exe` + `tools/ball_zoo.ps1`); every number
@@ -174,9 +176,10 @@ for it lands here.
    keying.
 2. **`D3DKMTSetProcessSchedulingPriorityClass`** — raise our process's GPU scheduling priority so the
    reserved slice is honored by the scheduler, not just requested. Pairs with the CPU-bottleneck case.
+   **→ IMPLEMENTED + MEASURED, see §8 (`--gpu-priority`).**
 3. **`--copy-device` under saturation** — route the capture copy through a device that is not the
    saturated one, so our ingest is not starved by the game's GPU load. Measured under the graphics-load
-   mode once it exists.
+   mode once it exists. **→ MEASURED on live BF6 in §8 (pair 4): net-negative without REALTIME.**
 
 ---
 
@@ -191,3 +194,94 @@ for it lands here.
 
 The G1 vs G4 pair IS the fix's proof: same external load, opposite tier — the new default holds the
 quality stack, the OLD flag throws it away.
+
+---
+
+## 8. §levers-measured — `--gpu-priority` on LIVE Battlefield 6 (task 2, measured this session)
+
+**The regime under test** (live BF6, GPU-A 99 %, quantified before this slice): the P-tick present
+BLOCKS under the game's contention (iter 9-12 ms avg / 20-29 ms worst; the warp itself healthy at
+2-3.4 ms), the gen-ring guard then holds F (preflow spin 13-16 ms), F consumes only ~48 of ~107
+captured pairs/s, freshage 36-47 ms (≈4× the source period), multiplier ~0.85×, lat 78-89 ms, gme dis
+94-97 %. The governor fix (§3) behaves honestly here — genuine distress, named in the engage prints.
+The cure attempted in this slice: **getting our GPU slices via scheduling priority.**
+
+### 8.1 The three levers (one flag: `--gpu-priority {high|realtime}`, DEFAULT OFF)
+
+| # | lever | where it landed | outcome on this rig (printed honestly at startup) |
+|---|-------|-----------------|-----------------------------------------------------|
+| 1 | `D3DKMTSetProcessSchedulingPriorityClass` (gdi32.dll, the OBS "GPU priority" mechanism) | `src/core/main.cpp` right after `parse_args`, BEFORE any device creation. Enum verified FIRST-HAND from the WDK header `Windows Kits/10/Include/10.0.26100.0/shared/d3dkmthk.h:4534-4542` (IDLE=0…ABOVE_NORMAL=3, **HIGH=4, REALTIME=5**) + prototype `:5954`. | **HIGH=4: NTSTATUS 0x00000000 OK. REALTIME=5: NTSTATUS 0x00000000 OK — no elevation needed on this rig** (the expected `STATUS_PRIVILEGE_NOT_HELD 0xC0000061` did not occur). |
+| 2 | `VK_EXT/KHR_global_priority` on device A's queues | `src/core/device.cpp` `vdev_create(..., global_priority)` — chained per queue create-info, with a `VK_EXT_global_priority_query` pre-check and a NOT_PERMITTED retry at normal. All names/values verified first-hand from `G:\VulkanSDK\Include\vulkan\vulkan_core.h` (HIGH=512, REALTIME=1024, `VK_ERROR_NOT_PERMITTED=-1000174001`). Device A only (B/G stay default). | **Driver-refused: the query ext reports qfam 0 on the RTX 4090 supports nothing above MEDIUM** → honest downgrade print, queues stay normal. **Lever 2 is a measured NO-OP on this NVIDIA Windows driver** (both at high and realtime). |
+| 3 | `IDXGIDevice::SetGPUThreadPriority(+7)` on the D3D11 CAPTURE device | `src/capture/capture.cpp` `d3d_init(..., gpu_thread_prio)`, right after the existing IDXGIDevice query. | **OK (hr S_OK), lever ACTIVE** — but see the A/B: no measurable effect without lever 1 at REALTIME. |
+
+Fallback behavior: every lever prints its own outcome and NEVER aborts; a VK create-failure with the
+priority chained gets ONE retry at normal priority.
+
+### 8.2 The paired A/B (live BF6, operator playing; ~45 s runs, back-to-back pairs, steady-state
+means after a 10-stat-line warmup; `in` = the game's captured fps = the cost side)
+
+| run | in (game) | present | **mult** | cons | lat ms | fresh ms | spin ms | iter/worst ms | copy ms | fwake ms |
+|-----|-----------|---------|----------|------|--------|----------|---------|---------------|---------|----------|
+| p1 a base      | 106.4 | 89.4 | 0.84 | 47.9 | 82.8 | 42.5 | 13.9 | 11.2 / 22.8 | 6.0 | 9.6 |
+| p1 b high      | 106.2 | 90.4 | 0.85 | 48.7 | 79.9 | 40.9 | 14.0 | 11.1 / 24.1 | 6.2 | 8.7 |
+| p2 b high      | 106.6 | 87.7 | 0.82 | 48.5 | 80.5 | 41.4 | 13.9 | 11.4 / 23.5 | 6.4 | 8.7 |
+| p2 a base      | 106.4 | 86.2 | 0.81 | 49.4 | 78.6 | 40.6 | 14.3 | 11.6 / 24.4 | 6.2 | 8.7 |
+| p3 a base      | 106.1 | 94.7 | 0.89 | 48.1 | 82.0 | 41.8 | 14.7 | 10.6 / 23.5 | 5.9 | 9.1 |
+| p3 b high      | 106.1 | 92.0 | 0.87 | 49.2 | 79.5 | 40.5 | 13.6 | 10.9 / 23.0 | 5.8 | 9.7 |
+| p4 b high      | 106.9 | 87.2 | 0.82 | 47.6 | 79.5 | 41.6 | 14.2 | 11.5 / 24.4 | 6.3 | 8.2 |
+| p4 c high+copy | 106.5 | 83.6 | 0.78 | 46.6 | 81.2 | 42.4 | 15.0 | 12.0 / 26.7 | 4.6 | 8.0 |
+| p5 a base      | 106.7 | 92.2 | 0.86 | 48.9 | 79.9 | 41.2 | 14.4 | 10.9 / 24.1 | 6.3 | 8.6 |
+| **p5 d realtime** | **87.4** | **239.8** | **2.74** | **87.4** | **19.5** | **10.1** | **0.0** | **3.9 / 5.8** | **1.0** | **0.0** |
+| **p6 d realtime** | **86.2** | **239.9** | **2.78** | **86.2** | **21.4** | **11.9** | **0.0** | **3.8 / 5.8** | **1.0** | **0.0** |
+| p6 a base      | 107.3 | 88.7 | 0.83 | 48.0 | 80.2 | 41.8 | 14.6 | 11.3 / 24.1 | 6.0 | 9.1 |
+
+Within-run `in=` trajectories are steady (baseline 105-109 every line; realtime 83-91 after a 3-line
+transient) — the game-fps change is CAUSED by the config, not scene drift, and p6 (order-flipped)
+confirms p5 exactly: the game bounced back to 107 the instant the baseline run replaced the realtime
+one.
+
+### 8.3 Verdict per lever
+
+- **`high` (levers 1@HIGH + 3; lever 2 driver-refused): DEAD.** Three paired runs, mult Δ within
+  ±0.03 (noise), every distress metric unchanged. WDDM HIGH does not preempt a foreground game's
+  submissions on this scheduler, and +7 capture-thread priority alone moves nothing.
+- **`high --copy-device`: DEAD (net-negative).** mult 0.82→0.78 in its pair, worst iter +2.3 ms. The
+  second D3D11 device adds copy overhead (though `copy` drops 6.3→4.6 ms, the pipeline pays more
+  elsewhere). Without REALTIME backing it, decoupling the copy queue buys nothing.
+- **`realtime` (lever 1@REALTIME + 3): TRANSFORMATIVE — the collapse is CURED.** Confirmed by two
+  order-flipped pairs: multiplier 0.84→**2.76** (present 88→**240/s**, the full tick rate, uniq=240/s),
+  cons = in (F consumes EVERY captured pair), lat 80→**20.5 ms**, freshage 41.5→**11 ms** (healthy,
+  <1× T_src), preflow spin 14→**0**, iter worst 24→**5.8 ms**, INVISIBLE copy 6.2→**1.0 ms**, fwake
+  8.9→**0**. The whole starvation chain (present-block → ring-hold → F-starve) decongests at once.
+- **The cost, honestly:** the game loses 106.6→86.8 fps ≈ **-18.6 %** — ABOVE the ≤10-15 % band this
+  protocol set. Two mitigating notes, reported plainly: (a) part of that cost is the FG's own new
+  work (the pipeline runs 240/s instead of 88/s on the same GPU — it is USING the slice it won, gpu-A
+  92-93 % vs 99 %); (b) the cost is instantly reversible (p6). Net screen experience: 87 fps game +
+  240 uniq/s smooth output + 20 ms lat, vs 107 fps game + 88/s stuttering output + 80 ms lat.
+
+**Recommendation: `--gpu-priority realtime` = OPT-IN (ship the flag, do NOT default it).** It exceeds
+the game-cost band, needs per-game/per-rig validation, and WDDM REALTIME for an unelevated process is
+rig-dependent (it happened to be granted here). `high` and `--copy-device` earn nothing on this rig —
+keep them available for other-rig A/B only. Promotion to default would require the game-cost gate
+(≤10-15 %) to pass, plausibly via a capped-output mode (e.g. `--target-output-fps` limiting the FG's
+own new load) — registered as the next slice's question: **realtime + output-cap sweep**.
+
+### 8.4 Honest anomalies
+
+- **`dis` stays 94-97 % in EVERY config, including healthy realtime** — gme dissidence under BF6 is
+  dominated by real scene motion + `bwd-skip:100%` (tier-5 forces bwd off), NOT by pair staleness
+  alone. The earlier reading "dis 54-70 % = stale pairs" conflated two sources; staleness is gone
+  under realtime (freshage 11 ms) yet dis stays high.
+- **tier:5 persists under realtime via the warp-distress arm's low-start ratchet**: the engage print
+  named it honestly (`warp 3.68ms/base 1.62ms`). The warp cost early in the run (~1.6 ms) forms a LOW
+  `warp_base`, and the sustained contended warp (2.7-3.7 ms) then reads as >1.6× baseline forever.
+  The §3 design note anticipated this feedback; under BF6 it manifests. Candidate fix for a later
+  slice: freeze `warp_base` updates while distress is latched (or a windowed median). NOT changed in
+  this slice — the shed it causes is conservative (quality-, not throughput-reducing), and output is
+  a full 240 uniq/s regardless.
+- **The stat-line cadence is per-90-presents, not per-second** — under realtime (240/s) the same 45 s
+  yields ~119 stat lines vs ~45. The steady-state means above are still time-honest (every line is a
+  fixed-work window), but the warmup skip covers less wall-time in the realtime runs.
+- REALTIME succeeding unelevated (NTSTATUS 0) contradicts the common claim that it requires
+  elevation — on this rig (Win 11 Pro 26200) the call was granted to a normal process. Verified
+  twice; do not assume it generalizes.

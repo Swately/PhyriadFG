@@ -4,7 +4,7 @@
 #include <cstring>   // std::strcmp
 #include <vector>
 
-bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_win32,bool prefer_same_family_q2,bool want_xfer_q,bool want_ofa){
+bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_win32,bool prefer_same_family_q2,bool want_xfer_q,bool want_ofa,int global_priority){
     vkGetPhysicalDeviceMemoryProperties(phys,&d.mp); VkPhysicalDeviceProperties props; vkGetPhysicalDeviceProperties(phys,&props); std::snprintf(d.name,sizeof(d.name),"%s",props.deviceName); d.phys=phys; d.type=props.deviceType;
     uint32_t ec=0; vkEnumerateDeviceExtensionProperties(phys,nullptr,&ec,nullptr); std::vector<VkExtensionProperties> ex(ec); vkEnumerateDeviceExtensionProperties(phys,nullptr,&ec,ex.data()); bool has_sc=false;
     // The VK→D3D11 bridge (--present-surface) imports a D3D11 shared texture as a VK image
@@ -13,10 +13,16 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
     // enabled-extension set is unchanged.
     bool has_extmem_win32=false, has_keyed_mutex=false;
     bool has_optical_flow=false;   // --nvofa: VK_NV_optical_flow exposed?
+    // --gpu-priority LEVER 2: VK_KHR/EXT_global_priority (the queue-level GPU scheduling priority)
+    // + the optional query ext (per-family supported-priority list, used to downgrade honestly).
+    bool has_gp_khr=false, has_gp_ext=false, has_gp_query=false;
     for(auto& e:ex){if(!std::strcmp(e.extensionName,VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))d.has_emh=true; if(!std::strcmp(e.extensionName,VK_KHR_SWAPCHAIN_EXTENSION_NAME))has_sc=true;
         if(!std::strcmp(e.extensionName,VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME))has_extmem_win32=true;
         if(!std::strcmp(e.extensionName,VK_KHR_WIN32_KEYED_MUTEX_EXTENSION_NAME))has_keyed_mutex=true;
-        if(!std::strcmp(e.extensionName,VK_NV_OPTICAL_FLOW_EXTENSION_NAME))has_optical_flow=true;}
+        if(!std::strcmp(e.extensionName,VK_NV_OPTICAL_FLOW_EXTENSION_NAME))has_optical_flow=true;
+        if(!std::strcmp(e.extensionName,VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME))has_gp_khr=true;
+        if(!std::strcmp(e.extensionName,VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME))has_gp_ext=true;
+        if(!std::strcmp(e.extensionName,VK_EXT_GLOBAL_PRIORITY_QUERY_EXTENSION_NAME))has_gp_query=true;}
     d.has_optical_flow=has_optical_flow;
     d.has_extmem_win32=has_extmem_win32; d.has_keyed_mutex=has_keyed_mutex;
     // Read the vendor-agnostic capability bits (fp16-packed-math + DP4a int8-dot + 16-bit-storage)
@@ -103,6 +109,53 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
         bool dup=false; for(uint32_t i=0;i<nqci;++i) if(qcis[i].queueFamilyIndex==d.ofaQfam){ dup=true; break; }
         if(!dup){ qcis[nqci].sType=VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO; qcis[nqci].queueFamilyIndex=d.ofaQfam; qcis[nqci].queueCount=1; qcis[nqci].pQueuePriorities=prio; ++nqci; ofa_own_qci=true; }
     }
+    // ── --gpu-priority LEVER 2: VK global queue priority on THIS device's queues ────────────────
+    // Chain VkDeviceQueueGlobalPriorityCreateInfoEXT onto EVERY queue create-info so all our queues
+    // (present q, q2, qT, OFA) schedule at the requested global priority. All names/values verified
+    // FIRST-HAND from G:\VulkanSDK\Include\vulkan\vulkan_core.h: HIGH=512 / REALTIME=1024 (:8163),
+    // struct+sType (:8379,:1560), query struct (:8391,:1673), VK_ERROR_NOT_PERMITTED=-1000174001
+    // (:166), ext names (:11536,:17483,:20807). When VK_EXT_global_priority_query is exposed, the
+    // per-family supported list is read first and an unsupported request DOWNGRADES honestly (e.g.
+    // REALTIME→HIGH) instead of failing the create. gqp[] must outlive vkCreateDevice (this scope).
+    VkDeviceQueueGlobalPriorityCreateInfoEXT gqp[4]{};
+    bool gp_armed=false;
+    if(global_priority>0){
+        if(has_gp_khr||has_gp_ext){
+            exts.push_back(has_gp_khr?VK_KHR_GLOBAL_PRIORITY_EXTENSION_NAME:VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME);
+            const VkQueueGlobalPriorityEXT want=(global_priority==2)?VK_QUEUE_GLOBAL_PRIORITY_REALTIME_EXT:VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT;
+            // Per-family supported-priority query (only when the query ext is exposed). One
+            // vkGetPhysicalDeviceQueueFamilyProperties2 (core 1.1) pass with the gp props chained.
+            std::vector<VkQueueFamilyGlobalPriorityPropertiesEXT> gpp;
+            bool have_gpp=false;
+            if(has_gp_query){
+                gpp.resize(qfc); std::vector<VkQueueFamilyProperties2> qfp2(qfc);
+                for(uint32_t i=0;i<qfc;++i){ gpp[i].sType=VK_STRUCTURE_TYPE_QUEUE_FAMILY_GLOBAL_PRIORITY_PROPERTIES_EXT; qfp2[i].sType=VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2; qfp2[i].pNext=&gpp[i]; }
+                uint32_t n=qfc; vkGetPhysicalDeviceQueueFamilyProperties2(phys,&n,qfp2.data()); have_gpp=true;
+            }
+            for(uint32_t i=0;i<nqci;++i){
+                VkQueueGlobalPriorityEXT use=want;
+                if(have_gpp){
+                    const auto& p=gpp[qcis[i].queueFamilyIndex];
+                    bool ok=false, high_ok=false;
+                    for(uint32_t k=0;k<p.priorityCount;++k){ if(p.priorities[k]==want) ok=true; if(p.priorities[k]==VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT) high_ok=true; }
+                    if(!ok){
+                        use = high_ok ? VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT : VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT;
+                        std::printf("[ra] --gpu-priority: qfam %u on '%s' does not support %s — downgraded to %s (per VK_EXT_global_priority_query)\n",
+                            qcis[i].queueFamilyIndex, d.name, want==VK_QUEUE_GLOBAL_PRIORITY_REALTIME_EXT?"REALTIME":"HIGH",
+                            use==VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT?"HIGH":"MEDIUM (the spec default)");
+                    }
+                }
+                if(use!=VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_EXT){   // MEDIUM = the default → chaining it is a no-op; leave unchained
+                    gqp[i].sType=VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT;
+                    gqp[i].globalPriority=use; gqp[i].pNext=nullptr;
+                    qcis[i].pNext=&gqp[i]; gp_armed=true;
+                }
+            }
+            if(!gp_armed) std::printf("[ra] --gpu-priority: no queue family on '%s' supports above-MEDIUM priority — queues stay at normal\n", d.name);
+        } else {
+            std::printf("[ra] --gpu-priority: '%s' exposes no VK_KHR/EXT_global_priority — its queues stay at normal priority (lever 2 unavailable on this device)\n", d.name);
+        }
+    }
     // Enable the timeline-semaphore feature (Vulkan 1.2 core) ONLY when the transfer queue is live. tsf
     // must outlive the vkCreateDevice call below (dci.pNext); it shares this scope.
     VkPhysicalDeviceTimelineSemaphoreFeatures tsf{}; tsf.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES; tsf.timelineSemaphore=VK_TRUE;
@@ -122,7 +175,23 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
     const bool want_ts = (want_xfer_q && d.qfamT!=UINT32_MAX);
     if(use_ofa){ ofFeat.pNext = want_ts ? (void*)&tsf : nullptr; dci.pNext=&ofFeat; }
     else if(want_ts) dci.pNext=&tsf;
-    if(vkCreateDevice(phys,&dci,nullptr,&d.dev)!=VK_SUCCESS) return false;
+    // --gpu-priority LEVER 2 fallback: a create failure with the priority chained (typically
+    // VK_ERROR_NOT_PERMITTED = -1000174001 when the driver refuses REALTIME/HIGH to an unelevated
+    // process) gets ONE honest retry at normal priority — never a silent hard-fail of the whole app.
+    {
+        VkResult cr=vkCreateDevice(phys,&dci,nullptr,&d.dev);
+        if(cr!=VK_SUCCESS && gp_armed){
+            std::printf("[ra] --gpu-priority: vkCreateDevice on '%s' with global-priority %s FAILED (VkResult %d%s) — honest retry at NORMAL priority\n",
+                d.name, (global_priority==2)?"REALTIME":"HIGH", (int)cr,
+                (cr==VK_ERROR_NOT_PERMITTED_EXT)?" = VK_ERROR_NOT_PERMITTED":"");
+            for(uint32_t i=0;i<nqci;++i) qcis[i].pNext=nullptr;   // strip the priority chain; the ext stays enabled (harmless)
+            gp_armed=false;
+            cr=vkCreateDevice(phys,&dci,nullptr,&d.dev);
+        }
+        if(cr!=VK_SUCCESS) return false;
+        if(gp_armed) std::printf("[ra] --gpu-priority: '%s' queues created with VK global priority (requested %s; any per-family downgrade printed above) — lever 2 ACTIVE\n",
+            d.name, (global_priority==2)?"REALTIME(1024)":"HIGH(512)");
+    }
     vkGetDeviceQueue(d.dev,d.qfam,0,&d.q);
     if(q2mode==0) vkGetDeviceQueue(d.dev,qfam2,0,&d.q2);
     else if(q2mode==1) vkGetDeviceQueue(d.dev,d.qfam,1,&d.q2);

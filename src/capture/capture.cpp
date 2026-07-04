@@ -11,7 +11,7 @@
 #include <chrono>                 // std::chrono::milliseconds (the convert-worker wait_for timeout)
 
 // want_dup=false: skip DuplicateOutput (WGC path); returns true if D3D11 device created.
-bool d3d_init(D3D& d,int ci,bool want_dup){
+bool d3d_init(D3D& d,int ci,bool want_dup,int gpu_thread_prio){
     d.cap_ci=ci;   // persist the chosen output index for dda_rearm()
     D3D_FEATURE_LEVEL fl;
     if(FAILED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&d.dev,&fl,&d.ctx))) return false;
@@ -21,6 +21,14 @@ bool d3d_init(D3D& d,int ci,bool want_dup){
     { ID3D11Multithread* _mt=nullptr; if(SUCCEEDED(d.ctx->QueryInterface(__uuidof(ID3D11Multithread),(void**)&_mt))&&_mt){ _mt->SetMultithreadProtected(TRUE); _mt->Release(); } }
 #endif
     IDXGIDevice* dxgi=nullptr; d.dev->QueryInterface(__uuidof(IDXGIDevice),(void**)&dxgi);
+    // --gpu-priority LEVER 3: raise the CAPTURE device's GPU thread priority (IDXGIDevice range
+    // [-7,+7]) so the WGC staging CopyResource (measured 3-8ms INVISIBLE under a saturated game)
+    // schedules ahead of the game's queue. Honest print either way; failure is never fatal.
+    if(gpu_thread_prio && dxgi){
+        const HRESULT phr=dxgi->SetGPUThreadPriority(gpu_thread_prio);
+        if(SUCCEEDED(phr)) std::printf("[ra] --gpu-priority: capture device SetGPUThreadPriority(%+d) OK (lever 3 ACTIVE)\n",gpu_thread_prio);
+        else               std::printf("[ra] --gpu-priority: capture device SetGPUThreadPriority(%+d) FAILED (hr=0x%08lX) — continuing (lever 3 inactive)\n",gpu_thread_prio,(unsigned long)phr);
+    }
     IDXGIAdapter* ad=nullptr; dxgi->GetAdapter(&ad); DXGI_ADAPTER_DESC adesc{}; ad->GetDesc(&adesc); d.luid=adesc.AdapterLuid;
     WideCharToMultiByte(CP_ACP,0,adesc.Description,-1,d.adapter,sizeof(d.adapter),nullptr,nullptr);
     for(UINT i=0;;++i){ IDXGIOutput* o=nullptr; if(ad->EnumOutputs(i,&o)!=S_OK)break; DXGI_OUTPUT_DESC od{}; o->GetDesc(&od);
