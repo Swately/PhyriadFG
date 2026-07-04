@@ -228,9 +228,19 @@ const GROUPS = [
         desc: "Output clock tick rate (default 240).",
       },
       {
+        flag: "--gpu-priority", type: "select", default: "off",
+        name: "GPU priority",
+        options: [
+          { value: "off", label: "off (default)" },
+          { value: "high", label: "high (WDDM high — measured no-op vs the game)" },
+          { value: "realtime", label: "realtime (the saturation cure — see desc)" },
+        ],
+        desc: "GPU scheduling priority for the saturated-game regime. realtime CURES the 99%-load collapse (present locks to the full panel rate, latency ~20ms) by winning GPU slices over the game — at a game-fps cost (~20-33% on the test rig; the honest external-capture tax). high is a measured no-op on this NVIDIA driver. Off = default. May need elevation on some systems (honest print).",
+      },
+      {
         flag: "--target-output-fps", type: "number", default: "", min: 1, step: 1,
         name: "Target output FPS", placeholder: "0 = off",
-        desc: "Fractional output-rate controller (stable cadence). Auto-enables --async-present. Never caps the game.",
+        desc: "Output-rate cap via TRUE tick decimation: snaps to the nearest exact divisor of the refresh rate (e.g. 120 or 80 on a 240Hz panel) and skips warp+present on the other vblanks. An output-rate/power lever — it does NOT return fps to the game (the game's saturation cost is capture-side, measured). Auto-enables --async-present.",
       },
       {
         flag: "--s2-sustain", type: "number", default: "0.93", min: 0.5, max: 1, step: 0.01,

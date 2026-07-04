@@ -5,7 +5,7 @@ already-rendered output, estimates the motion between real frames, synthesizes i
 presents them — with no access to the game engine, its motion vectors, or its depth. One executable, one
 build.
 
-> `0.3.0-experimental` · Windows · student-built, LLM-assisted.
+> `0.4.0-experimental` · Windows · student-built, LLM-assisted.
 
 [![Discord](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/x6ZsjVchs)
 Questions, testing feedback, and release announcements: **[discord.gg/x6ZsjVchs](https://discord.gg/x6ZsjVchs)**
