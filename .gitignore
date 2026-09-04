@@ -33,6 +33,7 @@ ui/Microsoft.WebView2*
 
 # ── Release artifacts (attached to GitHub releases, not versioned) ──
 *.zip
+dist/
 
 # ── Scratch / diagnostics (gitignored campaign artifacts) ───────
 frames/
