@@ -1406,7 +1406,11 @@ void run_present(FgContext& ctx){
                 // its buffers do not exist → byte-identical when off (the default-off discipline).
                 // SAMPLING: increment qdump_tick every tick, dump only every kQdumpStride-th → the N triples
                 // SPAN the run instead of clustering in the first N ticks. At the dump tick all three warp
-                // images are LIVE: wapPrevA (real N) + wapCurA (real N+2) are in SHADER_READ_ONLY_OPTIMAL
+                // images are LIVE: wapPrevA (real N) + wapCurA (real N+1) are in SHADER_READ_ONLY_OPTIMAL
+                // (span CORRECTED 2026-09-04: MEASURED N+1, not N+2, by decoding the motion-truth
+                //  barcode from these very planes -- step 1 on 12 of 12 triples, records/S2_T3_GATE.md.
+                //  "N+2" survived from the HELD-OUT design, where the middle real is withheld as truth;
+                //  this tap is truth-less and holds nothing out, so the pair is P's own working pair.)
                 // (the wap_upload upload state); wapOutA (the live FG output for THIS
                 // phase t) is GENERAL (just synthesised). One oneshot per image MIRRORS --outdump's proven
                 // barrier+CopyImageToBuffer EXACTLY — only the OUT image uses GENERAL endpoints; the two

@@ -123,7 +123,16 @@ exactos que simulen de forma correcta el movimiento".)
     barcodes decode to their own index; `p(t)` vs the written table worst |delta| **4.99e-10 px**;
     0 byte-identical consecutive frame pairs; displacement span 1.75–15.33 px/frame including the
     `fast` expected-failure control outside the matcher's reach.
-  - **S2.T3** the on-screen player · `next` — what puts the zoo where the capture path can see it
+  - **S2.T3** the on-screen player · **`done`** (2026-09-04, `records/S2_T3_GATE.md`) —
+    `tools/motion_truth/play_frames.ps1`, borrowing `ball_zoo.ps1`'s proven Stopwatch/`timeBeginPeriod`
+    loop. Held **60.1** and **120.1 fps** with **0 missed ticks** (120 sustained 30+ s, error 0.08%).
+    The FG ingests it as ordinary content: `arr/cap 59–61/s` against a 60 fps source, `uniq 240/s`.
+    **The result that matters:** the frame-ID barcode survives the WHOLE chain — zoo render → blit →
+    window → WGC capture → convert → the warp's anchors → `--qdump+` readback — and the decoded step
+    from `prev` to `next` is **1 on 12 of 12 triples**, the 59→0 loop wrap included. The FG's `t` can
+    now be tied to an exact pair of KNOWN source frames, which is what M1 needs. It also corrected a
+    documented claim: the triple is (N, N+1), not (N, N+2) — the `N+2` wording survived from the
+    held-out design and this tap holds nothing out (`cli.cpp:105-106`, `present.cpp:1409` fixed).
   - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
   - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
     passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
