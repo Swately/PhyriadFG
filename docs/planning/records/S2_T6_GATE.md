@@ -1,6 +1,12 @@
 # S2.T6 — gate record: the CPU reference warp, built and NOT yet passing · 2026-09-03
 
-> The independent oracle R3's M4 gate rests on. **Verdict: BUILT, PARTIAL — the gate does NOT pass.**
+> The independent oracle R3's M4 gate rests on. **Verdict: BUILT, PARTIAL — the gate does NOT pass,
+> but the pathology that blocked it is CLOSED (§6, 2026-09-04): the sub-pixel deadzone was the test
+> content, not the shader. On an aperiodic background the deadzone population drops from 138,696
+> pixels to 67, and the oracle reaches k = 0.956 (corr 0.987) where motion is real. What remains is a
+> 5–13 % over-displacement on moving content — a precision question, not a pathology.**
+>
+> *(Original verdict, kept:)* **BUILT, PARTIAL — the gate does NOT pass.**
 > The reference reproduces 99.88% of the shipping default's stored pixels exactly. A controlled
 > diagnostic then shows where it is wrong, and the shape of that error is the useful part: **above 4 px
 > of motion the reference is right (k = 0.955, correlation 0.97); below 0.5 px the shader moves
@@ -145,3 +151,96 @@ shader is insensitive to that by a mechanism not yet found, or these vectors nev
   question worth being able to answer twice.
 
 *Made with my soul - Swately <3*
+
+---
+
+## 6 · ANSWERED (2026-09-04): the deadzone was the test content
+
+The record above left one question open — *"Either the shader is insensitive to that by a mechanism not
+yet found, or these vectors never reach it."* It is now measured, and neither branch is what happened:
+**the vectors themselves were an artefact of the lattice.**
+
+### 6.1 · The experiment
+
+`tools/ball_zoo.ps1` gained `-BgClass noise`: an aperiodic value-noise field of comparable contrast,
+inside the *same* harness — same pacing loop, same ball, same window, same capture path — so a
+difference can be attributed to the background and to nothing else. Then the identical S2.T6
+measurement: `--st-no-stasis` (the bare `result = B_samp` store, which strips the 99 % stasis copy that
+flatters any reference), `--qdump` 16 triples, `ref_warp.py --fit`. Two runs per number (DI-3).
+
+### 6.2 · The mechanism, measured
+
+| First triple of a run | LATTICE (`-BgClass grid`) | APERIODIC (`-BgClass noise`) |
+|---|---|---|
+| median \|mv\| over the grid | **0.5000 px** | **0.0341 px** |
+| MV texels below 0.05 px | 11.8 % | **80.6 %** |
+| `sad_best == 0` (a perfect match claimed) | 99.6 % | 99.5 % |
+| median \|mv\| on stasis blocks (`sad_zero ≤ 0.5`) | **0.5000 px** | **0.0340 px** |
+
+**The matcher claims a perfect match on ~99.5 % of blocks in BOTH cases, and on the lattice it
+nonetheless emits a half-pixel vector there.** Fifteen times more spurious sub-pixel motion, driven by
+nothing but the background's periodicity. The period-3 pattern (−0.5, +0.1666, 0) recorded in §4b is
+that artefact: a 3-point parabolic sub-pixel fit on content whose SAD minimum repeats every 24 px.
+
+### 6.3 · The deadzone does not survive
+
+Binned exactly as §4b, same tool, same mask:
+
+| displacement | LATTICE `n` | LATTICE `k` | APERIODIC `n` | APERIODIC `k` |
+|---|---|---|---|---|
+| 0.00 – 0.10 px | 27,779 | 0.014 | **39** | — |
+| 0.10 – 0.20 px | 41,804 | 0.023 | **3** | — |
+| 0.20 – 0.30 px | 32,427 | 0.042 | **8** | — |
+| 0.30 – 0.40 px | 21,399 | 0.076 | **11** | — |
+| 0.40 – 0.50 px | 15,287 | 0.137 | **6** | — |
+| 2 – 4 px | 458 | 0.877 | 379 | **0.873** (corr 0.961) |
+| over 4 px | 478 | 0.955 | 498 | **0.956** (corr 0.987) |
+
+**The deadzone population — 138,696 sub-pixel gradient pixels on the lattice — is 67 pixels on
+aperiodic content.** There is no deadzone because there is nothing in the deadzone: where nothing
+moves, the matcher now reports that nothing moves, and the reference has nothing to over-apply.
+
+### 6.4 · What the whole-frame numbers do
+
+| | exact match | `k` | corr |
+|---|---|---|---|
+| lattice, bare B-track (§3) | 84.39 % | 0.702 | 0.871 |
+| **aperiodic, bare B-track** — runs c / d | **99.02 % / 99.09 %** | **0.889 / 0.903** | **0.977 / 0.975** |
+| aperiodic, smaller ball — runs a / b | 99.55 % / 99.55 % | 0.829 / 0.800 | 0.968 / 0.954 |
+
+DI-3 spread on the strengthened pair: `k` 0.889 vs 0.903 (**0.014**), corr 0.977 vs 0.975, exact
+99.02 % vs 99.09 %.
+
+### 6.5 · Verdict, and what is still open
+
+**The blocking pathology is closed.** It was the test content, not the shader: the shipping default is
+not insensitive to sub-pixel motion — it was declining to move content that the matcher, confused by a
+periodic background, wrongly claimed had moved. The fear this record raised — that the deadzone might
+be a motion-fidelity defect in the product — **is not confirmed**.
+
+**The gate still does not formally pass**, and the reason is now a different and much smaller one:
+`k` reaches **0.956 above 4 px** and 0.873 in the 2–4 px band, against the 1.000 the gate asks for. A
+residual 5–13 % over-displacement remains **on genuinely moving content**, where the population is real
+and the correlation is 0.987. That is a precision question, not a pathology, and it is what the next
+round of work on this oracle should attack.
+
+**Consequence for R3.** M4's corpus MUST be aperiodic. The `--qdump+` records taken on the 24 px
+lattice describe a matcher failure mode, not the core's behaviour, and using them would test `fg_core`
+against a confound. The narrowed-M4 option left undecided in §4b is also much stronger now: restricted
+to moving content on an aperiodic background, the oracle sits at k = 0.956 / corr 0.987.
+
+### 6.6 · Honesty ledger for this section
+
+- The aperiodic background is value noise built from two random lattices upscaled bicubically. That it
+  is *aperiodic enough* is a design argument backed by the measured collapse in spurious MV — **its
+  spectrum was not computed.**
+- The moving-content bins hold 379 and 498 pixels. That is enough to read `k` to two digits and not
+  enough to resolve its dependence on `t`; the per-triple `k` still ranges 0.644–0.994.
+- Only the ball moves. A scene with several objects, or with a moving background, is untested — and
+  the lattice's own failure mode is a reminder that content class changes the answer.
+- The lattice disagreement itself is **still unexplained**. This section shows the population that
+  exhibited it does not occur on aperiodic content; it does not show why the shader ignored those
+  vectors when they did occur. That question is now confined to a content class M4 will avoid, which
+  is why it is no longer blocking — not because it was answered.
+- `-BgClass grid` remains the default and is byte-identical to before the option existed.
+

@@ -11,7 +11,11 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S2.T6 sub-pixel deadzone (>4 px: k = 0.955 OK · <0.5 px: shader moves nothing) → S4.R3 · next`**
+**`P → S2.T6 residual (k = 0.956 on moving content, needs 1.000) → S4.R3 (fg_core.comp) · next`**
+> **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
+> background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
+> a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.
+> **M4's corpus MUST be aperiodic** — the lattice records describe a matcher failure mode, not the core.
 
 > **Full inventory of what is left:** [`records/BACKLOG_AUDIT.md`](records/BACKLOG_AUDIT.md)
 > (2026-09-04) — 182 candidate items, every one checked against the tree by an independent skeptic;
@@ -162,11 +166,11 @@ exactos que simulen de forma correcta el movimiento".)
     unchanged. Flipping the default is a separate decision (a longer soak + the operator's eye).
   - **S4.R3** Stage 5: `fg_core.comp` + the 8 fused rows replace `wap_warp.comp` for the default set =
     **M-R3**; M4 by S2.T6 on the `--qdump+` replay (packed value first, XR1); bg-reclaim bug-for-bug (XR7) ·
-    `blocked (S2.T6's SUB-PIXEL DEADZONE: above 4 px the oracle is validated (k = 0.955, corr 0.97);
-    below 0.5 px the shader moves essentially nothing while the oracle does. M4 exists to catch exactly
-    that class of error, and the record leaves open WHICH side is wrong — if it is the shader, this is a
-    motion-fidelity defect in the shipping default, not an oracle bug. The corpus itself is ready:
-    S2.T1b coverage + S2.T1c completeness)`
+    `blocked (S2.T6's RESIDUAL, much smaller since 2026-09-04: the deadzone was the periodic test
+    content and is closed — on aperiodic content the oracle reaches k = 0.956 / corr 0.987 where motion
+    is real. What remains is a 5–13 % over-displacement on moving content against the 1.000 the gate
+    asks. The fear that the shipping default was insensitive to sub-pixel motion is NOT confirmed.
+    M4's corpus must be APERIODIC. Corpus machinery ready: S2.T1b coverage + S2.T1c completeness)`
   - **S4.R4** Stage 6 PRESENT extracted (`PresentStage`, `Phase.decision`, `FlipStats`) = M-R4 ·
     **`startable`** (corrected 2026-09-04 — the old `blocked (R1)` was stale: R1 is `done`). What
     actually constrains it: the STAGE_CONTRACT Order table puts it after R3 (a sequencing

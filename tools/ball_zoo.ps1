@@ -16,6 +16,9 @@
 # source frame differs by exactly the same displacement (the uniform-step gold standard for
 # FG cadence tests). If the loop can't hold the target, fps prints tell you honestly.
 #
+#   -BgClass grid|noise  the background field. grid = the 24/96px lattice (DEFAULT, byte-identical).
+#                  noise = an aperiodic value-noise field of comparable contrast, for a
+#                  measurement that must not be confounded by a periodic background (S2.T6).
 #   -Fps 60        target source rate (accepts high values; achieved rate printed every 1s)
 #   -SpeedPx 330   horizontal speed in px/SECOND (fps-independent on-screen speed)
 #   -Size 120      ball diameter (same as gate_zoo's baseline ball A)
@@ -31,6 +34,18 @@ param(
   [double]$PanPx = 0,   # -PanPx S: the BACKGROUND lattice scrolls left at S px/s (camera-pan analog) while a
                         # screen-fixed HUD (opaque panel + translucent panel + crosshair) stays put — the
                         # static-overlay-over-moving-world witness (the HSR HUD-ghosting reproduction case).
+  # NAME NOTE: this is $BgClass and NOT $Bg on purpose. PowerShell variable names are
+  # case-INSENSITIVE, so a parameter named $Bg IS the same variable as the background bitmap $bg
+  # a few lines below -- and a [ValidateSet] parameter installs the attribute on the variable, so
+  # the later `$bg = New-Object Drawing.Bitmap` is REJECTED and $bg silently stays a string.
+  [ValidateSet('grid','noise')][string]$BgClass = 'grid',
+                        # -BgClass noise: replace the 24px lattice with an APERIODIC value-noise field
+                        # of comparable contrast. Everything else - pacing, ball, window, capture
+                        # path - is unchanged, so a measurement can attribute a difference to the
+                        # background and to nothing else. This exists for the S2.T6 deadzone
+                        # question: every number in that diagnosis came from the lattice, whose
+                        # 24px period matches the period-3 sub-pixel pattern the MV field carries.
+                        # 'grid' (the default) is byte-identical to before this option existed.
   [string]$Title = 'RA Ball Zoo',
   [int]$W = 1280, [int]$H = 720, [int]$X = -1, [int]$Y = -1
 )
@@ -62,10 +77,46 @@ $bgW = $W + 96
 $bg = New-Object Drawing.Bitmap($bgW,$H)
 $gb = [Drawing.Graphics]::FromImage($bg)
 $gb.Clear([Drawing.Color]::FromArgb(18,18,40))
-for($gx = 0; $gx -le $bgW; $gx += 24){ $gb.DrawLine($penGrid, [float]$gx, 0, [float]$gx, [float]$H) }
-for($gy = 0; $gy -le $H; $gy += 24){ $gb.DrawLine($penGrid, 0, [float]$gy, [float]$bgW, [float]$gy) }
-for($gx = 0; $gx -le $bgW; $gx += 96){ $gb.DrawLine($penGridM, [float]$gx, 0, [float]$gx, [float]$H) }
-for($gy = 0; $gy -le $H; $gy += 96){ $gb.DrawLine($penGridM, 0, [float]$gy, [float]$W, [float]$gy) }
+if($BgClass -eq 'noise'){
+  # APERIODIC field. Two coarse random lattices upscaled with a smooth interpolator: a
+  # low-resolution bitmap of independent random values, drawn scaled with HighQualityBicubic, IS
+  # value noise - gradient at every pixel, no repeating structure. Two octaves so the block
+  # matcher has both a coarse and a sub-tile signal. Done with GDI+ scaling rather than per-pixel
+  # PowerShell because a million SetPixel calls at startup would cost more than the whole run.
+  #
+  # PANNING IS REFUSED with this background, deliberately: the pan path re-draws a W+96 tile at
+  # -(pan mod 96), which would wrap the field every 96 px and reintroduce EXACTLY the period this
+  # option exists to remove. A silently periodic 'aperiodic' background is worse than no option.
+  if($PanPx -gt 0){
+    Write-Host '[ball-zoo] -BgClass noise cannot pan: the tile wraps at 96px, which would reintroduce a period. Use -PanPx 0.'
+    exit 2
+  }
+  $rnd = New-Object System.Random 20260904
+  $gb.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $gb.CompositingQuality = [Drawing.Drawing2D.CompositingQuality]::HighQuality
+  foreach($oct in @(@(40,255),@(13,116))){
+    $cell = [int]$oct[0]; $alpha = [int]$oct[1]
+    $lw = [int][Math]::Ceiling($bgW / $cell) + 2
+    $lh = [int][Math]::Ceiling($H    / $cell) + 2
+    $lat = New-Object Drawing.Bitmap($lw,$lh)
+    for($ly=0; $ly -lt $lh; $ly++){
+      for($lx=0; $lx -lt $lw; $lx++){
+        # near-grey with the same slight blue lift the lattice has, so luminance carries the
+        # structure and the matcher's max-channel distance behaves as it does on the grid
+        $v = 30 + [int](150 * $rnd.NextDouble())
+        $lat.SetPixel($lx,$ly,[Drawing.Color]::FromArgb($alpha, $v, $v, [int]($v*1.12)))
+      }
+    }
+    $gb.DrawImage($lat, (New-Object Drawing.Rectangle(0,0,$bgW,$H)))
+    $lat.Dispose()
+  }
+  Write-Host '[ball-zoo] -BgClass noise: aperiodic value-noise background (2 octaves, cells 40/13 px, seed 20260904)'
+} else {
+  for($gx = 0; $gx -le $bgW; $gx += 24){ $gb.DrawLine($penGrid, [float]$gx, 0, [float]$gx, [float]$H) }
+  for($gy = 0; $gy -le $H; $gy += 24){ $gb.DrawLine($penGrid, 0, [float]$gy, [float]$bgW, [float]$gy) }
+  for($gx = 0; $gx -le $bgW; $gx += 96){ $gb.DrawLine($penGridM, [float]$gx, 0, [float]$gx, [float]$H) }
+  for($gy = 0; $gy -le $H; $gy += 96){ $gb.DrawLine($penGridM, 0, [float]$gy, [float]$W, [float]$gy) }
+}
 if($PanPx -le 0){
   $gb.DrawLine($penThin, [float]($W/2-6), [float]($H/2-6), [float]($W/2+6), [float]($H/2+6))
   $gb.DrawLine($penThin, [float]($W/2+6), [float]($H/2-6), [float]($W/2-6), [float]($H/2+6))

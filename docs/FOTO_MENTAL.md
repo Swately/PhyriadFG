@@ -153,7 +153,22 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    `nonconf` es 0 en el fondo). **Pista abierta:** el campo MV trae un patrón sub-píxel de periodo 3
    (−0.5, +0.1666, 0) que coincide con la retícula de 24 px del zoo, en bloques cuyo propio `sad_best` es
    0 (coincidencia perfecta) en 99.5% de la grilla.
-5. **NEXT** — (a) cerrar la **zona muerta sub-píxel de S2.T6**. Arriba de 4 px la referencia ya
+4k. **ZONA MUERTA RESUELTA (2026-09-04 — `planning/records/S2_T6_GATE.md` §6)** — era el CONTENIDO de
+   prueba, no el shader. Se le dio a `ball_zoo.ps1` un fondo aperiódico (`-BgClass noise`) dentro del
+   MISMO arnés, y se repitió la medición idéntica. **Mecanismo medido:** el matcher declara
+   `sad_best = 0` en ~99.5% de los bloques en AMBOS fondos, pero sobre la retícula emite igual un
+   vector de medio píxel ahí: mediana |mv| **0.500 px** contra **0.034 px** en aperiódico (15x). El
+   patrón de periodo 3 era eso: un ajuste parabólico sub-píxel sobre contenido cuyo mínimo de SAD se
+   repite cada 24 px. **La población de la zona muerta pasa de 138,696 píxeles a 67.** Donde el
+   movimiento es real: **k = 0.956, corr 0.987** (arriba de 4 px). Cuadro entero 0.889 / 0.903 en dos
+   corridas (DI-3, spread 0.014), exacto 99.02% / 99.09% contra 84.39% sobre la retícula.
+   **NO se confirma** el miedo de que el default de producción fuera insensible al movimiento
+   sub-píxel. **Queda abierto** un residuo de 5–13% de sobre-desplazamiento en contenido en
+   movimiento (k debe llegar a 1.000): cuestión de precisión, ya no patología. **Consecuencia para
+   R3: el corpus de M4 DEBE ser aperiódico** — los registros sobre retícula describen un modo de
+   falla del matcher, no el comportamiento del núcleo.
+
+5. **NEXT** — (a) el **residuo de S2.T6**: k = 0.956 sobre contenido en movimiento, la compuerta pide 1.000. Arriba de 4 px la referencia ya
    acierta (k = 0.955); abajo de 0.5 px el shader no mueve nada y la referencia sí. M4 no debe correr
    sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4 existe
    para detectar. La pista: el patrón de periodo 3 (−0.5, +0.1666, 0) sobre bloques cuyo `sad_best`
