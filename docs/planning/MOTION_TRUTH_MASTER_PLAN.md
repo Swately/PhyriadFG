@@ -8,7 +8,10 @@
 > **Status:** `in execution` — **T0, T1, T1b and T1c are DONE and gated** (2026-09-03,
 > [`records/S2_T0_T1_GATE.md`](records/S2_T0_T1_GATE.md),
 > [`records/S2_T1B_GATE.md`](records/S2_T1B_GATE.md) and
-> [`records/S2_T1C_GATE.md`](records/S2_T1C_GATE.md)); T2–T6 are still `designed` (2026-09-02).
+> [`records/S2_T1C_GATE.md`](records/S2_T1C_GATE.md)); **T6 is BUILT with its gate NOT passed**
+> ([`records/S2_T6_GATE.md`](records/S2_T6_GATE.md): 99.88% of the default store reproduced exactly, but
+> the displacement scale measures k = 0.70–0.83 where the gate needs 1.00); T2–T5 are still `designed`
+> (2026-09-02).
 > **§2.3's premise was WRONG and is corrected there**: a replay record is not (prev, next, MV, gme,
 > push, t) — the shipping default reads four more planes, and T1c dumps those plus the two dissidence
 > masks that other feature sets need. Every "exists / builds / measured" claim below was verified

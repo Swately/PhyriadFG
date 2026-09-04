@@ -115,8 +115,27 @@
    `mix(B_samp, cur[uv], w_s)` y toda la cascada commit/matte/onepos/blend queda sombreada; el trabajo
    real de la referencia es el **MV efectivo hacia adelante** (fetch guiado `mv_guided=1.1`,
    `bg_reclaim=4`, ancla de fase contra el campo hacia atrás, y el tilt de vblend hacia `mvt`).
-5. **NEXT** — (a) **S2.T6**: el warp de referencia en CPU sobre el registro T1c, que es la otra mitad de la
-   compuerta M4 de R3. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
+4j. **S2.T6 CONSTRUIDO, COMPUERTA NO PASADA (2026-09-03 — `planning/records/S2_T6_GATE.md`)** —
+   `tools/ref_warp.py` reproduce el store del default. La superficie es chica: con `single_track = 1.0`
+   el store es `mix(B_samp, cur[uv], w_s)` y toda la cascada commit/matte/onepos/blend queda sombreada,
+   así que sólo deciden las líneas 279–522 del shader más el bool de stasis. El uso que el ancla de fase
+   hace del `mv_fwd` PRE-reclaim se reproduce bug-por-bug (XR7); `unsupported()` RECHAZA por nombre
+   cualquier push que arme un camino no implementado.
+   **Pasa:** 99.88% de píxeles exactos en el default (739–788 px por cuadro fuera, todos en un anillo en
+   la silueta en movimiento). **NO pasa:** con `--st-no-stasis` (que quita la copia de stasis del 99% y
+   deja `result = B_samp` pelado) el exacto cae a 84.39% y la escala de desplazamiento por mínimos
+   cuadrados da **k = 0.702** (0.829 en el registro default) contra el 1.000 que la compuerta exige: la
+   referencia mueve el contenido como un tercio de más, sistemáticamente, con correlación 0.87–0.95.
+   **Descartado, cada uno con un número:** registro rancio (una instantánea tomada en la llamada a
+   `wap_upload` es idéntica a la lectura tardía en 100.00% de los téxeles), cuantización del filtro de la
+   GPU (8 y 6 bits EMPEORAN el ajuste), cada etapa del MV por ablación (k se mueve 0.005), la regla de
+   ambigüedad como amortiguador (dispara en 0.06% de los bloques) y `bg_reclaim` como amortiguador (su
+   `nonconf` es 0 en el fondo). **Pista abierta:** el campo MV trae un patrón sub-píxel de periodo 3
+   (−0.5, +0.1666, 0) que coincide con la retícula de 24 px del zoo, en bloques cuyo propio `sad_best` es
+   0 (coincidencia perfecta) en 99.5% de la grilla.
+5. **NEXT** — (a) cerrar la brecha de desplazamiento de **S2.T6** (k debe llegar a 1.00); M4 no debe
+   correr sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4
+   existe para detectar. La pista del patrón de periodo 3 es por dónde empezar. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
    soak largo y el ojo del operador sobre un juego real, no solo `ball_zoo`. (c) R3 lleva las dos
    restricciones del experimento de columnas: etapa `WEIGHT` con el núcleo partido en
    `fg_sample`/`fg_blend`, y el canal `CH_BLEND` con `select` como fila.

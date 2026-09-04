@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S2.T6 (the CPU reference warp) → S4.R3 (fg_core.comp) · next`**
+**`P → S2.T6 displacement gap (k = 0.70, must reach 1) → S4.R3 (fg_core.comp) · next`**
 · **R0 and R1 are DONE** (2026-09-03). R0: `records/R0_GATE.md` (parity 0 FAIL / 297 launches, M2a = 2 files,
 M3 inside spread, column closure = 0 new columns → PROCEED). R1: `records/R1_GATE.md` — the CLOCK is now
 `src/clock/phase_clock.{hpp,cpp}` with a CPU test; replay bit-parity on 14,390 live ticks, 0 mismatches;
@@ -86,6 +86,23 @@ exactos que simulen de forma correcta el movimiento".)
     ordinary site is gated on `matte_on`, which is 0 — my first pass wrongly gated them on `gme_on` and
     the correction is recorded in the gate). `check_qdump_plus.py` now AUDITS replayability per record —
     the pre-T1c record reads NOT REPLAYABLE with the four gaps named, the T1c record reads REPLAYABLE.
+  - **S2.T6** the CPU reference warp · **`built, gate NOT passed`** (2026-09-03, `records/S2_T6_GATE.md`)
+    — `tools/ref_warp.py` replays a `--qdump+` triple and rebuilds the store. The surface is small
+    because `single_track = 1.0` makes the store `mix(B_samp, cur[uv], w_s)` and shadows the whole
+    commit/matte/onepos/blend cascade, so only shader lines 279–522 plus the stasis bool decide the
+    output. The phase anchor's use of the PRE-reclaim `mv_fwd` is reproduced bug-for-bug (XR7), and
+    `unsupported()` refuses any push arming a path the reference does not implement.
+    **Passes:** 99.88% of pixels exact on the shipping default (worst 739–788 px per frame, all in a
+    ring at the moving silhouette). **Does NOT pass:** under `--st-no-stasis`, which strips the 99%
+    stasis copy and leaves a bare `result = B_samp`, exact match falls to 84.39% and the least-squares
+    displacement scale is **k = 0.702** (0.829 on the default record) against the 1.000 the gate needs.
+    The reference moves content about a third too far, systematically, with correlation 0.87–0.95.
+    **Ruled out, each by a number:** a stale record (a snapshot taken at the `wap_upload` call is
+    identical to the late read on 100.00% of texels), GPU sub-texel filter quantization (8 and 6 bits
+    both make the fit worse), every MV stage individually (ablation moves k by 0.005), the ambiguity
+    rule as a damper (fires on 0.06% of blocks), and `bg_reclaim` as a damper (its `nonconf` gate is 0
+    on the background). Open lead: the MV field carries a period-3 sub-pixel pattern matching the zoo's
+    24 px lattice on blocks whose own `sad_best` is 0.
   - **S2.T2–T3** marker zoo + player · `next` (parallel to T1)
   - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
   - **S2.T6** CPU reference warp (E7) · `blocked` on T1
@@ -128,7 +145,8 @@ exactos que simulen de forma correcta el movimiento".)
     unchanged. Flipping the default is a separate decision (a longer soak + the operator's eye).
   - **S4.R3** Stage 5: `fg_core.comp` + the 8 fused rows replace `wap_warp.comp` for the default set =
     **M-R3**; M4 by S2.T6 on the `--qdump+` replay (packed value first, XR1); bg-reclaim bug-for-bug (XR7) ·
-    `blocked (S2.T6, the CPU reference warp — the corpus is unblocked: S2.T1b coverage + S2.T1c completeness)`
+    `blocked (S2.T6's displacement gap: the oracle over-displaces by ~30%, k = 0.702, and M4 exists to
+    catch exactly that class of error — the corpus itself is ready: S2.T1b coverage + S2.T1c completeness)`
   - **S4.R4** Stage 6 PRESENT extracted (`PresentStage`, `Phase.decision`, `FlipStats`) = M-R4 · `blocked (R1)`
   - **S4.R5** Stage 3: `FlowSet` + `FlowRing` declared; holons → `kind = P` rows (off); MV median → stage 3;
     `wap_upload` conditional on device count = M-R5 · `blocked (R2)`
