@@ -4,7 +4,9 @@
 > but the pathology that blocked it is CLOSED (§6, 2026-09-04): the sub-pixel deadzone was the test
 > content, not the shader. On an aperiodic background the deadzone population drops from 138,696
 > pixels to 67, and the oracle reaches k = 0.956 (corr 0.987) where motion is real. What remains is a
-> 5–13 % over-displacement on moving content — a precision question, not a pathology.**
+> 5–13 % over-displacement on moving content — a precision question, not a pathology. §7 then
+> characterises that residual: it is driven by DISPLACEMENT MAGNITUDE, not by phase (measured and
+> refuted), and the oracle reaches **k = 0.989 at 4–8 px over 2,241 pixels**.**
 >
 > *(Original verdict, kept:)* **BUILT, PARTIAL — the gate does NOT pass.**
 > The reference reproduces 99.88% of the shipping default's stored pixels exactly. A controlled
@@ -243,4 +245,70 @@ to moving content on an aperiodic background, the oracle sits at k = 0.956 / cor
   vectors when they did occur. That question is now confined to a content class M4 will avoid, which
   is why it is no longer blocking — not because it was answered.
 - `-BgClass grid` remains the default and is byte-identical to before the option existed.
+
+---
+
+## 7 · The residual, characterised (2026-09-04)
+
+§6 closed the pathology and left a 5–13 % over-displacement. This section says what that residual is
+and, as usefully, what it is **not**. All measurements on the aperiodic background, `--st-no-stasis`,
+16 triples, pooled.
+
+### 7.1 · It is NOT the phase — the obvious reading was wrong
+
+Per-triple `k` correlates with the phase at **−0.718**, and with the vblend tilt weight at **−0.855**:
+`k` averages 0.943 for `t < 0.5` and 0.826 for `t ≥ 0.5`, collapsing to 0.644–0.763 at `t ≈ 0.89` where
+`vb_w ≈ 0.41`. That reads like a phase-dependent bug in the tilt. It is not one.
+
+- **Ablating vblend barely moves it.** On the seven high-phase triples, forcing `vblend_on = 0` changes
+  `k` by 0.002 at `t ≈ 0.66` and by ±0.03 at `t ≈ 0.93` — in both directions. The tilt is not the cause.
+- **The record's target plane is faithful.** The same upload-time-snapshot test that vindicated the `mv`
+  plane was run for `u_mv_target` (`mvt0`, added here): **identical on 100.00 % of texels across all 16
+  triples**, max delta 0.000 px. The suspicion that the target slot is the one F overwrites while P
+  still holds the pair — `kGenRing = 3`, target `g−1`, F producing `g+2 ≡ g−1` — is measured false.
+- **Binning by displacement and splitting by phase separates them.** Within a band, `k` is the same at
+  low and high phase; where it differs, high phase is slightly *better*:
+
+| B-track displacement | `k`, `t < 0.5` | `k`, `t ≥ 0.5` |
+|---|---|---|
+| 0.5 – 1 px | 0.354 (n 220) | 0.606 (n 732) |
+| 1 – 2 px | 0.748 (n 756) | 0.859 (n 810) |
+| 2 – 4 px | 0.929 (n 1990) | 0.940 (n 1034) |
+| **4 – 8 px** | **0.989 (n 2241)** | (n 64, too few) |
+
+The phase correlation is an artefact of the geometry: the B-track offset is `mv·(1−t)`, so a high-phase
+triple is *made of* small displacements. **The driver is displacement magnitude, and nothing else.**
+
+### 7.2 · What the residual is
+
+A monotone roll-off as the displacement shrinks. At 4–8 px the reference is essentially exact —
+**k = 0.989 over 2,241 pixels** — and it degrades smoothly below that. Same shape as the lattice
+deadzone, an order of magnitude milder and shifted: 0.35–0.61 at half a pixel here, against 0.014–0.137
+below half a pixel there.
+
+### 7.3 · Seven hypotheses now refuted, each by a number
+
+The six of §4 plus one: **sub-texel filter precision at the final tap.** The §4 test quantized *every*
+sample in the chain, including the MV fetch, which distorts the MV itself and so could not isolate the
+tap. Re-run quantizing **only** the A/B real-plane coordinate, sweeping 10 bits down to 4: `k` stays
+**0.934 ± 0.001** and corr **0.979** throughout. The texture unit's sub-texel precision is not the cause.
+
+### 7.4 · What this means for R3, concretely
+
+The narrowing left undecided in §4b is now quantified and is the practical route: **M4 scored on
+content whose displacement is ≥ 2 px runs against an oracle at k ≥ 0.93, and ≥ 4 px against one at
+k = 0.989.** That is a usable gate. Restricting the corpus is a stated limitation, not a fudge — it
+must be written into the M4 record, along with the fact that no oracle exists below half a pixel.
+
+### 7.5 · Honesty ledger
+
+- The displacement used for binning is `mv·(1−t)` from the RAW bilinear MV, not the post-anchor
+  `mv_eff`. At high phase the anchor replaces `mv` with `−mv_bwd`, whose magnitude can differ, so the
+  bin edges are approximate. The trend spans a factor of three in `k` and is far larger than that
+  slack, but the exact band boundaries are not sharp.
+- Every number here is one scene: one ball on value noise. Multiple objects, a moving background and
+  real game content are untested, and the lattice is a standing reminder that content class changes
+  the answer.
+- The roll-off itself is **unexplained**. Seven causes are refuted; none is confirmed. What is
+  established is its shape, its driver, and the displacement above which the oracle can be trusted.
 

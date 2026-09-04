@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S2.T6 residual (k = 0.956 on moving content, needs 1.000) → S4.R3 (fg_core.comp) · next`**
+**`P → S4.R3 (fg_core.comp) on an APERIODIC, ≥ 2 px M4 corpus · next`**
 > **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
 > background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
 > a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.
