@@ -5,9 +5,12 @@
 > readback and adds sidecar dumps on the SAME synchronous path — the async-present path is explicitly
 > out of scope, so no use-after-reset surface is opened). Companion:
 > [`MOTION_TRUTH_IMPLEMENTATION_STRATEGIES.md`](MOTION_TRUTH_IMPLEMENTATION_STRATEGIES.md).
-> **Status:** `in execution` — **T0, T1 and T1b are DONE and gated** (2026-09-03,
-> [`records/S2_T0_T1_GATE.md`](records/S2_T0_T1_GATE.md) and
-> [`records/S2_T1B_GATE.md`](records/S2_T1B_GATE.md)); T2–T6 are still `designed` (2026-09-02). Every "exists / builds / measured" claim below was verified
+> **Status:** `in execution` — **T0, T1, T1b and T1c are DONE and gated** (2026-09-03,
+> [`records/S2_T0_T1_GATE.md`](records/S2_T0_T1_GATE.md),
+> [`records/S2_T1B_GATE.md`](records/S2_T1B_GATE.md) and
+> [`records/S2_T1C_GATE.md`](records/S2_T1C_GATE.md)); T2–T6 are still `designed` (2026-09-02).
+> **§2.3's premise was WRONG and is corrected there**: a replay record is not (prev, next, MV, gme,
+> push, t) — the shipping default reads six more planes, and T1c dumps them. Every "exists / builds / measured" claim below was verified
 > first-hand this session; the instrument itself is not built. MUST/SHOULD/MAY are BCP-14.
 > **Serves:** the frozen objective's metric **M1** in
 > [`aap/A0_FROZEN_OBJECTIVE.md`](aap/A0_FROZEN_OBJECTIVE.md) and the fixed points **C8** (quality
@@ -73,7 +76,13 @@ Five pieces, all data-in / data-out, none of which requires a human or an LLM to
 3. **`--qdump+`** — the replay record. The existing triple dump plus sidecars for the SAME tick:
    `q%06d_mv.rg16f` (mvw×mvh×4 B), `q%06d_sad.rg16f`, `q%06d_push.bin` (the warp's push block as
    submitted, `sizeof(pcw)` bytes), and manifest tokens `mv= sad= push= gme=a,b,c,d,e,f mvw= mvh= gen=`
-   appended to the `triple` line (trailing tokens are ignored by existing parsers — the manifest's own
+   appended to the `triple` line. **CORRECTED 2026-09-03 (T1c, `records/S2_T1C_GATE.md`): that list is
+   NOT sufficient.** Decoding a real push block against the shader's bindings showed the SHIPPING DEFAULT
+   also reads the backward MV field (`occl_thresh`, `phase_anchor_on`), both dissidence masks (`gme_on`),
+   the persistence field (`inertia_thresh`), the second-best SAD candidates (`ambig_on`) and the
+   target-generation MV (`vblend_on`) — six more planes, now dumped as `mvb= c2= dis= disb= per= mvt=`
+   with `tgen=` recorded at the upload site. `u_field` and `u_prev_out` are genuinely unread under this
+   default (their gates are all 0), verified from the same push block (trailing tokens are ignored by existing parsers — the manifest's own
    contract). The dump needs the SYNC present path, and `resolve_config` (`cli.cpp:227-231`) auto-disables
    `--async-present` for any run that asks for it, printing the reason — so `--qdump` alone is enough
    (verified 2026-09-03; the earlier "inert under the default" note was a misreading of the present-side

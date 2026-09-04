@@ -98,8 +98,23 @@
    uno**, 3/3 slots del anillo en ambas (antes: 2 bins, 10/6, 1 slot). La diferencia 8 contra 4 es el
    transitorio de ENGANCHE del reloj, no varianza del muestreador: una escalera enganchada a 4× emite
    exactamente cuatro fases, y ese techo lo pone la razón de refresco, no el muestreador.
-5. **NEXT** — (a) **S2.T6** (warp de referencia en CPU) o **R3** directamente; el corpus de M4 ya no es el
-   bloqueo. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
+4i. **S2.T1c HECHO (2026-09-03 — `planning/records/S2_T1C_GATE.md`)** — no estaba planeado. Al empezar a
+   dimensionar T6 decodifiqué un push real (58 floats) en vez de creerle a la premisa del plan, y la
+   premisa NO sobrevivió: bajo el DEFAULT DE PRODUCCIÓN el warp lee seis planos más que el registro de T1
+   no tenía — MV hacia atrás (`occl_thresh`, `phase_anchor_on`), las dos máscaras de disidencia
+   (`gme_on`), persistencia (`inertia_thresh`), los candidatos SAD (`ambig_on`) y el MV de la generación
+   objetivo (`vblend_on`). Un warp de referencia alimentado con el registro de T1 no habría podido
+   reproducir NI UN tick del default, y la falla se habría visto como bug de la referencia y no como
+   hueco del registro. Los seis ya se vuelcan, más `tgen` registrado en el sitio del upload; un plano
+   ausente se nombra `-`. Verificado que NO se leen bajo este default, del mismo push: `u_field` y
+   `u_prev_out`. `check_qdump_plus.py` ahora AUDITA la reproducibilidad por registro: el registro previo
+   dice NOT REPLAYABLE con los seis huecos nombrados; el de T1c dice REPLAYABLE.
+   **Lo que esto le aclara a T6:** bajo `single_track = 1.0` el store final es
+   `mix(B_samp, cur[uv], w_s)` y toda la cascada commit/matte/onepos/blend queda sombreada; el trabajo
+   real de la referencia es el **MV efectivo hacia adelante** (fetch guiado `mv_guided=1.1`,
+   `bg_reclaim=4`, ancla de fase contra el campo hacia atrás, y el tilt de vblend hacia `mvt`).
+5. **NEXT** — (a) **S2.T6**: el warp de referencia en CPU sobre el registro T1c, que es la otra mitad de la
+   compuerta M4 de R3. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
    soak largo y el ojo del operador sobre un juego real, no solo `ball_zoo`. (c) R3 lleva las dos
    restricciones del experimento de columnas: etapa `WEIGHT` con el núcleo partido en
    `fg_sample`/`fg_blend`, y el canal `CH_BLEND` con `select` como fila.

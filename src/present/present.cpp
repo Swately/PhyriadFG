@@ -99,6 +99,11 @@ void run_present(FgContext& ctx){
     auto& hostI = ctx.hostI;
     auto& hostMV = ctx.hostMV;    // --qdump+ (S2.T1): the per-generation MV plane (RG16F, W/8)
     auto& hostSAD = ctx.hostSAD;  // --qdump+ (S2.T1): the per-generation SAD plane (RG16F, W/8)
+    auto& hostMVB = ctx.hostMVB;  // --qdump+ (S2.T1c): the BACKWARD MV plane (RG16F, W/8) - binding 5
+    auto& hostC2  = ctx.hostC2;   // --qdump+ (S2.T1c): the second-best SAD candidate (RGBA16F) - binding 10
+    auto& hostDIS = ctx.hostDIS;  // --qdump+ (S2.T1c): the prev-anchored dissidence mask (R8) - binding 6
+    auto& hostDISB= ctx.hostDISB; // --qdump+ (S2.T1c): the cur-anchored dissidence mask (R8) - binding 7
+    auto& hostPER = ctx.hostPER;  // --qdump+ (S2.T1c): the inertia persistence field (R8) - binding 8
     auto& hI_a = ctx.hI_a;
     auto& f_pair_cseq_a = ctx.f_pair_cseq_a;
     auto& f_pair_slot_a = ctx.f_pair_slot_a;
@@ -713,6 +718,7 @@ void run_present(FgContext& ctx){
             // fields the warp read. -1 until the first upload. Declared here (before the warp lambda) so
             // the dump block inside it can capture it; inert unless --qdump is on.
             int qd_gen=-1;
+            int qd_tgen=-1;   // --qdump+ (S2.T1c): the u_mv_target generation of the same upload
             // WAP runs on A (the bridge owner): the per-pair upload reads the A-side host bridges
             // (hR_a/hMV_a/hSAD_a) into A's WAP sampled images, and the upload, the warp dispatch, and
             // the bridge blit ALL run on A.q. cmdBridge is A.pool/qfam-bound, so a same-family A.q2
@@ -1434,6 +1440,7 @@ void run_present(FgContext& ctx){
                         // this block runs after the tick's fence on the sync path. RING SAFETY: we read generation
                         // qd_gen while F may be writing qd_gen+1; kGenRing=3 makes that safe by construction.
                         size_t qd_pushsz=0; uint32_t qd_mvw=0, qd_mvh=0; int qd_gv=0; const float* qd_gme=nullptr;
+                        bool qd_has_mvb=false,qd_has_c2=false,qd_has_dis=false,qd_has_disb=false,qd_has_per=false,qd_has_mvt=false;
                         if(qd_gen>=0){
                             qd_mvw=wap_mvw; qd_mvh=wap_mvh;
                             const size_t qd_plane=(size_t)qd_mvw*qd_mvh*4u;   // RG16F = 4 bytes/texel
@@ -1442,9 +1449,33 @@ void run_present(FgContext& ctx){
                             if(hostSAD[qd_gen]){ std::snprintf(qp,sizeof(qp),"%s\\q%06d_sad.rg16f",cfg.qdump_dir,qdump_idx);
                                 if(FILE* f=std::fopen(qp,"wb")){ std::fwrite(hostSAD[qd_gen],1,qd_plane,f); std::fclose(f); } }
                             qd_gv=f_pair_gme_valid_a[qd_gen]; qd_gme=f_pair_gme_a[qd_gen];
+                            // S2.T1c: the rest of what the DEFAULT warp reads. qd_plane is the RG16F size; the R8 masks are a
+                            // quarter of it and the candidate field is double. A null pointer means the feature is off for this
+                            // run, and the manifest then names the plane '-' instead of a file - the record states its own scope.
+                            const size_t qd_r8=(size_t)qd_mvw*qd_mvh, qd_c2b=qd_r8*8u;
+                            auto qd_write=[&](const char* suffix,const void* src,size_t n)->bool{
+                                if(!src) return false;
+                                std::snprintf(qp,sizeof(qp),"%s\\q%06d_%s",cfg.qdump_dir,qdump_idx,suffix);
+                                if(FILE* f=std::fopen(qp,"wb")){ std::fwrite(src,1,n,f); std::fclose(f); return true; }
+                                return false; };
+                            qd_has_mvb =qd_write("mvb.rg16f",   hostMVB[qd_gen], qd_plane);
+                            qd_has_c2  =qd_write("c2.rgba16f",  hostC2[qd_gen],  qd_c2b);
+                            qd_has_dis =qd_write("dis.r8",      hostDIS[qd_gen], qd_r8);
+                            qd_has_disb=qd_write("disb.r8",     hostDISB[qd_gen],qd_r8);
+                            qd_has_per =qd_write("per.r8",      hostPER[qd_gen], qd_r8);
+                            // u_mv_target is the MV of ANOTHER generation of the same ring (target_gen == qd_gen means the
+                            // warp self-targets, and vblend's tilt is then a no-op); dump it under its own name either way so
+                            // the replay never has to infer which plane binding 12 held.
+                            if(qd_tgen>=0&&qd_tgen<kGenRing) qd_has_mvt=qd_write("mvt.rg16f",hostMV[qd_tgen],qd_plane);
                         }
                         std::snprintf(qp,sizeof(qp),"%s\\q%06d_push.bin",cfg.qdump_dir,qdump_idx);
                         if(qd_push_sz){ if(FILE* f=std::fopen(qp,"wb")){ qd_pushsz=qd_push_sz; std::fwrite(qd_push,1,qd_pushsz,f); std::fclose(f); } }
+                        // A written plane is named by its file; an absent one is named '-'. Six small buffers so every name
+                        // is alive for the single fprintf below (snprintf into qp would be overwritten by the next call).
+                        char qb0[48],qb1[48],qb2[48],qb3[48],qb4[48],qb5[48];
+                        auto qd_nm=[&](bool have,char* buf,const char* suffix)->const char*{
+                            if(!have){ buf[0]='-'; buf[1]='\0'; return buf; }
+                            std::snprintf(buf,48,"q%06d_%s",qdump_idx,suffix); return buf; };
                         std::snprintf(qp,sizeof(qp),"%s\\manifest.txt",cfg.qdump_dir);
                         FILE* mf=std::fopen(qp,qdump_man_open?"ab":"wb");
                         if(mf){
@@ -1466,12 +1497,17 @@ void run_present(FgContext& ctx){
                             // consumer still reads the triple exactly as before.
                             std::fprintf(mf,"triple q%06d prev=q%06d_prev.rgba next=q%06d_next.rgba live=q%06d_live.rgba t=%.4f"
                                             " gen=%d mvw=%u mvh=%u mv=q%06d_mv.rg16f sad=q%06d_sad.rg16f push=q%06d_push.bin pushsz=%zu"
-                                            " gme_valid=%d gme=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
+                                            " gme_valid=%d gme=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g"
+                                            " tgen=%d mvb=%s c2=%s dis=%s disb=%s per=%s mvt=%s\n",
                                 qdump_idx,qdump_idx,qdump_idx,qdump_idx,t,
                                 qd_gen,qd_mvw,qd_mvh,qdump_idx,qdump_idx,qdump_idx,qd_pushsz,
                                 qd_gv,
                                 qd_gme?(double)qd_gme[0]:0.0,qd_gme?(double)qd_gme[1]:0.0,qd_gme?(double)qd_gme[2]:0.0,
-                                qd_gme?(double)qd_gme[3]:0.0,qd_gme?(double)qd_gme[4]:0.0,qd_gme?(double)qd_gme[5]:0.0);
+                                qd_gme?(double)qd_gme[3]:0.0,qd_gme?(double)qd_gme[4]:0.0,qd_gme?(double)qd_gme[5]:0.0,
+                                qd_tgen,
+                                qd_nm(qd_has_mvb,qb0,"mvb.rg16f"),  qd_nm(qd_has_c2,qb1,"c2.rgba16f"),
+                                qd_nm(qd_has_dis,qb2,"dis.r8"),     qd_nm(qd_has_disb,qb3,"disb.r8"),
+                                qd_nm(qd_has_per,qb4,"per.r8"),     qd_nm(qd_has_mvt,qb5,"mvt.rg16f"));
                             std::fclose(mf);
                         }
                         ++qd_bin_hits[qd_b]; ++qd_gen_hits[qd_g];   // this bin/slot is now covered - ineligible until the rest catch up
@@ -2465,6 +2501,7 @@ void run_present(FgContext& ctx){
                             if(cfg.vblend && target_gen!=f_gen) ++vblend_hit;   // a valid target pair was available (≈cons/s confirms the tilt fires every pair)
                             wap_upload(prev_slot,rs,f_gen,target_gen);
                             qd_gen=f_gen;   // --qdump+ (S2.T1): the generation now uploaded to A
+                            qd_tgen=target_gen;   // --qdump+ (S2.T1c): the generation bound as u_mv_target (vblend)
                             if(cfg.wsub){ const double up=now_ms()-wsub_up0; w_up_ema=w_up_ema>0.0?w_up_ema*0.8+up*0.2:up; }
                             wap_pair_c_up=pair_c; wap_have_up=true;
                             // instrument: dump the warp's actual input pair (the two full-res frames the

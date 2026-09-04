@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S4.R3 (fg_core.comp) / S2.T2-T6 (the marker track) · next`**
+**`P → S2.T6 (the CPU reference warp) → S4.R3 (fg_core.comp) · next`**
 · **R0 and R1 are DONE** (2026-09-03). R0: `records/R0_GATE.md` (parity 0 FAIL / 297 launches, M2a = 2 files,
 M3 inside spread, column closure = 0 new columns → PROCEED). R1: `records/R1_GATE.md` — the CLOCK is now
 `src/clock/phase_clock.{hpp,cpp}` with a CPU test; replay bit-parity on 14,390 live ticks, 0 mismatches;
@@ -75,6 +75,16 @@ exactos que simulen de forma correcta el movimiento".)
     each**, 3/3 ring slots in both (was 2 bins, 10/6, 1 slot). The 8-vs-4 spread is the clock ACQUISITION
     transient, not sampler variance: a locked 4× ladder emits exactly four phases, and that ceiling is the
     refresh ratio, not the sampler.
+  - **S2.T1c** COMPLETE the replay record · **`done`** (2026-09-03, `records/S2_T1C_GATE.md`) — unplanned,
+    and opened by decoding a real push block instead of trusting the plan's premise. The plan says a
+    replay record is (prev, next, MV, gme, push, t); against the SHIPPING DEFAULT that is false. Six more
+    planes are read: the backward MV (`occl_thresh`, `phase_anchor_on`), both dissidence masks (`gme_on`),
+    persistence (`inertia_thresh`), the SAD candidates (`ambig_on`) and the target-generation MV
+    (`vblend_on`). All six are now dumped, plus `tgen` recorded at the upload site; an absent plane is
+    named `-` so a record states its own scope. Verified NOT read under this default, from the same push
+    block: `u_field` (bg-snap / disoccl-hardpick / mc all 0) and `u_prev_out` (`ts_smooth` 0).
+    `check_qdump_plus.py` now AUDITS replayability per record — the pre-T1c record reads NOT REPLAYABLE
+    with all six gaps named, the T1c record reads REPLAYABLE.
   - **S2.T2–T3** marker zoo + player · `next` (parallel to T1)
   - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
   - **S2.T6** CPU reference warp (E7) · `blocked` on T1
@@ -117,7 +127,7 @@ exactos que simulen de forma correcta el movimiento".)
     unchanged. Flipping the default is a separate decision (a longer soak + the operator's eye).
   - **S4.R3** Stage 5: `fg_core.comp` + the 8 fused rows replace `wap_warp.comp` for the default set =
     **M-R3**; M4 by S2.T6 on the `--qdump+` replay (packed value first, XR1); bg-reclaim bug-for-bug (XR7) ·
-    `blocked (S2.T6, the CPU reference warp — the corpus itself is now unblocked: S2.T1b)`
+    `blocked (S2.T6, the CPU reference warp — the corpus is unblocked: S2.T1b coverage + S2.T1c completeness)`
   - **S4.R4** Stage 6 PRESENT extracted (`PresentStage`, `Phase.decision`, `FlipStats`) = M-R4 · `blocked (R1)`
   - **S4.R5** Stage 3: `FlowSet` + `FlowRing` declared; holons → `kind = P` rows (off); MV median → stage 3;
     `wap_upload` conditional on device count = M-R5 · `blocked (R2)`
