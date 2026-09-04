@@ -145,8 +145,18 @@ exactos que simulen de forma correcta el movimiento".)
     **The first M1 numbers ever** (one scene, one run, NOT a baseline): HUD class **0.046 px** kept
     exact; moving classes 0.9–1.5 px from a correct warp with roughly half arriving degraded; the
     `fast` control 4.7 px — the expected failure fires.
-  - **S2.T5** report + the DI-3 two-run baseline of the shipping default · `next` — the static-background
-    capture is being taken; two runs, `r` on every cell, before any of the T4 numbers may be used
+  - **S2.T5** the report + the DI-3 two-run baseline · **`done`** (2026-09-04, `records/S2_T5_GATE.md`,
+    the table at `docs/evidence/MOTION_TRUTH_BASELINE.md`) — `tools/motion_truth/motion_report.py`
+    computes `r` per class between two runs and MARKS `r < 0.5` UNRELIABLE itself, excluding it from
+    the verdict line. **M1 is measured, with its reliability attached, for the first time.** Shipping
+    default, static aperiodic background, 2 × 16 triples: accel **0.646 px (r 0.76)**, circular
+    **1.001 (r 0.95)**, crossing **1.213 (r 0.91)**, the `fast` control **5.160 (r 1.00)**; `linear`
+    0.620 px at **r 0.47 — UNRELIABLE**, not usable per cell (§4.3 NOT met on the class it names;
+    the remedy is sample size, jitter and duplicates being excluded). **The error falls with phase:
+    1.668 px at t≈0.1 → 0.373 at t≈0.85** — the single-track default's own "t=0+ pays the full backward
+    warp", measured. In time: the generated frame sits **4–6 ms** from where it claims to be, against a
+    16.7 ms pair. The panning scene is a second document, one run, stamped NOT a baseline by the tool;
+    its HUD class (screen-fixed over a moving world) is **0.046 px**.
   - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
     passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
 - **S3 — LAYER CONTRACT (the AAP search)** · **`done`** (2026-09-03) · `docs/planning/aap/`

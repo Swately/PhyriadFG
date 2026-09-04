@@ -168,7 +168,24 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    R3: el corpus de M4 DEBE ser aperiódico** — los registros sobre retícula describen un modo de
    falla del matcher, no el comportamiento del núcleo.
 
-5. **NEXT** — (a) el **residuo de S2.T6**: k = 0.956 sobre contenido en movimiento, la compuerta pide 1.000. Arriba de 4 px la referencia ya
+4l. **S2.T2–T5 HECHOS (2026-09-04 — `planning/records/S2_T2..T5_GATE.md`)** — el instrumento de
+   movimiento completo: zoo con verdad analítica `p(t)` y código de barras por cuadro; reproductor a
+   60/120 fps con 0 ticks perdidos y el código de barras sobreviviendo TODA la cadena de captura (paso 1
+   en 12/12 triples); extractor visto en rojo dos veces y corregido (búsqueda de fase sub-píxel en vez de
+   la parábola, que se trababa a 0.188 px) con §4.1 a 0.045–0.060 px y §4.2 a 0.085 px; y el reporte
+   con `r` por clase entre dos corridas. **M1 EXISTE POR PRIMERA VEZ CON SU FIABILIDAD**
+   (`docs/evidence/MOTION_TRUTH_BASELINE.md`): default de producción, fondo aperiódico estático, 2×16
+   triples — accel 0.646 px (r 0.76), circular 1.001 (r 0.95), crossing 1.213 (r 0.91), `fast` 5.160
+   (r 1.00, el control esperado dispara); `linear` 0.620 a **r 0.47 — UNRELIABLE**, marcado por la
+   propia herramienta. **El error cae con la fase: 1.668 px a t≈0.1 → 0.373 a t≈0.85** — es la firma
+   del default single-track ("t=0+ paga el warp completo hacia atrás"), ahora medida. En tiempo, el
+   cuadro generado está a 4–6 ms de donde dice estar contra un par de 16.7 ms. HUD sobre mundo en
+   movimiento: 0.046 px (una corrida). También corregido: el triple es (N, N+1), no (N, N+2).
+
+5. **NEXT** — (a) con T0–T5 hechos y M1 medido, la decisión es del operador: leer
+   `docs/evidence/MOTION_TRUTH_BASELINE.md` y decidir si 1.7 px a fase baja es aceptable; (b) R3 sobre un
+   corpus aperiódico a ≥ 2 px; (c) subir `n` de la línea base (64 triples por corrida) para que `linear`
+   pase de r 0.47 a citable. Arriba de 4 px la referencia ya
    acierta (k = 0.955); abajo de 0.5 px el shader no mueve nada y la referencia sí. M4 no debe correr
    sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4 existe
    para detectar. La pista: el patrón de periodo 3 (−0.5, +0.1666, 0) sobre bloques cuyo `sad_best`

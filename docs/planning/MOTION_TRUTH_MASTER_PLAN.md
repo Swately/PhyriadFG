@@ -18,8 +18,12 @@
 > **T4 is DONE** ([`S2_T4_GATE.md`](records/S2_T4_GATE.md), 2026-09-04): §4.1 at 0.045–0.060 px on raw
 > frames, §4.2 at 0.085 px through the FG, the gate seen red twice and fixed. The first M1 numbers exist
 > as a first look (HUD 0.046 px kept exact; moving classes 0.9–1.5 px; the `fast` control fires).
-> **STILL UNBUILT: T5** — the report and the two-run baseline with `r`. Until it lands no M1 cell may be
-> used (§4.3), so M1 is measured once and not yet measured *reliably*.
+> **T5 is DONE** ([`S2_T5_GATE.md`](records/S2_T5_GATE.md), 2026-09-04): the baseline table exists at
+> `docs/evidence/MOTION_TRUTH_BASELINE.md` with `r` on every class. **§4 status:** 4.1 met, 4.2 met,
+> 4.4 met; **4.3 NOT met on `linear`** (r = 0.47, n = 9 — UNRELIABLE, marked by the tool) and met on
+> accel/circular/crossing/fast. The instrument is `measured` for four classes and not for the one the
+> criterion names; sample size is the remedy, jitter and duplicates being excluded.
+> **Every phase T0–T5 is now built and gated.** T6 remains built with its gate not passed.
 > **§2.3's premise was WRONG and is corrected there**: a replay record is not (prev, next, MV, gme,
 > push, t) — the shipping default reads four more planes, and T1c dumps those plus the two dissidence
 > masks that other feature sets need. Every "exists / builds / measured" claim below was verified
