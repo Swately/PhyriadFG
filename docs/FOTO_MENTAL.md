@@ -4,29 +4,46 @@
 > [`planning/ACTION_PLAN.md`](planning/ACTION_PLAN.md); the durable knowledge is the D-22 memory
 > (`phyriadfg-*.md`). Rewritten at every checkpoint; older snapshots are not kept (the spine is).
 
-**Taken:** 2026-09-03 (after the ATF release and the CONVERGENCE triad).
+**Taken:** 2026-09-04 (backlog audit; supersedes the 2026-09-03 stamp). Sections 4b-4j are the
+accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, Self-prompt) is.
 
-0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md` → **P → S4 → S4.0 (operator) ‖ S4.C0 (next)**.
+0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` →
+   **`P → S2.T6 displacement gap → S4.R3 (fg_core.comp) · next`**. (The old pointer here read
+   `S4.0 (operator) ‖ S4.C0 (next)`; BOTH of those nodes are closed — S4.0 done inside R2a, and
+   S4.C0 is a retired v1 id whose v2 equivalent S4.R0 is done with a gate record.)
 1. **OBJECTIVE** — P: perfect PhyriadFG as ONE final FG = the clean minimal core (`apps/minimal_fg`, the
    SG seam) + the layers that earn their place, on the LAYERTAB contract; exact motion measured as DATA
    (S2 MOTION_TRUTH), perceptual quality parked (S5).
-2. **FOCUS** — the planning is complete and released; the next action is EXECUTION, which starts only on
-   the operator's word: S4.0 (adopt the base — operator-only relocation) and/or the donor track S4.C0.
+2. **FOCUS** — execution is UNDER WAY, not pending a green light. R0, R1, R2 of the in-place
+   restructure and T0/T1/T1b/T1c of the instrument are done and gated; T6 is built and its gate does
+   NOT pass. The live work is closing T6's sub-pixel deadzone, because R3's M4 veto rests on that
+   oracle. Everything downstream (R3→R7) is unbuilt.
 3. **METHOD** — Phyriad protocols: CONDUCT (verify-before-claim, calibrated, zero praise), PLAN_TIER T2
    (no commit with an `open` risk), AAP (closed: A0 frozen sha256 `670687d0…6933`, 3 candidates, 9
    scorecards, ATG 2 lenses, A3 = C + G1–G5, AT3/AT4/ATF approved — `docs/planning/aap/`), DI-3 two runs
    per number, SUBAGENT_DELEGATION (subordinate output = a claim; every judge citation was spot-verified
    first-hand), ACTION_PLAN_PROTOCOL (pointer + node states). Chat Spanish/usted; docs English; signature
    on every touched code file. Workflow tool is authorized for gate fan-outs (ultracode on).
-4. **WHERE WE ARE** — built and verified this arc: E1 thin `main()` (G1 passed, 98.37 % verbatim, 240
-   presents/s baseline); the instrument chain proven (`fg_quality_scorer` builds; qdump → scorer T; zoo →
-   scorer A). Written, NOT built: MOTION_TRUTH triad (T0–T6), CONVERGENCE triad (C0–C6, XR1..XR13),
-   the AAP record. Verified defects to honour: bg-reclaim dead under the default (`wap_warp.comp:344/394/410`);
-   `--qdump` inert under `async_present=true`; the base's `img_barrier()` is `ALL_COMMANDS`
-   (`apps/minimal_fg/src/main.cpp:159–167`) and re-uploads both anchors every tick (:1301–1330).
-   **Uncommitted:** the whole working tree (`git status`: E1 sources, `.bat` fixes, `.gitignore`, `cli.hpp`,
-   every `docs/planning/*` file) — commit/push is the operator's call and has NOT been asked for.
-   `tools/gate_zoo.ps1` is the operator's own untracked tool (2026-06-12), untouched.
+4. **WHERE WE ARE** — CORRECTED 2026-09-04; the previous text here was false in three places and is
+   kept only as this note: it said the MOTION_TRUTH and CONVERGENCE triads were "written, NOT built"
+   (seven gate records in `planning/records/` say otherwise), it said `--qdump` is inert under
+   `async_present=true` (`resolve_config` auto-disables async for the run — corrected at T0), and it
+   said the whole working tree was uncommitted (`git status --short` returns 0 lines).
+   **BUILT AND GATED:** E1 thin `main()`; R0 (layer registry), R1 (PhaseClock), R2 (seam engine);
+   T0 (scorer port), T1 (`--qdump+`), T1b (coverage sampler), T1c (record completeness). Each has a
+   record in `planning/records/`. **BUILT, GATE NOT PASSED:** T6 (`tools/ref_warp.py`).
+   **NOT BUILT:** R3, R4, R5, R6, R7; T2, T3, T4, T5.
+   **Verified defect still to honour:** bg-reclaim dead under the shipping default
+   (`wap_warp.comp:344/394/410`) — reproduced bug-for-bug by design (XR7), its fix an operator call.
+   **GIT (measured 2026-09-04, at HEAD `99dd28d` before this audit's own edits):** the tree was clean
+   — the audit then modified the docs listed in `records/BACKLOG_AUDIT.md`, so do not read "clean" as a
+   present-tense claim. The branch `analysis/0.3.0-quality-push` is **10 commits ahead of `origin` and
+   unpushed, AND HAS NO UPSTREAM REF** (`git rev-parse @{u}` → "no upstream configured"), so a bare
+   `git push` fails; two remotes are configured (`origin` = Swately/PhyriadFG, `chlmateus`). Push is the
+   operator's call and has not been asked for. **Tags:** the newest is `v0.2.2-experimental`, **26
+   commits back** — 0.3.0 and 0.4.0 shipped untagged, and R7 requires a pre-R3 tag as its A/B reference
+   (`CONVERGENCE_MASTER_PLAN.md:275`), which must be cut BEFORE R3 changes the default path. `tools/gate_zoo.ps1` is the operator's own untracked
+   tool (2026-06-12), untouched.
 4b. **MEDIDO 2026-09-03 (nuevo, el primer número de la base)** — `minimal_fg.exe` (binario del 2026-09-02,
    fuentes sin cambios desde 2026-06-26) corre limpio: contra `gate_zoo` (fuente ~30 fps, ventana 1280×720)
    1,200 presents, `ok=1200 timeout=0 err=0`, sin device-loss, `ring_dropped=0`, SG compilado = 1 pase /
@@ -136,9 +153,15 @@
    `nonconf` es 0 en el fondo). **Pista abierta:** el campo MV trae un patrón sub-píxel de periodo 3
    (−0.5, +0.1666, 0) que coincide con la retícula de 24 px del zoo, en bloques cuyo propio `sad_best` es
    0 (coincidencia perfecta) en 99.5% de la grilla.
-5. **NEXT** — (a) cerrar la brecha de desplazamiento de **S2.T6** (k debe llegar a 1.00); M4 no debe
-   correr sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4
-   existe para detectar. La pista del patrón de periodo 3 es por dónde empezar. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
+5. **NEXT** — (a) cerrar la **zona muerta sub-píxel de S2.T6**. Arriba de 4 px la referencia ya
+   acierta (k = 0.955); abajo de 0.5 px el shader no mueve nada y la referencia sí. M4 no debe correr
+   sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4 existe
+   para detectar. La pista: el patrón de periodo 3 (−0.5, +0.1666, 0) sobre bloques cuyo `sad_best`
+   es 0. (b) **Cobertura alternativa, desbloqueada hoy:** construir **S2.T2** (el zoo de marcadores NO
+   periódico) — es la única cosa del repo que puede responder la pregunta que el propio registro de T6
+   deja abierta: si la zona muerta existe fuera de la retícula que produce el patrón. Está además en la
+   ruta crítica de M1 de todos modos. (c) El inventario completo de lo que falta está en
+   `planning/records/BACKLOG_AUDIT.md` (auditoría 2026-09-04). (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
    soak largo y el ojo del operador sobre un juego real, no solo `ball_zoo`. (c) R3 lleva las dos
    restricciones del experimento de columnas: etapa `WEIGHT` con el núcleo partido en
    `fg_sample`/`fg_blend`, y el canal `CH_BLEND` con `select` como fila.
@@ -150,14 +173,25 @@
 ## Self-prompt (read this first after a compaction)
 
 I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). The
-objective is P in `docs/planning/ACTION_PLAN.md`; the position is S4 (CONVERGENCE), design released
-2026-09-03 — do NOT re-open the layer-contract search (A0 is frozen; A3 = LAYERTAB + G1–G5; AT3/AT4/ATF
+objective is P in `docs/planning/ACTION_PLAN.md`; the position is S4 (CONVERGENCE), executing in
+place. Do NOT re-open the layer-contract search (A0 is frozen; A3 = LAYERTAB + G1–G5; AT3/AT4/ATF
 approved in `docs/planning/aap/AT3_AT4_ATF_VERDICTS.md`) and do NOT re-derive the E1 result or the
-instrument-chain verification. Re-read first: `F:\Phyriad\protocols\core\BOOT_PROTOCOL.md`,
-`docs/planning/ACTION_PLAN.md` (pointer), `docs/planning/CONVERGENCE_MASTER_PLAN.md` §2–§3, and the memory
-`phyriadfg-convergence-spine.md`. Nothing under CONVERGENCE or MOTION_TRUTH is built. The next concrete
-action depends on the operator: S4.0 (adoption, his relocation) or a green light on S4.C0 / S2.T0–T1;
-if green-lit, start at strategy X1 and run gate G-C0 with two runs per number. Report every number from
-output, never from memory; report the not-run.
+instrument-chain verification.
+
+**Do NOT re-derive any of this — it is BUILT and GATED, each with a record in
+`docs/planning/records/`:** R0 (the layer registry + `--layer-dump`), R1 (`PhaseClock` extracted, the
+4× multiplication measured at 0.2501 source frames per present), R2 (the seam engine deriving stage
+5's barriers, opt-in behind `--sg-barriers`), T0 (the scorer port), T1 (`--qdump+` sidecars), T1b (the
+coverage sampler), T1c (the replay record's completeness audit). An earlier version of this very
+paragraph said "Nothing under CONVERGENCE or MOTION_TRUTH is built" — that was false and cost is the
+reason this warning is here.
+
+**The live work:** S2.T6's sub-pixel deadzone (`records/S2_T6_GATE.md`). `tools/ref_warp.py` is built
+and its gate does NOT pass. Six causes are refuted by number; do not re-test them.
+
+Re-read first: `F:\Phyriad\protocols\core\BOOT_PROTOCOL.md`, `docs/planning/ACTION_PLAN.md`
+(pointer, line 14), `docs/planning/records/BACKLOG_AUDIT.md` (what is left, audited 2026-09-04), and
+the memories `phyriadfg-convergence-spine.md` + `phyriadfg-m4-oracle.md`.
+Report every number from output, never from memory; report the not-run.
 
 *Made with my soul - Swately <3*

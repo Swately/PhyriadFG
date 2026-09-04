@@ -1,7 +1,10 @@
 # PhyriadFG/CMakeLists.txt
 # Standalone single-target build of phyriad_fg.exe.
 #
-# One target, one build-dir, one command (build.bat). No add_subdirectory, no libraries:
+# One SHIPPING target, one build-dir, one command (build.bat). No add_subdirectory, no libraries:
+# (corrected 2026-09-04: there are four add_executable targets now — phyriad_fg plus the two test
+#  binaries and the layer generator. There is still no enable_testing()/add_test(), so nothing runs
+#  the tests automatically.)
 # the framework .cpp sources are compiled by direct inclusion, so there is no build explosion.
 #
 # Build (MSVC + WGC):

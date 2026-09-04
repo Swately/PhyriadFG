@@ -11,7 +11,13 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S2.T6 displacement gap (k = 0.70, must reach 1) → S4.R3 (fg_core.comp) · next`**
+**`P → S2.T6 sub-pixel deadzone (>4 px: k = 0.955 OK · <0.5 px: shader moves nothing) → S4.R3 · next`**
+
+> **Full inventory of what is left:** [`records/BACKLOG_AUDIT.md`](records/BACKLOG_AUDIT.md)
+> (2026-09-04) — 182 candidate items, every one checked against the tree by an independent skeptic;
+> the critical path, 19 distinct gate debts, the shipped-but-unfinished code, the repo-level facts
+> (no CI, no CTest, no upstream ref, tags 26 commits stale), and the 19 documented claims that
+> disagreed with the repo — corrected there and here.
 · **R0 and R1 are DONE** (2026-09-03). R0: `records/R0_GATE.md` (parity 0 FAIL / 297 launches, M2a = 2 files,
 M3 inside spread, column closure = 0 new columns → PROCEED). R1: `records/R1_GATE.md` — the CLOCK is now
 `src/clock/phase_clock.{hpp,cpp}` with a CPU test; replay bit-parity on 14,390 live ticks, 0 mismatches;
@@ -108,7 +114,8 @@ exactos que simulen de forma correcta el movimiento".)
     24 px lattice on blocks whose own `sad_best` is 0.
   - **S2.T2–T3** marker zoo + player · `next` (parallel to T1)
   - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
-  - **S2.T6** CPU reference warp (E7) · `blocked` on T1
+  - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
+    passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
 - **S3 — LAYER CONTRACT (the AAP search)** · **`done`** (2026-09-03) · `docs/planning/aap/`
   - **S3.0** A0 frozen objective written · `done` (2026-09-02) → **S3.1** AT0 clean gate · `done`
     (`FREEZE WITH FIXES` → 3 point-fixes applied → frozen, sha256 `670687d0…6933`)
@@ -148,11 +155,22 @@ exactos que simulen de forma correcta el movimiento".)
     unchanged. Flipping the default is a separate decision (a longer soak + the operator's eye).
   - **S4.R3** Stage 5: `fg_core.comp` + the 8 fused rows replace `wap_warp.comp` for the default set =
     **M-R3**; M4 by S2.T6 on the `--qdump+` replay (packed value first, XR1); bg-reclaim bug-for-bug (XR7) ·
-    `blocked (S2.T6's displacement gap: the oracle over-displaces by ~30%, k = 0.702, and M4 exists to
-    catch exactly that class of error — the corpus itself is ready: S2.T1b coverage + S2.T1c completeness)`
-  - **S4.R4** Stage 6 PRESENT extracted (`PresentStage`, `Phase.decision`, `FlipStats`) = M-R4 · `blocked (R1)`
+    `blocked (S2.T6's SUB-PIXEL DEADZONE: above 4 px the oracle is validated (k = 0.955, corr 0.97);
+    below 0.5 px the shader moves essentially nothing while the oracle does. M4 exists to catch exactly
+    that class of error, and the record leaves open WHICH side is wrong — if it is the shader, this is a
+    motion-fidelity defect in the shipping default, not an oracle bug. The corpus itself is ready:
+    S2.T1b coverage + S2.T1c completeness)`
+  - **S4.R4** Stage 6 PRESENT extracted (`PresentStage`, `Phase.decision`, `FlipStats`) = M-R4 ·
+    **`startable`** (corrected 2026-09-04 — the old `blocked (R1)` was stale: R1 is `done`). What
+    actually constrains it: the STAGE_CONTRACT Order table puts it after R3 (a sequencing
+    preference, not a dependency); the register forbids COMMITTING it while MR-1/MR-2/MR-7/CR1 are
+    `open`; and G-R4 needs `--tdr-test`, which does not exist and must be built inside R4.
   - **S4.R5** Stage 3: `FlowSet` + `FlowRing` declared; holons → `kind = P` rows (off); MV median → stage 3;
-    `wap_upload` conditional on device count = M-R5 · `blocked (R2)`
+    `wap_upload` conditional on device count = M-R5 · **`startable, sequenced after R4`** (corrected
+    2026-09-04 — the old `blocked (R2)` was stale: R2 is `done`). Its scope overlaps R4's (it moves
+    `present.cpp:713-836` and `:779`, which R4 extracts), so doing it first re-does work. Its paper
+    half — mapping `flow.cpp`'s holon family onto the LAYERTAB schema, the exercise R0 did for ten
+    shader layers — is unblocked TODAY and is XR3's accepted residual.
   - **S4.R6** Stages 1–2 named (`capture/` + `ingest/`), `RawFrame`/`RealFrame` = M-R6 · `blocked (R5)`
   - **S4.R7** closing: `--legacy-warp` out of the default only with M1 baselines on both paths (S2.T4–T5) +
     MR-4 byte-diff + MR-8 operator eye = M-R7 · `blocked (operator, S2)`

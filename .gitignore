@@ -43,3 +43,7 @@ frames/
 ra_out*.txt
 c7_*.txt
 pslab_run/
+
+# Python bytecode (a .pyc was committed by a `git add -A` on 2026-09-03; untracked 2026-09-04)
+__pycache__/
+*.pyc

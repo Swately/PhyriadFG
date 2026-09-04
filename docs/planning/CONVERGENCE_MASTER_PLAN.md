@@ -61,7 +61,7 @@ document is written under this arc until a new measurement exists**; each R-stag
 | `src/cli/cli.hpp` (1,011) + `cli.cpp` (787) + `ui/src/main.js`: 257 flags vs 173 UI entries | the four-site drift | CONTROL plane |
 | E1 result: `main()` 1,222; 13 `init_*`; G1 baseline 240 presents/s, 28,799 / 120 s | the M3 baseline | — |
 | Instruments: `--csv`, `--qdump` (needs the sync present path; `resolve_config` AUTO-DISABLES `--async-present` for the run and says so — verified 2026-09-03, an earlier note calling it "inert under the default" was wrong), `tools/ball_zoo.ps1`, `tools/gate_zoo.ps1` (operator's), `tools/gpu_load.exe`, `fg_quality_scorer` (catalog, builds) | the M3 / M4 / load fixtures | INSTRUMENT plane |
-| MOTION_TRUTH | `designed`; T0–T6 unbuilt | **M1 not measurable yet** (§4.3) |
+| MOTION_TRUTH | **corrected 2026-09-04:** T0/T1/T1b/T1c `done` (gate records); T6 built, gate NOT passed; **T2–T5 unbuilt** | **M1 still not measurable** (§4.3) — the table comes from T4–T5 |
 
 ### 1.2 What is taken from the base (`apps/minimal_fg`, container, no git) — and only this
 
@@ -217,6 +217,22 @@ generated chains + `shaders/fg_core.comp`; `present.cpp`'s 58-float push (`:1119
 (`:960–1118`) → `CorePush` (20 B) + `layer_arm_mask(ArmInputs)`; the eight rows per `aap/CANDIDATE_C.md`
 §4.1–4.8; bg-reclaim bug-for-bug (XR7); `--fg-core` opt-in until M4 passes, then `--legacy-warp` selects
 the old path. The `ArmInputs` are derived from `FlowSet[gen]` validity ONLY (STAGE_CONTRACT §1).
+- **CONSTRAINTS FROM THE R0 EXIT GATE — all three, not two** (re-attached 2026-09-04; the column-closure
+  experiment `aap/COLUMN_CLOSURE_EXPERIMENT.md` §2 imposed three and this section carried none of them,
+  while the spine and §2.1 carried only the first two. §2.3 survived in the experiment doc alone — a
+  `grep -rn "cross-row" docs/ src/ tools/` hit exactly one file — which is how a constraint becomes a
+  forgotten sentence):
+  1. **§2.1 — the `WEIGHT` stage with the core split.** The frozen core splits into `fg_sample()` +
+     a `WEIGHT` stage + `fg_blend()`; rows that re-weight the A/B contribution attach at `WEIGHT`.
+  2. **§2.2 — the `CH_BLEND` channel with `select` as a row.** Note this contradicts the sentence below:
+     the eight rows of `CANDIDATE_C.md` §4.1–4.8 (mv_guided, inertia, bg_reclaim, phase_anchor, ambig,
+     vblend, single_track, stasis) contain **no `select` row and no `CH_BLEND`**. R3 builds nine rows and
+     a new channel, not eight rows.
+  3. **§2.3 — a declared-`needs` rule for cross-row parameter reads.** Three sites read another row's
+     parameter (the matte colour cross-check reads `L_MV_GUIDED` + `commit.thresh`; `bg_fill` reads
+     `bgs_w`/`bx_w`). The generator MUST require the read to be DECLARED as a `needs` bit on the row whose
+     param is read, and emit the other row's UBO field by its generated alias. Today `needs` is non-zero on
+     exactly one row (INERTIA) and **no code applies it** — it is declared, range-validated and printed only.
 - MUST NOT change: any default output byte (M4 veto); `resolve_config()` as the owner of non-layer cascades.
 - **Gate G-R3 (M4):** the T6 CPU reference warp on ≥ 200 `--qdump+` triples (motion-truth zoo + `gate_zoo`,
   `--no-async-present`): byte-identical or every differing pixel explained; the packed `1.0 + sim` value
@@ -232,7 +248,10 @@ blit + submit (`:564`, `bridge_present` `:466–507`, `bridge_present_src` `:654
 decimation gate (`:2062`) and the per-second stats (`:2954`) — as ONE stage module called by the P loop
 with `Phase` + `GenFrame`, returning `FlipStats`. The tick decision `{warp, dup, drop, decimated}`
 becomes a field of `Phase` written by stage 4 and READ here (today: `fdrop`, `async-drop`, the
-decimation gate — three sites). The guard-band drop of a late interpolated frame (MINIMAL_FG S8, the
+decimation gate — three sites; **site references re-anchored 2026-09-04: the async drop is at
+`present.cpp:962-978`, not `:1186` — that line is now inside the 58-float warp push. `present.cpp` has
+been edited since this plan was written, so R4 must re-anchor every offset it cites before using them**).
+The guard-band drop of a late interpolated frame (MINIMAL_FG S8, the
 DLSS-G model) is added as a `Phase.decision = drop` case IF it does not exist today (to confirm: the
 async-drop at `:1186` covers the in-flight case; the late-target case is `unverified`).
 - MUST NOT change: the drop decision is P-local (no lock); the slot is provisioned at init; every poll

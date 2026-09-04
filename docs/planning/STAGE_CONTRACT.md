@@ -258,8 +258,13 @@ carries unchanged.
 
 - The `FgContext` field count (~230) and the coupling table are read from the header and the cited sites;
   I did not trace every atomic's readers — the table lists the ones verified this session.
-- The contract types are DESIGNED here; none exists as a struct in either tree. `RealSlot` (2 doubles) and
-  the `f_pair_*` arrays are the closest existing forms.
+- The contract types are DESIGNED here; **8/8 are unbuilt** as structs in either tree. `RealSlot`
+  (2 doubles) and the `f_pair_*` arrays are the closest existing forms.
+- **NAME COLLISION, recorded 2026-09-04:** `FlipStats` is already taken. `framework/render/present/include/
+  phyriad/render/present/PresentSurface.hpp:209` declares a 2-field `struct FlipStats { sync_qpc;
+  present_count; }` with no `ps_ok`, no `timeout`, no `err` and no device-loss latch — i.e. not the type
+  this contract describes. R4 must either extend that struct or name its own something else; picking the
+  same name in a different namespace and hoping is the failure mode. Nobody had recorded this.
 - Stage 4's test does not exist; its acceptance numbers (lock ticks, phase error bound) are to be set from
   the first run, not asserted here.
 - The base's `mc_interp` fuses stages 3 and 5 in one pillar call; separating them in the base was never

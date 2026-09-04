@@ -33,7 +33,8 @@ build-release.bat    ->  build-release\phyriad_fg.exe   (distributable, no debug
 build.bat            ->  build\phyriad_fg.exe            (debug build)
 ```
 
-One target, LTO enabled on release. Both scripts detect Visual Studio automatically via
+Four targets (`phyriad_fg`, `pfg_seam_test`, `pfg_clock_test`, `pfg_layer_gen`); LTO on `phyriad_fg`
+only. (Corrected 2026-09-04 — this line said "one target".) Both scripts detect Visual Studio automatically via
 `vswhere.exe` — no hardcoded paths.
 
 ## Run

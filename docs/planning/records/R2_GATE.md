@@ -11,7 +11,7 @@
 |---|---|
 | **Vulkan 1.3 + `synchronization2`** | The seam's `vkCmdPipelineBarrier2` is core 1.3; the app ran 1.2 and enabled the KHR extension only under `--nvofa`. The loader version is now QUERIED (`vkEnumerateInstanceVersion`), the instance asks for 1.3 only if offered, and the feature is enabled only if the physical device reports 1.3 AND reports it supported. `--no-sync2` forces the old path. |
 | **`--validation`** | The KHRONOS layer + a debug-utils messenger printing every warning/error, so "sync-validation clean" is a repeatable instrument. Default off: no layer, no messenger, byte-identical. |
-| **The seam adopted** | `src/seam/seam_graph.hpp` + `tests/seam/test_seam_graph.cpp` (target `pfg_seam_test`), from `apps/minimal_fg`. Namespace, an adoption note and the signature are the only edits; the derivation is untouched. The container copy carries one pointer line and is frozen (XR10). |
+| **The seam adopted** | `src/seam/seam_graph.hpp` + `tests/seam/test_seam_graph.cpp` (target `pfg_seam_test`), from `apps/minimal_fg`. Namespace, an adoption note and the signature are the only edits; the derivation is untouched. The container copy carries **two** pointer lines (corrected 2026-09-04: `apps/minimal_fg/include/minimal_fg/seam_graph.hpp:1-2`) and is frozen (XR10). |
 | **Grafts G3 / G4 / G5** | G3: a pass that overwrites a resource it does not read is named at compile time (`dump_warnings()`), unless it declares why (`add_pass_dominating`). G4: `Access::optional` + `dead_optional_writes` liveness. G5: the `VkImageMemoryBarrier2` array is built at `compile()`; `execute()` patches handles only, and a `graph_id` makes it refuse a `Compiled` from another graph (XR11). |
 | **The two engine gaps CLOSED (R2b)** | **Per-image import layout:** `declare_image(name, imported, import_layout)` — the present bridge arrives as `UNDEFINED` because the blit overwrites the whole image; assuming `SHADER_READ_ONLY` would declare contents that must be preserved. **Resting layout:** `set_resting(res, layout, stage, access)` — one compiled graph describes ONE frame, so the cross-frame restore (`wapOutA` back to `GENERAL` for the next tick's warp) had no consumer inside the graph. `compile()` now emits it as an EPILOGUE barrier; `execute()` records it last. Both default to the previous behaviour, so the 122-check golden is unchanged. |
 | **Stage 5 wired** | `--sg-barriers` makes the generation-output path record its barriers through the graph instead of the three hand-written `img_barrier` calls. The blit is the graph's own record callback. Default off → the hand-written arm runs, byte-identical. A missing `synchronization2` or a compile error falls back automatically and says so. |
@@ -55,7 +55,10 @@
 - The derived path is **opt-in**. The default still records the hand-written barriers, so the shipping
   product is unchanged by R2 unless `--sg-barriers` is passed. Flipping the default is a separate
   decision with its own evidence (a longer soak, and the operator's eye on a real game).
-- `img_barrier` calls in `present.cpp`: still 40. R2 did not remove any — it added a derived arm beside
+- `img_barrier` calls in `present.cpp`: **42** (corrected 2026-09-04; this line originally said 40, and
+  the figure was wrong WHEN WRITTEN, not drifted — `git show 0d5b76d:src/present/present.cpp | grep -c
+  img_barrier` returns 42 at R2's own commit, and it is 42 at HEAD). The count did not drop, which the
+  master plan's M-R2 ladder already states as expected: R2 did not remove any — it added a derived arm beside
   the three stage-5 ones. The count drops when the default flips and the fallback arm is retired.
 - The A/B ran on `ball_zoo`, a synthetic source, on an otherwise idle machine plus one saturated soak.
   No real-game run, and no operator-eye verdict.
