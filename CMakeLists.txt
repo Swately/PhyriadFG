@@ -79,15 +79,22 @@ add_custom_target(pfg_shaders DEPENDS
 add_executable(phyriad_fg
     src/core/main.cpp
     src/cli/cli.cpp                            # the CLI/config layer (Config + print_help + parse_args)
+    src/clock/phase_clock.cpp                   # R1: STAGE 4 — the content clock (NCO+PLL, selection, phase, order)
+    src/layers/layer_registry.cpp              # R0: the layer registry (shadow parser, parity, help, UI model, dump, hash)
     src/core/vk_util.cpp                       # now_ms / route_for / Img+HBuf factories / barrier+submit helpers
     src/core/device.cpp                        # VDev + vdev_create/vdev_destroy
     src/core/globals.cpp                       # g_quit/device-lost/util+overlay atomics + vk_live + console Ctrl handler
     src/flow/flow.cpp                          # the FLOW factories (gme_fit_affine / NvofaProvider / MvSmoothPipe / GmePipe+gme_record / MedianPipe)
+    src/flow/flow_init.cpp                     # E1: flow-side init sections (gme-gpu pipes + use_* re-finalization), verbatim from main.cpp
     src/capture/capture.cpp                    # D3D11/DXGI interop (D3D/d3d_init/find_window/staging) + iGPU ConvPackPipe/UnpackPipe
+    src/capture/capture_init.cpp               # E1: capture-side init sections (convert pipe + iGPU pipes + WGC backend), verbatim from main.cpp
     src/warp_blend/warp_blend.cpp              # WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask
+    src/warp_blend/warp_blend_init.cpp         # E1: the WAP init section, verbatim from main.cpp
     src/present/present.cpp                     # the present-side UpPipe upscale (bilinear/lanczos) factory
+    src/present/present_init.cpp               # E1: the present-side init sections (bridge slots), verbatim from main.cpp
     src/instrument/instrument.cpp              # the dump_bmp/dump_rgba diagnostic frame-dump helpers
     src/core/ra_simd.cpp                       # F16C batch — /arch:AVX2 below; main.cpp stays portable
+    src/core/core_init.cpp                     # E1: core-side init sections (cmd buffers + fences), verbatim from main.cpp
     "${_rv}/src/OpticalFlowPipeline.cpp"       # render/vulkan optical-flow pipeline
     "${_fw}/render/present/src/PresentSurface.cpp"
     "${_fw}/topology/src/HardwareTopology.cpp"
@@ -96,6 +103,39 @@ add_executable(phyriad_fg
     "${_fw}/topology/src/HybridCoreDetector.cpp"
     "${_fw}/topology/src/PCIeAffinityProbe.cpp")
 add_dependencies(phyriad_fg pfg_shaders)
+
+# ── R0: the layer registry generator (tools/layer_gen.cpp) — a host tool built from the SAME X-macro tables,
+#    emitting the GLSL chains / spec constants / std140 UBO / offsets into ${_gen}/shaders. Nothing includes
+#    them yet (shaders/fg_core.comp is stage R3); they are generated so the mechanism is proven at M-R0 and
+#    so a .def change rebuilds them (the DEPENDS discipline of risk XR13 starts here).
+# R2: the adopted SEAM engine's GPU-free unit test (the 122 derivation checks). Vulkan is consumed for
+# its synchronization2 TYPE definitions only; execute() is never called, so no device is needed.
+add_executable(pfg_seam_test tests/seam/test_seam_graph.cpp)
+target_compile_features(pfg_seam_test PRIVATE cxx_std_23)
+target_include_directories(pfg_seam_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(pfg_seam_test PRIVATE Vulkan::Vulkan)
+
+# R1: the STAGE-4 CLOCK's CPU test (GPU-free, Vulkan-free). Built with the tree so the extraction keeps a
+# standing regression harness; pass it a --arrival-log recording to assert bit-parity of the replay.
+add_executable(pfg_clock_test tests/clock/test_phase_clock.cpp src/clock/phase_clock.cpp)
+target_compile_features(pfg_clock_test PRIVATE cxx_std_23)
+target_include_directories(pfg_clock_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+add_executable(pfg_layer_gen tools/layer_gen.cpp)
+target_compile_features(pfg_layer_gen PRIVATE cxx_std_23)
+target_include_directories(pfg_layer_gen PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+set(_layer_gen_out
+    "${_gen}/shaders/layer_specconst.glsl" "${_gen}/shaders/layer_params.glsl" "${_gen}/shaders/layer_includes.glsl"
+    "${_gen}/shaders/chain_mvcond.glsl" "${_gen}/shaders/chain_sample.glsl" "${_gen}/shaders/chain_compose.glsl"
+    "${_gen}/shaders/layer_offsets.hpp" "${_gen}/shaders/layer_manifest.txt")
+add_custom_command(OUTPUT ${_layer_gen_out}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_gen}/shaders"
+    COMMAND pfg_layer_gen "${_gen}/shaders"
+    DEPENDS pfg_layer_gen "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.def"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_abi.hpp"
+    COMMENT "layer_gen: registry -> generated GLSL/offsets" VERBATIM)
+add_custom_target(pfg_layer_glsl DEPENDS ${_layer_gen_out})
+add_dependencies(phyriad_fg pfg_layer_glsl)
 
 target_compile_features(phyriad_fg PRIVATE cxx_std_23)
 target_include_directories(phyriad_fg PRIVATE

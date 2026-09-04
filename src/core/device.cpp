@@ -159,6 +159,20 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
     // Enable the timeline-semaphore feature (Vulkan 1.2 core) ONLY when the transfer queue is live. tsf
     // must outlive the vkCreateDevice call below (dci.pNext); it shares this scope.
     VkPhysicalDeviceTimelineSemaphoreFeatures tsf{}; tsf.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES; tsf.timelineSemaphore=VK_TRUE;
+    // R2 (the SEAM): the synchronization2 FEATURE, core in Vulkan 1.3. Enabled ONLY when the physical
+    // device itself reports 1.3 AND reports the feature supported — both QUERIED here, never assumed.
+    // d.has_sync2 records the outcome; when false the app records its hand-written barriers exactly as
+    // before. sync2f chains at the FRONT of dci.pNext and must outlive vkCreateDevice (this scope).
+    VkPhysicalDeviceVulkan13Features sync2f{}; sync2f.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    {
+        VkPhysicalDeviceProperties pr{}; vkGetPhysicalDeviceProperties(phys,&pr);
+        if(VK_API_VERSION_MAJOR(pr.apiVersion)>1 || (VK_API_VERSION_MAJOR(pr.apiVersion)==1 && VK_API_VERSION_MINOR(pr.apiVersion)>=3)){
+            VkPhysicalDeviceVulkan13Features have{}; have.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+            VkPhysicalDeviceFeatures2 f2q{}; f2q.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2; f2q.pNext=&have;
+            vkGetPhysicalDeviceFeatures2(phys,&f2q);
+            if(have.synchronization2){ sync2f.synchronization2=VK_TRUE; d.has_sync2=true; }
+        }
+    }
     // --nvofa: the OFA extension + feature. The feature struct (opticalFlow=VK_TRUE) chains on dci.pNext; it
     // must outlive the vkCreateDevice call (this scope). When also enabling timeline semaphores we chain
     // ofFeat -> tsf so BOTH features are requested. Without OFA the exts/pNext are untouched.
@@ -175,6 +189,8 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
     const bool want_ts = (want_xfer_q && d.qfamT!=UINT32_MAX);
     if(use_ofa){ ofFeat.pNext = want_ts ? (void*)&tsf : nullptr; dci.pNext=&ofFeat; }
     else if(want_ts) dci.pNext=&tsf;
+    // chain synchronization2 at the FRONT so it composes with whatever the paths above set up.
+    if(d.has_sync2){ sync2f.pNext=(void*)dci.pNext; dci.pNext=&sync2f; }
     // --gpu-priority LEVER 2 fallback: a create failure with the priority chained (typically
     // VK_ERROR_NOT_PERMITTED = -1000174001 when the driver refuses REALTIME/HIGH to an unelevated
     // process) gets ONE honest retry at normal priority — never a silent hard-fail of the whole app.
@@ -188,6 +204,8 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
             gp_armed=false;
             cr=vkCreateDevice(phys,&dci,nullptr,&d.dev);
         }
+    std::printf("[ra] device '%s': synchronization2=%s (R2 seam: %s)\n", d.name,
+    d.has_sync2?"ENABLED":"unavailable", d.has_sync2?"the graph may record barriers":"hand-written barriers only");
         if(cr!=VK_SUCCESS) return false;
         if(gp_armed) std::printf("[ra] --gpu-priority: '%s' queues created with VK global priority (requested %s; any per-family downgrade printed above) — lever 2 ACTIVE\n",
             d.name, (global_priority==2)?"REALTIME(1024)":"HIGH(512)");

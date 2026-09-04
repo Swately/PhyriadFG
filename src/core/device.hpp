@@ -46,6 +46,10 @@ struct VDev { VkPhysicalDevice phys=VK_NULL_HANDLE; VkDevice dev=VK_NULL_HANDLE;
     // extmem_win32_enabled = it was actually requested+enabled (want_extmem_win32). pfnGetMemWin32
     // imports the D3D11 shared-texture NT handle; keyed-mutex sync is chained on the bridge-blit submit
     // (VkWin32KeyedMutexAcquireReleaseInfoKHR — no PFN, core struct).
+    // R2 (the SEAM): the device was created with Vulkan 1.3 + the synchronization2 FEATURE, so
+    // vkCmdPipelineBarrier2 is callable and SeamGraph::execute() may record. false -> the graph is
+    // not used and the hand-written barriers run (the honest degradation on an older loader/driver).
+    bool has_sync2=false;
     bool has_extmem_win32=false, has_keyed_mutex=false, extmem_win32_enabled=false;
     PFN_vkGetMemoryWin32HandlePropertiesKHR pfnGetMemWin32=nullptr;
     // Vendor-NAMED capability fields on the FG's app-local VDev (this app does NOT link framework/gpu — it

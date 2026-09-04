@@ -24,11 +24,8 @@ void print_help(const char* a0) {
         "  --no-bidir              No bidirectional flow; also disables fill-div and matte\n"
         "  --no-fill-div           No divergence-directed disocclusion pick\n"
         "  --no-rescue             No neighbor-MV candidate rescue\n"
-        "  --no-mv-guided          No color-guided MV (blind median/linear instead)\n"
         "  --no-gme                No global affine motion model; also disables matte\n"
         "  --no-matte              No fluid-matte compositing\n"
-        "  --no-stasis             No stasis bypass layer\n"
-        "  --no-inertia            No inertia persistence prior\n"
         "  --no-objects            No object-holon clustering + motion-inheritance repair\n"
         "  --no-shapefield         No contour shape-field; rigid single-MV inheritance\n"
         "  --no-crescent           No crescent-directed background fetch (matte bg blend reverts to (1-t,t))\n"
@@ -40,7 +37,6 @@ void print_help(const char* a0) {
         "  --no-persist-reset      No membership-beats-inertia (HUD shield blocks mover interiors)\n"
         "  --no-change-gate        No changed-content requirement on the dissidence masks (raw halo masks)\n"
         "  --no-memory             No scene-holon silhouette memory (mask is the fresh pair only; child of --objects)\n"
-        "  --no-ambig              No second-best candidate arbitration of SAD ties (periodic-texture aliasing; child of --gme)\n"
         "  --no-tiers              No pressure tiers (bwd-skip only; objects/memory every pair under all load)\n"
         "  --load-governor         A util-driven GRADUATED tier FLOOR for the combat multiplier collapse,\n"
         "                          decoupled from the t_pair_ema>budget gate. The live 4090\n"
@@ -70,11 +66,9 @@ void print_help(const char* a0) {
         "  --appear-band F       Override appearance band (max-ch [0,1], clamped [0.02,0.5], default 0.10)\n"
         "  --occl-thresh F       Override fwd<->bwd round-trip threshold (px, clamped [0.25,8.0])\n"
         "  --div-eps F           Override divergence band (px/texel, clamped [0.005,1.0])\n"
-        "  --mv-sim F            Override color-membership band (max-ch [0,1], clamped [0.02,0.5])\n"
         "  --matte-thresh F      Override dissidence cutoff (R8-norm [0,1], clamped [0.05,1.0])\n"
         "  --mass-k F            Matte mass-feedback gain (clamped [0,2]; 0=off/lerp only, default 0.5)\n"
-        "  --stasis-thresh F     Override sad_zero cutoff (per-block SUM |A-B|, clamped [0.05,8.0])\n"
-        "  --inertia-thresh F    Override persistence cutoff (R8-norm [0,1], clamped [0.1,1.0])\n\n"
+        "\n"
         "CAPTURE / ROUTING:\n"
         "  --monitor M           Capture from DXGI output M (default: 0)\n"
         "  --present-monitor P   Present on output P (default: same as capture)\n"
@@ -127,6 +121,7 @@ void print_help(const char* a0) {
         "  --rescue, --mv-guided, --gme, --stasis, --inertia,\n"
         "  --objects, --crescent, --travel, --contour, --obj-crescent, --member-commit, --appearance, --present-surface, --present-gpu DEV, --overlay\n\n"
         "  --help                This message\n", a0);
+    pfg::layers::print_layer_help();   // R0: the layer flags are generated from the registry (the single source)
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
@@ -282,12 +277,21 @@ void resolve_config(Config& c, bool announce) {
 bool parse_args(int argc, char** argv, Config& c) {
     for (int i=1;i<argc;++i) {
         const char* a=argv[i];
+        pfg::layers::layer_shadow_parse(argc, argv, i, c.layers);   // R0: the registry parses as a SHADOW (peeks, never consumes; parity checks it)
         auto next=[&](const char* o)->const char*{ return (i+1<argc)?argv[++i]:(std::printf("[ra] %s needs arg\n",o),nullptr); };
         // These flags live in this SEPARATE matcher (called from the terminal else below) rather than as
         // more `else if` links — the main arg chain is near MSVC's C1061 nested-block limit, and a lambda
         // BODY is a fresh scope (nesting restarts at 0), so this adds ZERO depth to the chain. Returns
         // 0 = matched OK, 1 = matched but missing arg (→ parse fail), -1 = not matched (→ unknown-option path).
         auto parse_extra=[&](const char* arg)->int{
+            // R0 diagnostics (CONTROL plane): act in main() right after parse; no device is created.
+            if(!std::strcmp(arg,"--arrival-log")){ if(auto v=next(arg)){ std::snprintf(c.arrival_log,sizeof(c.arrival_log),"%s",v);
+                std::printf("[ra] --arrival-log %s: R1 instrument — one line per WAP tick with the clock inputs+outputs in exact hex-float (the PhaseClock replay oracle). Measurement runs only.\n",v); return 0; } return 1; }
+            if(!std::strcmp(arg,"--validation")){ c.validation=true; std::printf("[ra] --validation: VK_LAYER_KHRONOS_validation + debug-utils messenger ON (a DIAGNOSTIC run: the layer costs real time; never a measurement run).\n"); return 0; }
+            if(!std::strcmp(arg,"--no-sync2")){ c.no_sync2=true; std::printf("[ra] --no-sync2: forcing the Vulkan 1.2 instance + hand-written barriers (the R2 A/B reference arm).\n"); return 0; }
+            if(!std::strcmp(arg,"--layer-dump")){ c.layer_dump=true; return 0; }
+            if(!std::strcmp(arg,"--layer-model-json")){ c.layer_model_json=true; return 0; }
+            if(!std::strcmp(arg,"--dump-config")){ c.dump_config_flag=true; return 0; }
             // ── OFF-switches del set DEFAULT-ON (flip 2026-07: el stack validado por el operador).
             // Cada --no-X restaura el comportamiento pre-flip. --no-rfp limpia también rfp_fresh
             // (fresh es inalcanzable sin rfp); el resto son independientes.
@@ -781,6 +785,7 @@ bool parse_args(int argc, char** argv, Config& c) {
     // The post-parse cascades + the derived c.d.* predicates live in ONE site, resolve_config() above
     // (re-callable from the runtime degrade in main.cpp). See cli.hpp. This is the central "decode" —
     // every layer reads the resolved flags + c.d.* instead of re-deriving a gate.
+    c.layers_old = pfg::layers::capture_layer_old(c);   // R0: the pre-cascade snapshot layer_config_parity() compares against
     resolve_config(c);
     return true;
 }

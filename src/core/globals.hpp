@@ -52,3 +52,7 @@ extern std::atomic<bool> g_device_lost;
 bool vk_live(VkResult r) noexcept;
 BOOL WINAPI console_ctrl_handler(DWORD ctrl);
 // Made with my soul - Swately <3
+
+// --validation (R2): the debug-utils messenger handle, so teardown destroys it BEFORE the instance
+// (the layer reports an undestroyed messenger as a leaked object — found first-hand 2026-09-03).
+extern VkDebugUtilsMessengerEXT g_dbg_messenger;

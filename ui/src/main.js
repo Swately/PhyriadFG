@@ -291,26 +291,14 @@ const GROUPS = [
     controls: [
       { flag: "--no-warp-at-presenter", type: "switch-off", default: true, name: "Warp-at-presenter (WAP)",
         desc: "Per-tick re-warp to the exact phase. Off = grid mode (disables bidir/fill-div/rescue/mv-guided/gme/matte/inertia/single-track/bg-reclaim)." },
-      { flag: "--no-single-track", type: "switch-off", default: true, name: "Single-track synthesis",
-        desc: "DEFAULT ON (v3.2, operator-eye PASS on v3.1: smooth, judged better than LSFG). Presents the pure B-track (cur warped back to phase) + the screen-static evidence mix (per-pixel d_zero-vs-d_warp; crisp HUD/overlays even under camera pan). Off = the old A/B blend composite. WAP-only." },
       { flag: "--no-gme", type: "switch-off", default: true, name: "GME (global model)",
         desc: "Per-pair global affine motion model. Off also disables matte (cascade)." },
       { flag: "--no-bidir", type: "switch-off", default: true, name: "Bidirectional flow",
         desc: "Bidirectional flow + occlusion classification. Off also disables fill-div and matte (cascade)." },
       { flag: "--matte", type: "switch-on", default: false, name: "Fluid matte",
         desc: "Two-layer fluid composite. DEFAULT OFF (the operator's A/B found --no-matte better: it doubled the figure). --matte re-enables it (needs gme + bidir)." },
-      { flag: "--no-mv-guided", type: "switch-off", default: true, name: "Color-guided MV",
-        desc: "MV assignment guided by color membership. Off = blind median/linear." },
       { flag: "--no-rescue", type: "switch-off", default: true, name: "Candidate rescue",
         desc: "Rescue via neighbor-block MVs. Off = byte-identical." },
-      { flag: "--no-inertia", type: "switch-off", default: true, name: "Inertia (persistence)",
-        desc: "Motion-persistence prior (state hysteresis). Off = byte-identical." },
-      { flag: "--inertia-thresh", type: "number", default: "0.50", min: 0.1, max: 1, step: 0.05, name: "Inertia: threshold",
-        desc: "Persistence cutoff (R8-norm [0.1,1]). 0.5 ~ 8 static pairs." },
-      { flag: "--no-stasis", type: "switch-off", default: true, name: "Stasis (bypass HUD)",
-        desc: "Stasis layer: a block with sad_zero<=thresh presents the real directly. Off = byte-identical." },
-      { flag: "--stasis-thresh", type: "number", default: "0.50", min: 0.05, max: 8, step: 0.05, name: "Stasis: threshold",
-        desc: "sad_zero cutoff (per-block SUM|A-B| [0.05,8]). ~0 = identical block." },
     ],
   },
   {
@@ -326,8 +314,6 @@ const GROUPS = [
         desc: "Temporal MV EMA alpha (0=off; ~0.6 damps tile jitter)." },
       { flag: "--mv-prior", type: "switch", default: false, name: "MV temporal prior",
         desc: "Temporal MV prior in the matcher (dual-centre, self-heals on cuts). Ignored with bidir (default)." },
-      { flag: "--mv-sim", type: "number", default: "0.10", min: 0.02, max: 0.5, step: 0.01, name: "MV-guided: color band",
-        desc: "Color-membership band for mv-guided (max-ch [0.02,0.5])." },
       { flag: "--residual-ceil", type: "number", default: "32", min: 0, step: 1, name: "Gate: residual-ceil",
         desc: "Gate (a): max sad_best (default 32)." },
       { flag: "--conf-improv", type: "number", default: "0.20", min: 0, max: 1, step: 0.01, name: "Gate: conf-improv",
@@ -363,22 +349,8 @@ const GROUPS = [
         desc: "Collapse onset scale ([0.05,4]; 1.0 = STAGE-81, lower = collapses faint crescents)." },
       { flag: "--no-member-commit", type: "switch-off", default: true, name: "Member-commit",
         desc: "DEFAULT ON. Membership-beats-the-blend in flat object interiors (anti ghost-step)." },
-      { flag: "--no-phase-anchor", type: "switch-off", default: true, name: "Phase-anchor",
-        desc: "DEFAULT ON. Primary MV anchored to the phase (cur-anchored at high phase). Needs bidir." },
-      { flag: "--no-vblend", type: "switch-off", default: true, name: "V-blend (velocity)",
-        desc: "DEFAULT ON. Near pair end, the MV tilts toward the next pair's velocity (anti pulse)." },
-      { flag: "--vblend-t0", type: "number", default: "0.6", min: 0, max: 0.95, step: 0.05, name: "V-blend: t0",
-        desc: "Phase where the tilt ramp begins [0,0.95]. Only with vblend." },
-      { flag: "--vblend-strength", type: "number", default: "0.5", min: 0, max: 1, step: 0.05, name: "V-blend: strength",
-        desc: "Max tilt weight at t=1 [0,1]. Only with vblend." },
-      { flag: "--vblend-exact", type: "switch", default: false, name: "V-blend exact",
-        desc: "EXACT velocity-continuity (real MV of the next pair; +1 source-frame of latency). Implies vblend." },
       { flag: "--no-bg-snap", type: "switch-off", default: true, name: "BG-snap",
         desc: "DEFAULT ON. In the iGPU contour band, snaps background MVs to the gme model (kills disocclusion gravity)." },
-      { flag: "--no-bg-reclaim", type: "switch-off", default: true, name: "BG reclaim",
-        desc: "DEFAULT ON (strength 4.0, hard snap). TILE-scale gravity fix: a background-content tile carrying an object-like MV (the matcher straddled the silhouette) is damped to the winning hypothesis — the gme model, or zero for screen-static overlay pixels (v3.2 HUD exemption). Sibling of BG-snap (which is contour-band only). Needs gme." },
-      { flag: "--bg-reclaim-strength", type: "number", default: "4.0", min: 0, max: 4, step: 0.5, name: "BG reclaim: strength",
-        desc: "Damp weight scale [0,4] (1 = soft LSFG-style decay, 4 = hard snap, the shipping default). 0 = off." },
       { flag: "--bg-snap-strength", type: "number", default: "1.0", min: 0, max: 4, step: 0.5, name: "BG-snap: strength",
         desc: "Snap weight scale [0,4] (1=soft, 2-4=progressively harder snap)." },
       { flag: "--bg-snap-norm", type: "number", default: "0.04", min: 0.001, max: 1, step: 0.01, name: "BG-snap: norm",
@@ -429,8 +401,6 @@ const GROUPS = [
         desc: "DEFAULT ON. Dissent masks require CHANGED content (anti-halo). Off = raw masks." },
       { flag: "--no-expire", type: "switch-off", default: true, name: "Expire (stigmergy)",
         desc: "DEFAULT ON. Expiry of cross-pair EMAs on contradictions. Off = decays through." },
-      { flag: "--no-ambig", type: "switch-off", default: true, name: "Ambiguity (2nd cand)",
-        desc: "DEFAULT ON (child of gme). Second-best candidate arbitration on SAD ties (anti periodic-texture)." },
     ],
   },
   {
@@ -942,6 +912,30 @@ function updatePreview() {
 }
 
 document.getElementById("raw-flags").addEventListener("input", updatePreview);
+
+// ── R0: the LAYERS section is rendered from the BINARY's own model (`phyriad_fg.exe --layer-model-json`,
+//    src/layers/layer_table.def). No layer literal lives here: if the binary has a flag the UI shows it,
+//    with the binary's default/range/help; if it does not, the UI cannot show it (the drift is structurally
+//    impossible — CANDIDATE_C §5.2). The 15 hand-written layer entries were deleted in the same change.
+(async () => {
+  try {
+    const raw = await invoke("layer_model", { exePath: exeInput.value || DEFAULT_EXE });
+    const line = raw.split("\n").find((l) => l.trim().startsWith("{"));   // the FG prints [ra] lines before the JSON
+    const model = JSON.parse(line);
+    const byGroup = new Map();
+    for (const c of model.controls) {
+      const k = c.group || "Layers";
+      if (!byGroup.has(k)) byGroup.set(k, []);
+      byGroup.get(k).push(c);
+    }
+    for (const [g, controls] of byGroup) {
+      renderGroup({ title: `Layers · ${g}`, note: `From the binary's registry (contract ${model.contract}).`, controls });
+    }
+    updatePreview();
+  } catch (e) {
+    renderGroup({ title: "Layers (registry)", note: `Could not load the layer model from the binary: ${e}`, controls: [] });
+  }
+})();
 exeInput.addEventListener("input", updatePreview);
 updatePreview();
 

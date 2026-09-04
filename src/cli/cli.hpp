@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <string>
+#include "layers/layer_config.hpp"   // R0: the layer registry (LayerConfig + the parity shadow)
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 enum CaptureApi { CA_DD, CA_WGC };
@@ -95,7 +96,7 @@ struct Config {
                                   // Default off → byte-identical.
     FgGpu    fg_gpu=FG_AUTO;      // FG routing (auto|primary|assist)
     ConvertGpu convert_gpu=CG_IGPU; // iGPU fused convert+pack when available
-    bool  igpu_field=true;          // --igpu-field: iGPU image-derived contour field on G.q2 (2nd dispatch after
+    bool  igpu_field=false;          // --igpu-field: iGPU image-derived contour field on G.q2 (2nd dispatch after
                                     // convert). DEFAULT ON; --no-igpu-field disables. Needs the iGPU convert path
                                     // (auto-disabled if absent); a cascade dependency for bg_snap/band_xfade.
     bool  igpu_field_verify=false;  // --igpu-field-verify: CPU Sobel oracle vs the GPU field (the byte gate). Implies
@@ -972,6 +973,23 @@ struct Config {
                                     // calibration vs the OFP confidence gate (residual_ceil in [0,192]).
     float nvofa_sadz_scale=4.0f;    // --nvofa-sadz-scale: input-block SUM|A-B| → WW_flow 8x8 SUM magnitude. The pixel-
                                     // count ratio (8*8)/(blk*blk) is ~4 at flow_div==1; PLACEHOLDER, eye-calibration.
+    // ── R0: the LAYER REGISTRY (src/layers/layer_table.def). `layers` is the registry's own parsed store
+    //    (a SHADOW of the hand-parsed fields above until R3); `layers_old` is the pre-cascade snapshot of
+    //    those fields taken by parse_args() so layer_config_parity() can compare the two stores.
+    pfg::layers::LayerConfig    layers;
+    pfg::layers::LayerOldShadow layers_old;
+    bool  validation=false;         // --validation: enable VK_LAYER_KHRONOS_validation + a debug-utils
+                                    // messenger that PRINTS every message (R2: the "sync-validation clean"
+                                    // gate needs a repeatable instrument). Default off -> no layer, no
+                                    // messenger, byte-identical.
+    bool  no_sync2=false;           // --no-sync2: force the Vulkan-1.2 instance + the hand-written barriers
+                                    // even where 1.3 is available (the R2 A/B reference arm).
+    char  arrival_log[260]={};      // --arrival-log FILE: R1 (X14) — per-tick CLOCK INPUTS+OUTPUTS in exact
+                                    // hex-float, the replay oracle of the PhaseClock extraction (XR14).
+                                    // Default off (empty) -> no FILE opened, no write, byte-identical.
+    bool  layer_dump=false;         // --layer-dump: print the resolved layer chain + contract hash, exit
+    bool  layer_model_json=false;   // --layer-model-json: emit the UI model (JSON), exit
+    bool  dump_config_flag=false;   // --dump-config: print the parsed record (the round-trip instrument), exit
     // ── DERIVED / RESOLVED STATE (computed by resolve_config, NOT parsed) ──────
     // The SINGLE source of truth for cross-layer resource predicates. Layers READ these instead of
     // re-deriving gates by hand: the iGPU contour field provider needs ONE predicate, not a hand-rolled

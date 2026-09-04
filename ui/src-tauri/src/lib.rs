@@ -505,6 +505,45 @@ fn list_monitors(exe_path: Option<String>) -> Result<String, String> {
     }
 }
 
+/// R0 (the layer registry): run the FG with `--layer-model-json` and return its stdout. The UI
+/// renders its LAYERS section from this model — the binary is the single source of the layer
+/// flags (name, default, range, help); no layer literal lives in main.js. Same guard as
+/// `list_monitors` (piped stdout, 6 s timeout, kill on hang).
+#[tauri::command]
+fn layer_model(exe_path: Option<String>) -> Result<String, String> {
+    let exe = resolve_exe(exe_path);
+    let mut cmd = Command::new(&exe);
+    cmd.arg("--layer-model-json")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    no_window(&mut cmd);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to run '{}': {}", exe, e))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "No stdout from process".to_string())?;
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        let mut s = String::new();
+        let mut reader = BufReader::new(stdout);
+        let _ = reader.read_to_string(&mut s);
+        let _ = tx.send(s);
+    });
+    match rx.recv_timeout(Duration::from_secs(6)) {
+        Ok(s) => {
+            let _ = child.wait();
+            Ok(s)
+        }
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            Err("--layer-model-json timed out (6 s).".into())
+        }
+    }
+}
+
 /// Enumerate visible top-level windows that carry a non-empty title, resolving each to its
 /// owning executable's file name. Used by the UI's target-window selector to fill `--window`.
 ///
@@ -631,6 +670,7 @@ pub fn run() {
             stop,
             is_running,
             list_monitors,
+            layer_model,
             list_windows,
             observer_note,
             observer_path

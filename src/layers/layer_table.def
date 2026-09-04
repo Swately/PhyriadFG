@@ -1,0 +1,143 @@
+// PhyriadFG — src/layers/layer_table.def : THE REGISTRY. One PFG_LAYER block per layer.
+// Nothing else declares a layer. Rows are the shipping default set of shaders/wap_warp.comp
+// (Candidate C §4.1–4.8, source ranges cited per row), in (stage, rank) order.
+//
+// Macros (defined by the includer — layer_table.hpp expands them three ways):
+//   PFG_LAYER(ID, name, stage, rank, kind, default_on, overrides, requires, req_any, excludes,
+//             reads, writes, shadows, arm, group, on_flag, off_flag, dominates_ok, help)
+//   PFG_PARAM(ID, pname, type, dflt, lo, hi, flag, flag_alias, pflags, ui, help)
+//   PFG_LAYER_END(ID)
+//   PFG_PSEUDO(ID, name, stage, rank, text)      — a Kind::X row (ordering fact, no body)
+//
+// Stage R0: the rows exist for the registry (parser shadow, help, UI model, dump, hash, GLSL
+// generation); wap_warp.comp is unchanged. Bodies (shaders/layers/<name>.glsl) arrive at R3.
+// R0 also does NOT resolve `requires`/`excludes` — resolve_config()'s cascades still own that
+// (parity is measured PRE-cascade, see layer_config_parity()).
+
+// ── MVCOND ─────────────────────────────────────────────────────────────────────────────────────
+// rank 0 — the primary MV source (wap_warp.comp:326). Not user-toggleable: it IS the mv-source
+// parameter of the core contract (A0 M2c).
+PFG_LAYER(FETCH_MV, "fetch_mv", MVCOND, 0, F, true, false, 0u, false, 0u,
+          CH_NONE, CH_MV, SH_NONE, ALWAYS, "MV",
+          nullptr, nullptr, nullptr,
+          "The primary MV source: LINEAR (bilinear) fetch of the W/8 forward field.")
+PFG_LAYER_END(FETCH_MV)
+
+// rank 5 — --mv-edge-snap {1|2} (wap_warp.comp:319–327 precedence test). DEFAULT OFF. Its
+// presence disables mv_guided's call (today's `else`): declared as excludes on rank 10.
+PFG_LAYER(MV_EDGE_SNAP, "mv_edge_snap", MVCOND, 5, F, false, false, 0u, false, 0u,
+          CH_MV | CH_PREV | CH_CUR | CH_DISSIDENCE, CH_MV, SH_NONE, ALWAYS, "MV",
+          nullptr, nullptr, nullptr,
+          "Cross-bilateral (edge-aware sub-block) primary MV fetch. 1 = G1 (dissidence-class guidance), "
+          "2 = G2 (color-class guidance). Supersedes mv_guided's single-corner pick when armed. WAP-path only.")
+  PFG_PARAM(MV_EDGE_SNAP, variant, I32, 0.f, 0.f, 2.f, "--mv-edge-snap", nullptr, PF_IMPLIES_ON | PF_ZERO_OFF, NUMBER,
+            "Variant: 0 = off, 1 = G1, 2 = G2.")
+  PFG_PARAM(MV_EDGE_SNAP, sim, F32, 0.f, 0.02f, 0.5f, "--mes-sim", nullptr, PF_NONE, NUMBER,
+            "Guidance band override for --mv-edge-snap (0 = use --mv-sim), clamped [0.02,0.5].")
+PFG_LAYER_END(MV_EDGE_SNAP)
+
+// rank 10 — --mv-guided (guided_mv(), wap_warp.comp:179–202). DEFAULT ON.
+PFG_LAYER(MV_GUIDED, "mv_guided", MVCOND, 10, F, true, false, 0u, false, PFG_BIT(MV_EDGE_SNAP),
+          CH_MV | CH_PREV | CH_CUR, CH_MV, SH_NONE, ALWAYS, "MV",
+          nullptr, "--no-mv-guided", nullptr,
+          "Color-guided MV assignment (the contour-membership principle): pick the MV-grid corner whose "
+          "color class matches the pixel. Off = blind bilinear fetch.")
+  PFG_PARAM(MV_GUIDED, sim, F32, 0.10f, 0.02f, 0.5f, "--mv-sim", nullptr, PF_NONE, NUMBER,
+            "Color-membership band, max-channel [0,1] units, clamped [0.02,0.5].")
+PFG_LAYER_END(MV_GUIDED)
+
+// rank 20 — --inertia (the persistence tap 304–306 + the gate 332–334). DEFAULT ON at 0.50.
+// requires ANY of {mv_guided, mv_edge_snap} (Candidate C §4.2 — the first evidence for req_any).
+PFG_LAYER(INERTIA, "inertia", MVCOND, 20, F, true, false, PFG_BIT(MV_GUIDED) | PFG_BIT(MV_EDGE_SNAP), true, 0u,
+          CH_MV | CH_PERSIST, CH_MV, SH_NONE, ALWAYS, "MV",
+          nullptr, "--no-inertia", nullptr,
+          "The inertia prior (motion-state hysteresis): a block whose persistence p >= thresh keeps its "
+          "prior MV against the guided pick. WAP-only.")
+  PFG_PARAM(INERTIA, thresh, F32, 0.50f, 0.1f, 1.0f, "--inertia-thresh", nullptr, PF_NONE, NUMBER,
+            "Persistence cutoff, R8-norm [0.1,1.0]. 0.5 ~ 8 static pairs at 60 fps source.")
+PFG_LAYER_END(INERTIA)
+
+// rank 25 — the classification's raw forward leg (wap_warp.comp:344) — the snapshot phase_anchor
+// rebases on (which is why bg_reclaim's damp is dead under the default: A3_CHOSEN_DESIGN §3).
+PFG_PSEUDO(SNAP_MV_RAW_FWD, ":snapshot mv_raw_fwd", MVCOND, 25, "ctx.mv_raw_fwd = mv;   /* wap_warp.comp:344 */")
+
+// rank 30 — --bg-reclaim [F] (358–396). DEFAULT ON at 4.0. requires gme; arm = GME.
+PFG_LAYER(BG_RECLAIM, "bg_reclaim", MVCOND, 30, F, true, false, 0u, false, 0u,
+          CH_MV | CH_PREV | CH_CUR | CH_GME, CH_MV, SH_NONE, GME, "MV",
+          nullptr, "--no-bg-reclaim",
+          "A3_CHOSEN_DESIGN s3: under the shipping default phase_anchor (rank 40) rebases on the rank-25 "
+          "snapshot and discards this damp whenever the bwd field is valid; reproduced bug-for-bug (XR7).",
+          "Tile-scale gravity fix: damp a gme-nonconform background-fringe MV toward the global model "
+          "(or toward ZERO for screen-static overlay pixels).")
+  PFG_PARAM(BG_RECLAIM, strength, F32, 4.0f, 0.0f, 4.0f, "--bg-reclaim", "--bg-reclaim-strength",
+            PF_IMPLIES_ON | PF_OPTIONAL_VALUE | PF_ZERO_OFF, NUMBER,
+            "Snap weight scale [0,4]: ~1 = soft LSFG-style decay, 4 = hard snap (the shipping default). 0 = off.")
+PFG_LAYER_END(BG_RECLAIM)
+
+// rank 40 — --phase-anchor (397–411). DEFAULT ON. Needs the bwd field (bidir) → arm = BWD.
+PFG_LAYER(PHASE_ANCHOR, "phase_anchor", MVCOND, 40, F, true, false, 0u, false, 0u,
+          CH_MV_RAW_FWD | CH_MV_BWD, CH_MV, SH_NONE, BWD, "MV",
+          nullptr, "--no-phase-anchor", nullptr,
+          "Phase-anchored primary MV: at low t the forward field, at high t the cur-anchored backward "
+          "field, blended by smoothstep(0.35,0.65,t). Needs bidir (the bwd field valid this generation).")
+PFG_LAYER_END(PHASE_ANCHOR)
+
+// rank 45 — the sad tap (412–414) + the stasis predicate evaluation (publishes CH_STASIS).
+PFG_PSEUDO(SAMPLE_SAD_STASIS, ":sample sad ; :eval stasis", MVCOND, 45, "ctx.sad = texture(u_sad_field, ctx.uv).xy; ctx.stasis_block = (L_STASIS && (ctx.sad.y <= lp.stasis_thresh));   /* wap_warp.comp:412-414, :1191 predicate */")
+
+// rank 50 — --ambig (426–444). DEFAULT ON. requires gme; arm = GME.
+PFG_LAYER(AMBIG, "ambig", MVCOND, 50, F, true, false, 0u, false, 0u,
+          CH_MV | CH_CANDIDATES | CH_DISSIDENCE | CH_GME, CH_MV, SH_NONE, GME, "MV",
+          nullptr, "--no-ambig", nullptr,
+          "The AMBIGUITY channel (the periodic-texture killer): when the matcher's runner-up is near-tied, "
+          "arbitrate by the gme model / dissidence instead of the arbitrary pick.")
+  PFG_PARAM(AMBIG, tie_ratio, F32, 1.15f, 1.0f, 2.0f, nullptr, nullptr, PF_NONE, HIDDEN,
+            "Near-tie ratio (internal constant, wap_warp.comp:426–444).")
+  PFG_PARAM(AMBIG, min_sep_px, F32, 2.0f, 0.0f, 16.0f, nullptr, nullptr, PF_NONE, HIDDEN,
+            "Minimum candidate separation in px (internal constant).")
+PFG_LAYER_END(AMBIG)
+
+// ── SAMPLE ─────────────────────────────────────────────────────────────────────────────────────
+// rank 110 — --vblend (507–514). DEFAULT ON. Its return flows ONLY into fg_core()'s mv argument.
+PFG_LAYER(VBLEND, "vblend", SAMPLE, 110, F, true, false, 0u, false, 0u,
+          CH_MV | CH_MV_TARGET, CH_MV_SAMPLE, SH_NONE, ALWAYS, "Warp",
+          "--vblend", "--no-vblend", nullptr,
+          "Velocity-continuity warp: near the pair's END (high t) tilt the effective sample-offset MV "
+          "toward the next pair's velocity (anti pulse). Everything downstream keeps the RAW mv.")
+  PFG_PARAM(VBLEND, t0, F32, 0.6f, 0.0f, 0.95f, "--vblend-t0", nullptr, PF_NONE, NUMBER,
+            "Phase where the tilt ramp begins (smoothstep(t0,1,t)), clamped [0,0.95].")
+  PFG_PARAM(VBLEND, strength, F32, 0.5f, 0.0f, 1.0f, "--vblend-strength", nullptr, PF_NONE, NUMBER,
+            "Max tilt weight at t=1 (mix fraction toward the next pair's MV), clamped [0,1].")
+  PFG_PARAM(VBLEND, exact, BOOL, 0.f, 0.f, 1.f, "--vblend-exact", nullptr, PF_IMPLIES_ON, SWITCH,
+            "EXACT velocity-continuity: the REAL next-pair MV via +1 pair of present lead (adds ~1 source "
+            "frame of latency). Default = PREDICT (2*mv - mv_prev).")
+PFG_LAYER_END(VBLEND)
+
+// ── COMPOSE ────────────────────────────────────────────────────────────────────────────────────
+// rank 280 — --stasis (the pre-store bypass, wap_warp.comp:1191). DEFAULT ON. OVERRIDE.
+PFG_LAYER(STASIS, "stasis", COMPOSE, 280, F, true, true, 0u, false, 0u,
+          CH_STASIS | CH_CUR, CH_NONE, SH_NONE, ALWAYS, "Composition",
+          nullptr, "--no-stasis",
+          "declared OVERRIDE: a block proven static (sad_zero <= thresh) presents the real pixel directly.",
+          "The stasis layer (the HUD fix): a pixel whose block sad_zero <= thresh bypasses the warp and "
+          "shows the real. Works on ANY stack; zero extra cost.")
+  PFG_PARAM(STASIS, thresh, F32, 0.50f, 0.05f, 8.0f, "--stasis-thresh", nullptr, PF_NONE, NUMBER,
+            "sad_zero cutoff: per-8x8-block SUM of |A-B| over RGB in [0,1] color units, range [0,192], "
+            "clamped [0.05,8.0].")
+PFG_LAYER_END(STASIS)
+
+// rank 290 — --single-track (1321–1329). DEFAULT ON (v3.2). OVERRIDE (c_in deliberately discarded).
+// shadows = the four upstream reaches into the core (Candidate C §4.7 — the declared, printed wart).
+PFG_LAYER(SINGLE_TRACK, "single_track", COMPOSE, 290, F, true, true, 0u, false, 0u,
+          CH_B_SAMP | CH_CUR | CH_PREV | CH_D_PIXEL | CH_STASIS, CH_NONE,
+          SH_WA_EFF_ZERO | SH_BLEND_BASE | SH_FORCE_WARP | SH_COMMIT_INERT, ALWAYS, "Composition",
+          "--single-track", "--no-single-track",
+          "declared OVERRIDE: the composite base becomes the B-track (cur warped back to phase) plus the "
+          "per-pixel screen-static evidence mix; the A/B blend world is discarded by design (operator-eye PASS 2026-07-03).",
+          "Single-track synthesis (v3.2): present the pure B-track + the screen-static evidence mix "
+          "(d_pixel vs d_zero; the block-proven stasis saturates it). Off = the A/B blend world.")
+  PFG_PARAM(SINGLE_TRACK, no_stasis, BOOL, 0.f, 0.f, 1.f, "--st-no-stasis", nullptr, PF_NONE, SWITCH,
+            "Variant v3.0: pure B_samp at the pre-store site (no stasis/screen-static term).")
+PFG_LAYER_END(SINGLE_TRACK)
+
+// Made with my soul - Swately <3

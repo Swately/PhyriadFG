@@ -2,6 +2,7 @@
 // Bodies of the present-side upscale factory declared in present/present.hpp; they have
 // external linkage here (main calls them).
 #include "present/present.hpp"
+#include "clock/phase_clock.hpp"   // STAGE 4: the content clock (R1/X14)
 #include "core/compat_reason.hpp"    // ra::compat::emit / ReasonCode (named-reason present-init bail)
 #include "flow/flow.hpp"             // MedianPipe (the P-thread medPipe member access)
 #include <phyriad/hal/CpuWait.hpp>   // phyriad::hal::cpu_wait_for_ns (paced spin-finish)
@@ -1534,14 +1535,6 @@ void run_present(FgContext& ctx){
                 // delay so the set whose window [tcap−span·T, tcap] contains t_display is
                 // ALWAYS fully published when its ticks come due — the clock no longer chases
                 // the freshest set, drains it, freezes, then jumps (the 45/45/10 defect).
-                double delay_ema_ms=0.0; bool delay_init=false; // EMA of (detect − tcap) per new set
-                double freshage_ema_ms=0.0;                     // EMA of (now − tcap_freshest) at set-detect —
-                                                                // the SAME quantity as delay_ema but kept on its own EMA so
-                                                                // the phasefix D can use it WITHOUT the *1.2 over-margin
-                                                                // (feedback-free: measured at detect, independent of D).
-                uint64_t cur_pair_seq=0;                        // f_seq last sampled (detect new sets)
-                uint64_t last_pres_cseq=0; int last_pres_k=-1;  // monotonicity: last shown (pair,k)
-                bool have_last_pres=false;
                 // --phase-norm: per-pair displayed-tick index for the normalized-N ladder. pe_pair =
                 // the pair we are counting ticks for; pe_j = the displayed-tick index within it (0,1,2,…), placed
                 // at the even grid (pe_j+0.5)/N. Reset on pair-advance. P-local, single-threaded (present thread).
@@ -1550,49 +1543,50 @@ void run_present(FgContext& ctx){
                 // (prev-pair / this-pair speed) stays STABLE across ALL ticks of a pair (a single var would self-
                 // overwrite on tick 0 and collapse the ease to one tick). P-thread-local doubles → lock-free.
                 uint64_t cph_pair=0; double cph_prev_vmag=0.0, cph_cur_vmag=0.0; bool cph_have=false;
-                double last_disp_t=0.0; bool disp_init=false;   // monotone t_display (never rewind time)
                 // (own-window) yield-transition telemetry state: submit() returns SUCCESS while
                 // yielded (present-nothing passthrough, no-lock-out), así que sin estas líneas una
                 // corrida own-window con el juego nunca-en-foco se ve sana mostrando NADA.
                 bool own_yld_prev=false, own_yld_init=false;
-                // ── --sync-clock state (the free-running content clock / NCO + 2nd-order PLL) ──
-                // ARMED-ONLY. All quantities are in SOURCE-FRAME units (content_clock) or MILLISECONDS
-                // (T_robust) — NEVER tick counts, NEVER a panel-rate constant. The panel rate enters ONLY
-                // through the already-parametric tick_period_ms (= 1000/refresh_hz); raise refresh_hz and the
-                // SAME code samples the SAME content_clock more finely (scale-invariant 240→500Hz by design).
-                //
-                // The loop is a textbook 2nd-order phase-locked loop on the source's content timeline:
-                // • content_clock — the NCO accumulator (a DOUBLE: it carries the fractional remainder of
-                // the non-integer ticks/source-frame ratio naturally, which is exactly
-                // what the per-pair path could not do — it re-snapped every boundary).
-                // • T_robust_ms — the loop's FREQUENCY estimate (the VCO period) a jitter-robust EMA of
-                // OUTLIER-REJECTED inter-arrival deltas (the proportional-FREQUENCY term).
-                // • the per-arrival phase slew below — the proportional-PHASE term (a gentle slew toward the
-                // expected content position; NEVER a hard reset/snap).
-                // A 2nd-order PLL is provably sufficient for steady tracking of a constant-rate source with
-                // bounded jitter (no Kalman filter needed — the binding constraint).
-                double content_clock=0.0;   // NCO accumulator, SOURCE-FRAME units; advances +Δ each tick
-                double T_robust_ms=0.0;     // PLL frequency estimate (ms/source-frame); seeded from T_src
-                bool   sc_init=false;       // content_clock seeded? (first armed pair we have a cur_c for)
-                uint64_t sc_last_c=0;       // cur_c at the last phase-lock (detect a NEW pair arrival)
+                // ── the CONTENT CLOCK (NCO + 2nd-order PLL), the D calibration, the set selection, the phase
+                // and the content-order guard are STAGE 4: src/clock/phase_clock.{hpp,cpp} (R1/X14). The state
+                // and the loop gains (--sc-freq-alpha / --sc-phase-gain / --sc-reseat) live in PhaseClock; the
+                // rationale for each is in that header. What stays here is the CALLER's own gate below:
+                // tr_last_cseq applies the captured arrival delta ONCE per ingest (stage-1/2 data, not the clock).
                 uint64_t tr_last_cseq=0;    // (PLL units) c_seq en la última aplicación del delta a la EMA — gate una-vez-por-ingesta
                 // Loop gains — named with rationale, NOT magic numbers:
                 // kScFreqAlpha: EMA weight for the FREQUENCY (T_robust) per outlier-rejected arrival delta.
                 // 0.05 = a ~20-sample memory: slow enough that a single jittery arrival barely moves the
                 // estimate (the whole point — reject the source's per-frame jitter), fast enough to follow a
                 // real rate change (e.g. the source app dropping from 30→21 fps) within ~1s at 21fps.
-                const double kScFreqAlpha=cfg.sc_freq_alpha;   // --sc-freq-alpha overrides; default 0.05
                 // kScPhaseGain: proportional PHASE-correction fraction applied to content_clock per NEW-pair
                 // arrival. 0.10 = correct 10% of the phase error each arrival → the clock locks to the
                 // source over ~7-10 arrivals (a gentle slew that the eye cannot resolve), NEVER the per-pair
                 // JUMP the snapping path produced. This is the classic 2nd-order-loop damping knob: small
                 // enough to filter arrival jitter, large enough to stay locked under modest rate drift.
-                const double kScPhaseGain=cfg.sc_phase_gain;   // --sc-phase-gain overrides; default 0.10
                 // kScReseatErr: if the phase error exceeds this many SOURCE-FRAMES the loop has lost lock
                 // (a scene cut, a long stall, or startup) — a slow slew would take seconds to recover, so we
                 // RE-SEAT the clock to the expected position outright. This is the loop's acquisition path,
                 // distinct from the steady-state tracking slew; it is rare and bounded, not the hot path.
-                const double kScReseatErr=cfg.sc_reseat_err;   // --sc-reseat overrides; default 4.0
+                // ── STAGE 4 (CLOCK) — the unit this loop now calls (docs/planning/STAGE_CONTRACT.md).
+                // Constructed once from the resolved config; the phase LAYERS (--phase-norm / s2 / --cphase)
+                // still reshape its t_use below, behind their own flags.
+                pfg::clock::PhaseClock clk({ tick_period_ms, NS, cap_slots, cfg.fg_factor,
+                    cfg.sync_clock, cfg.sc_select, cfg.phasefix, cfg.low_d, cfg.vblend_exact, cfg.predict, cfg.asw,
+                    cfg.lowd_span_frac, cfg.lowd_span_cap, (double)cfg.predict_e, (double)cfg.asw_max,
+                    cfg.sc_freq_alpha, cfg.sc_phase_gain, cfg.sc_reseat_err });
+                // --arrival-log (R1/X14): the clock replay oracle. Opened once, written per WAP tick,
+                // closed at loop exit. Empty path -> alog==nullptr -> every write is skipped (byte-identical off).
+                std::FILE* alog=nullptr; uint64_t alog_n=0;
+                if(cfg.arrival_log[0]){
+                    alog=std::fopen(cfg.arrival_log,"wb");
+                    if(alog) std::fprintf(alog,"# phyriadfg arrival-log v1 (hex-float; the PhaseClock replay oracle)\n"
+                                               "# cfg tick_period_ms=%a refresh_hz=%d NS=%d cap_slots=%d fg_factor=%d sync_clock=%d sc_select=%d phasefix=%d low_d=%d vblend_exact=%d predict=%d predict_e=%a asw=%d asw_max=%a lowd_span_frac=%a lowd_span_cap=%a freq_alpha=%a phase_gain=%a reseat_err=%a\n"
+                                               "# columns: tick now_b now_d cur_c fs sc_delta_ms T_src async_ready | ring[NS]: tcap cseq span n slot | D t_display content_clock T_robust f_gen gen_back found pair_c span N_set rs tcap_r phase_global extrap t_use cand_k backwards backstep committed commit_k\n",
+                        tick_period_ms,cfg.refresh_hz,NS,cap_slots,cfg.fg_factor,(int)cfg.sync_clock,(int)cfg.sc_select,(int)cfg.phasefix,(int)cfg.low_d,
+                        (int)cfg.vblend_exact,(int)cfg.predict,(double)cfg.predict_e,(int)cfg.asw,(double)cfg.asw_max,(double)cfg.lowd_span_frac,(double)cfg.lowd_span_cap,
+                        clk.cfg().sc_freq_alpha,clk.cfg().sc_phase_gain,clk.cfg().sc_reseat_err);
+                    else std::printf("[ra] --arrival-log: cannot open %s -- continuing without it\n",cfg.arrival_log);
+                }
                 double tick_t0=now_ms(); uint64_t tick_k=0;     // timer schedule
                 // --pace-vblank: the vblank phase-lock state, thread-P-local.
                 // pv_qpc_freq = QPC ticks/sec (queried ONCE, cold). pv_last_query_ms = the steady-clock-ms instant of the
@@ -1891,8 +1885,8 @@ void run_present(FgContext& ctx){
                                 if(wap_warp_ema > 0.0)
                                     warp_base = (warp_base > 0.0) ? warp_base*0.98 + wap_warp_ema*0.02 : wap_warp_ema;
                                 const double Tsrc_now  = src_interval_ema_ms;   // live source period (ms)
-                                const bool fresh_dist  = delay_init && Tsrc_now > 0.0
-                                                       && freshage_ema_ms > kFresh * Tsrc_now;
+                                const bool fresh_dist  = clk.delay_init_ok() && Tsrc_now > 0.0
+                                                       && clk.freshage_ema() > kFresh * Tsrc_now;
                                 const bool warp_dist   = warp_base > 0.2 && wap_warp_ema > kWarp * warp_base;
                                 const bool dist_now    = fresh_dist || warp_dist;
                                 // latch with dwell: raise instantly, hold for kDistDwell util updates before release
@@ -1919,8 +1913,8 @@ void run_present(FgContext& ctx){
                                             (int)gpuA_pct, util_floor);
                                     else
                                         std::printf("[ra] gov-floor RELEASE tier:%d (freshage %.1fms/%.1fx Tsrc %.1fms; warp %.2fms/base %.2fms; util %d%%)\n",
-                                            gov_floor_p, freshage_ema_ms,
-                                            (Tsrc_now>0.0?freshage_ema_ms/Tsrc_now:0.0), Tsrc_now,
+                                            gov_floor_p, clk.freshage_ema(),
+                                            (Tsrc_now>0.0?clk.freshage_ema()/Tsrc_now:0.0), Tsrc_now,
                                             wap_warp_ema, warp_base, (int)gpuA_pct);
                                 }
                             }
@@ -1961,104 +1955,24 @@ void run_present(FgContext& ctx){
                     }
                     src_interval_us.store((uint64_t)(src_interval_ema_ms*1000.0));
                     const double T_src=src_interval_ema_ms;
-                    // ── sync-clock FREQUENCY loop + NCO advance (armed only) ──
-                    // The proportional-FREQUENCY term of the PLL: T_robust tracks the source period via a
-                    // SLOW EMA over the outlier-rejected deltas (kScFreqAlpha), so per-frame arrival jitter
-                    // barely moves it. Then the NCO accumulator advances by Δ = tick_period_ms / T_robust this
-                    // tick — the fractional remainder of the non-integer ticks/source-frame ratio is carried
-                    // by the double, NOT re-snapped (the whole fix). Seeded from T_src (the existing EMA) so
-                    // the loop starts near-locked. The per-arrival PHASE slew lives in step 3 (needs cur_c/D).
-                    if(cfg.sync_clock){
-                        if(T_robust_ms<=0.0) T_robust_ms = (T_src>0.0?T_src:tick_period_ms);   // seed
-                        if(sc_delta_ms>0.0)  T_robust_ms = T_robust_ms*(1.0-kScFreqAlpha) + sc_delta_ms*kScFreqAlpha;
-                        if(T_robust_ms<1e-3) T_robust_ms=1e-3;                                  // guard /0
-                        if(sc_init)          content_clock += tick_period_ms / T_robust_ms;     // NCO increment Δ
-                    }
-
-                    // ── 3. select the published set whose window contains t_display ─
-                    // (cur_c ya leído arriba en el gate del delta — la misma snapshot del tick.)
-                    const uint64_t fs=f_seq.load();
-                    const bool have_interp=(fs>=2);
-                    // Newest generation (the freshest set F published).
-                    const int f_gen_new=have_interp?(int)((fs-1)%(uint64_t)NS):0;
-                    // calibrate D = EMA(detect − tcap) over each NEW set, taken
-                    // the first tick we observe its f_seq. detect−tcap = publish delay + P's
-                    // detection lag; that is exactly the lead a tick must hold so the target
-                    // set is fully published when its ticks come due — the tick is a delayed
-                    // read of the capture timeline.
-                    if(have_interp&&fs!=cur_pair_seq){
-                        const double tcap_new=f_pair_tcap_a[f_gen_new];
-                        const double det=now_ms()-tcap_new;            // this set's observed pipeline delay
-                        if(det>0.0&&det<2000.0){
-                            delay_ema_ms=delay_init?delay_ema_ms*0.9+det*0.1:det;
-                            freshage_ema_ms=delay_init?freshage_ema_ms*0.9+det*0.1:det;   // same sample, own EMA
-                            delay_init=true;
-                        }
-                        cur_pair_seq=fs;
-                    }
-                    // D: the calibrated lag the tick reads behind "now". The publish-delay EMA alone
-                    // lands t_display right at the freshest set's tcap (phase ≈ 1, which re-presents),
-                    // so D adds span so t_display lands inside an already-published set and each tick
-                    // walks a distinct pre-generated phase. Cost: lat rises by ~span·T_src. Clamped to a
-                    // sane band so a transient publish spike can't run it away.
-                    const double span_fresh_ms=have_interp
-                        ?(double)std::max<uint64_t>(1,f_pair_span_a[f_gen_new])*T_src : 0.0;
-                    // phasefix (default ON): D = freshage_ema + ONE full span, so t_display = now − D lands
-                    // at the freshest set's window BOTTOM (tcap_new − span) the tick it publishes (phase 0),
-                    // then sweeps to 1 as the ticks walk forward, covering [0,1). freshage_ema is the
-                    // detect-time (now − tcap) sample, feedback-free (measured before any D use).
-                    // --low-d: a THIRD arm that TRIMS the additive span term (half-span by default + a
-                    // lap-escape growth ceiling lowd_span_cap·T_src), with the lower clamp raised to
-                    // max(4.0, freshage_ema_ms) so D >= freshage_ema ALWAYS (the freeze floor: a smaller D
-                    // selects a FRESHER published pair → the phasefix edge cap below pins it → freeze risk
-                    // DROPS, never rises). The other two arms are byte-identical when --low-d is off.
-                    const double D = !delay_init ? 0.0
-                        : (cfg.phasefix
-                             ? (cfg.low_d
-                                  ? std::clamp(freshage_ema_ms + std::min(cfg.lowd_span_frac*span_fresh_ms, cfg.lowd_span_cap*T_src),
-                                               std::max(4.0, freshage_ema_ms), 250.0)
-                                  : std::clamp(freshage_ema_ms + span_fresh_ms, 4.0, 250.0))
-                             : std::clamp(delay_ema_ms*1.2 + 0.5*span_fresh_ms, 4.0, 250.0));
-                    // ── sync-clock PHASE loop (the proportional-PHASE term; armed only) ──
-                    // Runs ONCE per NEW real-pair arrival (cur_c advanced). The expected content position the
-                    // free-running clock SHOULD hold = the freshest source index cur_c, set back by the pipeline
-                    // lead D expressed in SOURCE-FRAMES (D/T_robust) — the same lead the per-pair path bakes into
-                    // t_display = now−D, but here it positions a clock instead of snapping one. err is the phase
-                    // discrepancy in source-frames; we SLEW content_clock by a small fraction (kScPhaseGain) of
-                    // it — a gentle lock over several arrivals, NEVER the hard per-pair jump. A large err means
-                    // lost lock (cut / stall / startup) → re-seat outright (the acquisition path, rare). The NCO
-                    // (step 2) keeps advancing between arrivals; this only nudges, so the clock stays MONOTONE in
-                    // steady state (a correction never exceeds the accumulated advance for bounded jitter).
-                    if(cfg.sync_clock){
-                        // reuse cur_c (the single c_seq snapshot read in step 3) — one consistent read per tick.
-                        const double lead_frames = (T_robust_ms>1e-3 ? D/T_robust_ms : 0.0);
-                        // --vblend-exact: track ~1 pair further back so the selector picks gen_back>=1
-                        // and the next-fresher published pair (the EXACT lookahead target) is in the F->P ring.
-                        // OFF → −0 → byte-identical (the predict path).
-                        // --predict: the MIRROR of vblend-exact — lead the content_clock FORWARD by predict_e
-                        // source-frames PAST its normal (interpolating) position so it overshoots the freshest
-                        // published pair's endpoint into EXTRAPOLATION (ph>1 → the --asw forward-projection path made
-                        // the norm). SOURCE-FRAME units (scale-invariant); the PLL slew/reseat below is UNTOUCHED in
-                        // its units — this only shifts the `expected` TARGET the loop chases (err stays steady since
-                        // the acquire seeds content_clock=expected). OFF → +0 → byte-identical (the vblend-exact path).
-                        // NOTE: NOT `lead_frames + predict_e` — that over-leads (the published pair already trails
-                        // cur_c by the pipeline lag, so cancelling lead_frames pushes the clock ~1.5 spans past the
-                        // pair endpoint = extrap saturates at asw_max = a constant MAX guess, not a bounded lead;
-                        // measured + rejected in PREDICT_MODE_PLAN.md S1). Just +predict_e = a bounded, phase-
-                        // continuous overshoot. HONESTY: this re-anchor does NOT reduce the `lat` metric (lat is
-                        // freshage-floored, not phase-driven — see PREDICT_MODE_PLAN.md VERDICT + R5); --predict is a
-                        // measured NO-GO as a latency feature, kept opt-in + default-OFF only.
-                        const double pred_lead = cfg.predict ? (double)cfg.predict_e : 0.0;
-                        const double expected = (double)cur_c - lead_frames - (cfg.vblend_exact ? 1.0 : 0.0) + pred_lead;
-                        if(!sc_init){
-                            content_clock = expected; sc_init=true; sc_last_c=cur_c;   // acquire
-                        } else if(cur_c!=sc_last_c){
-                            sc_last_c=cur_c;
-                            const double err = expected - content_clock;
-                            if(std::fabs(err) > kScReseatErr) content_clock = expected;     // re-seat (lost lock)
-                            else                              content_clock += kScPhaseGain*err;  // slow slew (locked)
-                        }
-                    }
+                    // ── STAGE 4 (CLOCK): the PLL/NCO advance + the D calibration + the per-arrival phase lock.
+                    // Moved VERBATIM to src/clock/phase_clock.cpp (R1/X14). Runs EVERY tick, before the decimation
+                    // gate — it is the panel-unit timebase (the PLL-units rule the gate's comment states).
+                    const double now_b=now_ms();   // the set-detect clock read (one per tick; recorded by --arrival-log)
+                    // (T5) ONE consistent view of the F->P publish ring per tick: the clock reads this snapshot and
+                    // --arrival-log records it, so a replay reproduces select() exactly. F publishes fields BEFORE the
+                    // seq_cst f_seq bump, so a snapshot taken right after reading fs is at least as consistent as the
+                    // per-access reads it replaces.
+                    const uint64_t _fs_now=f_seq.load();
+                    double _rt[NS]; uint64_t _rc[NS], _rsp[NS]; int _rn[NS], _rsl[NS];
+                    for(int _g=0;_g<NS;++_g){ _rt[_g]=f_pair_tcap_a[_g]; _rc[_g]=f_pair_cseq_a[_g]; _rsp[_g]=f_pair_span_a[_g];
+                                              _rn[_g]=f_pair_n_a[_g];   _rsl[_g]=f_pair_slot_a[_g]; }
+                    const pfg::clock::PairRing _clk_ring{ _rt, _rc, _rsp, _rn, _rsl };
+                    const pfg::clock::AdvanceOut _adv = clk.advance({ now_b, T_src, sc_delta_ms, cur_c, _fs_now, _clk_ring });
+                    const uint64_t fs = _adv.fs;
+                    const bool have_interp = _adv.have_interp;
+                    const int  f_gen_new   = _adv.f_gen_new;
+                    const double D         = _adv.D;
                     // ── DECIMATION GATE (--target-output-fps, the §9 fix): skip this vblank slot ──
                     // Everything ABOVE ticks at panel rate EVERY tick — the pacer grid, the own-window
                     // yield log, the window-death watchdog, the util/governor publish, the PLL frequency
@@ -2074,92 +1988,23 @@ void run_present(FgContext& ctx){
                     // so a grid re-seat (tick_k=0) re-aligns the pattern harmlessly. dec_every==1 →
                     // never taken → byte-identical.
                     if(dec_every>1 && (tick_k % (uint64_t)dec_every)!=0) continue;
-                    // t_display on the capture timeline (tcap shares now_ms()'s steady clock).
-                    // Monotone in wall-time: a tick never reads time backwards (the content
-                    // monotonicity guard in still protects against content rewind).
-                    double t_display=now_ms()-D;
-                    // phasefix: cap t_display to the freshest published edge so a transient that would
-                    // push it PAST tcap_new cannot trip the overshoot freeze on a LIVE source (a true stall —
-                    // no fresh set arriving — still drains the window and clamps phase to 1, the intended
-                    // freeze). Off-fix the cap is absent (byte-identical off pacing).
-                    if(cfg.phasefix && have_interp){
-                        const double edge=f_pair_tcap_a[f_gen_new];
-                        if(edge>0.0 && t_display>edge) t_display=edge;
-                    }
-                    if(disp_init&&t_display<last_disp_t) t_display=last_disp_t;
-                    last_disp_t=t_display; disp_init=true;
-
-                    // Pick the OLDEST live generation whose fresh edge (tcap_r) we have not
-                    // yet passed (tcap_r ≥ t_display) — i.e. the earliest set that still
-                    // CONTAINS t_display in its window [tcap−span·T, tcap]. Scanning oldest→
-                    // newest means phase = the TRUE position of t_display inside that window
-                    // and sweeps 0→1 as the tick walks the timeline (the chase-the-newest
-                    // selector pinned it near the fresh edge → phase≈0.9 → repeats). If
-                    // t_display is past every fresh edge (a real stall, source drained) we
-                    // hold the newest and clamps phase to 1 (freeze-at-newest).
-                    int f_gen=f_gen_new; int gen_back=0;
-                    // `found` lives at this per-tick scope so the --rfp-fresh override gate can REQUIRE it —
-                    // the override must NOT fire on the !found deficit-fallback path (which forges
-                    // gen_back=0/phase=1.0 below).
-                    bool found=false;
-                    int    N_set; uint64_t span,pair_c; int rs; double tcap_r;
-                    if(have_interp){
-                        if(cfg.sc_select && cfg.sync_clock && sc_init){
-                            // (fix) content_clock-DRIVEN selection. Selection and the warp
-                            // phase now read the SAME clock, so the chosen pair is exactly the one
-                            // content_clock is sweeping → phase covers a FULL 0→1 before the pair advances
-                            // (no clock-disagreement top truncation / start-stall). Pick the OLDEST published
-                            // generation whose B content-index (cand_c) has NOT been passed by content_clock
-                            // (cand_c ≥ content_clock) = the pair content_clock currently lies within/before.
-                            // SAME loop bounds/order/fallback as the wall-time path → gen_back stays the loop
-                            // offset g (p_presenting.store(fs-gen_back) below is preserved). Source-frame
-                            // units only (cand_c, content_clock) → scale-invariant.
-                            for(int g=NS-1;g>=0;--g){
-                                const int cand=(f_gen_new-g+NS*NS)%NS;
-                                const double tc=f_pair_tcap_a[cand];
-                                const uint64_t cand_c=f_pair_cseq_a[cand];
-                                if(tc<=0.0||cand_c==0) continue;          // generation slot never filled
-                                if((double)cand_c>=content_clock){ f_gen=cand; gen_back=g; found=true; break; }
-                            }
-                            // (anti-flap hysteresis) si el pick RETROCEDE respecto al último par PRESENTADO y el
-                            // reloj apenas cruzó el límite (dip < kSelHystSrc), mantener la generación más nueva:
-                            // el flapeo de borde (slew/jitter del PLL a ±0.1-0.4 src-frames) re-seleccionaba el par
-                            // viejo y a fuente rápida (margen D ~2 frames) producía los saltos ±2.0 medidos en el
-                            // CSV de cadencia. Un retroceso GENUINO grande (re-seat) supera el umbral y pasa —
-                            // el freeze-guard de abajo evita renderizarlo igualmente.
-                            constexpr double kSelHystSrc = 0.15;   // src-frames de histéresis anti-flap
-                            if(found && have_last_pres && gen_back>0
-                               && f_pair_cseq_a[f_gen] < last_pres_cseq
-                               && ((double)f_pair_cseq_a[f_gen] - content_clock) < kSelHystSrc){
-                                const int cand2=(f_gen_new-(gen_back-1)+NS*NS)%NS;
-                                if(f_pair_tcap_a[cand2]>0.0 && f_pair_cseq_a[cand2]!=0){ f_gen=cand2; gen_back=gen_back-1; }
-                            }
-                        } else {
-                            for(int g=NS-1;g>=0;--g){
-                                const int cand=(f_gen_new-g+NS*NS)%NS;
-                                const double tc=f_pair_tcap_a[cand];
-                                if(tc<=0.0) continue;                 // generation slot never filled
-                                if(tc>=t_display){ f_gen=cand; gen_back=g; found=true; break; }
-                            }
-                        }
-                        // none contain t_display/content_clock (past all fresh edges) → newest, phase→1.
-                        if(!found){ f_gen=f_gen_new; gen_back=0; }
-                        N_set  = std::max(1,f_pair_n_a[f_gen]);
-                        span   = std::max<uint64_t>(1,f_pair_span_a[f_gen]);
-                        pair_c = f_pair_cseq_a[f_gen];
-                        rs     = f_pair_slot_a[f_gen];
-                        tcap_r = f_pair_tcap_a[f_gen];
-                    } else {
-                        N_set  = cfg.fg_factor;
-                        span   = 1u;
-                        pair_c = cur_c;
-                        rs     = (int)((cur_c?cur_c-1:0)%(uint64_t)cap_slots);
-                        tcap_r = c_slots[rs].t_cap_ms;
-                    }
-                    // safe-read window: the pair's real slot is valid only while C
-                    // has not lapped the ring since F built it.
-                    const bool real_valid = !have_interp || ((cur_c-pair_c)<(uint64_t)(cap_slots-1));
-
+                    // ── STAGE 4 (CLOCK): t_display + the published-set selection + the phase within its window
+                    // (incl. the sync-clock phase override and the ASW overshoot). Moved VERBATIM (R1/X14).
+                    const double now_d=now_ms();
+                    const pfg::clock::Selection _sel = clk.select({ now_d, D, T_src, cur_c, have_interp, f_gen_new, _clk_ring,
+                        [](const void* c,int s)->double{ return ((const RealSlot*)c)[s].t_cap_ms; }, (const void*)c_slots });
+                    const double   t_display  = _sel.t_display;
+                    const int      f_gen      = _sel.f_gen;
+                    const int      gen_back   = _sel.gen_back;
+                    const bool     found      = _sel.found;
+                    const int      N_set      = _sel.N_set;
+                    const uint64_t span       = _sel.span;
+                    const uint64_t pair_c     = _sel.pair_c;
+                    const int      rs         = _sel.rs;
+                    const double   tcap_r     = _sel.tcap_r;
+                    const bool     real_valid = _sel.real_valid;
+                    // (T3) the ring-guard publish: the generation P actually holds, so F stalls before overwriting it.
+                    if(have_interp) p_presenting.store(fs-(uint64_t)gen_back);
                     // read the selected generation's affine model from the F→P publish array
                     // (the SAME channel N_set/span/pair_c travel on). Valid only when gme is active, an
                     // interp set is selected, AND F marked this generation's model valid (a fit ran for
@@ -2185,51 +2030,10 @@ void run_present(FgContext& ctx){
                     const float m_fwd_g = have_interp ? f_pair_mfwd_a[f_gen] : 0.f;
                     const float m_bwd_g = have_interp ? f_pair_mbwd_a[f_gen] : 0.f;
 
-                    // ── 4. phase of t_display within the selected set's window ──────
-                    // The wall-time map: the pair covers motion over span·T_src,
-                    // ending at tcap_r. phase_global ∈ [0,1] across that span.
-                    const double span_ms = (double)span*T_src;
-                    const double pair_t0 = tcap_r - span_ms;   // wall-time of phase 0
-                    // publish the GLOBAL f_seq of the generation we are SAMPLING
-                    // (the delayed one fs−gen_back, not the freshest fs) so F's ring guard
-                    // stalls before overwriting the generation P actually holds.
-                    if(have_interp) p_presenting.store(fs-(uint64_t)gen_back);
-                    // t_display before phase 0 (we're holding an older set we haven't reached)
-                    // → phase 0; past tcap (the set drained, real stall) → phase 1 freeze.
-                    double extrap_amt = 0.0;   // (ASW) forward-extrapolation overshoot (phase units past 1); 0 = none this tick
-                    double phase_global = span_ms>1e-6 ? (t_display-pair_t0)/span_ms : 1.0;
-                    if(phase_global>1.0){ phase_global=1.0; }
-                    if(phase_global<0.0){ phase_global=0.0; }
-                    // ── sync-clock phase OVERRIDE (armed only) — the SOLE phase-source swap ──
-                    // The per-pair (t_display−pair_t0)/span_ms above EDGE-SNAPS to the jittery arrival timeline
-                    // each pair (the boundary judder). When armed, the warp phase is read from the free-running
-                    // content_clock instead: phase = (content_clock − (pair_c − span)) / span, clamped [0,1].
-                    // • pair_c−span is the content index at phase 0 (the pair's PREV source — same anchor the
-                    // per-pair path uses: prev_cseq = pair_c−span below), pair_c is phase 1. Dividing by span
-                    // keeps it correct when span>1 (a dropped pair covering span source-frames). SPAN-PACING
-                    // is preserved — the content_clock advances across the whole span and the divide maps it.
-                    // • clamp [0,1] makes it MONOTONE within the pair and HOLDS at 1.0 if content_clock has run
-                    // past pair_c (next pair not ready) — a plain hold, NO extrapolation (the prompt's).
-                    // • content_clock only advances, so within a pair phase is monotone by construction; the
-                    // existing (pair_c, cand_k) backwards-guard below STILL runs unchanged and still
-                    // protects pair-identity / content monotonicity across pairs. Everything downstream
-                    // (phase_ms → cand_k → t_use → wap_warp_present AND the --phaselog t_use tap) consumes the
-                    // SAME phase_global, so the armed phase flows into the identical call site and the probe.
-                    // Scale-invariant: content_clock + span are SOURCE-FRAME units, no panel-rate constant here.
-                    if(cfg.sync_clock && sc_init && have_interp && span>=1){
-                        const double phase0_c = (double)pair_c - (double)span;     // content index at phase 0
-                        double ph = (content_clock - phase0_c) / (double)span;     // [0,1+] across the span
-                        if(ph<0.0) ph=0.0;
-                        // (ASW) the overshoot past phase 1 = the content_clock ran past the held pair =
-                        // B is behind (the deficit/freeze regime). With --asw, instead of HOLD-at-1 (the freeze =
-                        // stutter) the warp EXTRAPOLATES the held pair FORWARD by the overshoot (bounded by asw_max):
-                        // phase clamps to 1 for the warp's [0,1] math, and the overshoot rides extrap_amt, which the
-                        // warp projects as cur[uv-extrap*mv] (the object keeps moving). OFF (--no-asw) or no overshoot
-                        // (ph<=1, B keeping up) -> extrap_amt stays 0 -> the plain HOLD-at-1 exactly (byte-identical).
-                        if(cfg.asw && ph>1.0){ extrap_amt = ph-1.0; if(extrap_amt>(double)cfg.asw_max) extrap_amt=(double)cfg.asw_max; }
-                        if(ph>1.0) ph=1.0;                                         // monotone clamp + plain HOLD at 1 (the non-ASW path)
-                        phase_global = ph;
-                    }
+                    // (STAGE 4, cont.) the phase outputs of the same select() call.
+                    const double span_ms      = _sel.span_ms;
+                    const double phase_global = _sel.phase_global;
+                    const double extrap_amt   = _sel.extrap_amt;
                     dbgD_sum+=D; dbgPh_sum+=phase_global; dbgGB_sum+=(double)gen_back; dbgTsrc_sum+=T_src; dbgSpan_sum+=(double)span; ++dbgN; // TEMP diag
 
                     // ── WAP: synthesise the EXACT phase on G per tick ──
@@ -2273,7 +2077,7 @@ void run_present(FgContext& ctx){
                             // ladder bookkeeping continues at pair_c so the next interp resumes correctly (the
                             // cost is the accepted content sawtooth, fresh real → stale interp). NOT INT_MAX
                             // (self-trips the backwards guard → freeze).
-                            last_pres_cseq=pair_c; last_pres_k=(int)(span_ms/0.1+0.5); have_last_pres=true;
+                            clk.commit(pair_c,(int)(span_ms/0.1+0.5));
                             last_rfp_c=cur_c; ++rfp_presents; ++uniq_ticks;   // the real is a distinct delivered frame
                             // NO manual ++total_frames — rfp_present's surface submit already incremented it.
                             // CSV (optional) a REAL-tagged row so the fast-path latency is directly measurable.
@@ -2345,47 +2149,22 @@ void run_present(FgContext& ctx){
                             if(mf_tcap>0.0){ const double lat=t_mf-mf_tcap; lat_ema_ms=lat_valid?lat_ema_ms*0.9+lat*0.1:lat; lat_valid=true; }
                             // content-order key continues at pair_c (the held-real bookkeeping, exactly the --rfp pattern
                             // -> the next interp resumes correctly; the cost is the accepted content sawtooth).
-                            last_pres_cseq=pair_c; last_pres_k=(int)(span_ms/0.1+0.5); have_last_pres=true;
+                            clk.commit(pair_c,(int)(span_ms/0.1+0.5));
                             ++mf_presents;   // fire-rate stat (mf:N/s) — confirms firing (e.g. on the zoo at a low --mf-disp / on a real scene-cut)
                             // rfp_present's surface submit already did ++total_frames. Held repeats are not uniq.
                             continue;   // motion-fallback tick complete — skip the warp/selection bookkeeping below
                         }
-                        // Content order key = (pair_c, time-quantised phase to 0.1ms within the
-                        // pair window). Monotone forward: never step the phase backwards within a
-                        // pair, and never step to an older pair (freeze the held phase instead).
-                        // (ASW) add the extrapolation overshoot to the content-order key so each
-                        // EXTRAPOLATED tick is DISTINCT content (the object moved) → uniq counts it = the
-                        // deficit-fill is MEASURABLE (uniq rises toward panel Hz). extrap_amt=0 when --asw off
-                        // or B keeps up → phase_ms unchanged → byte-identical. Monotone: extrap_amt grows while
-                        // B is behind, so cand_k advances (no backwards-guard trip); on the next pair pair_c
-                        // dominates the order. The warp still gets phase_global∈[0,1] (t_use); only the KEY sees it.
-                        const double phase_ms=(phase_global+extrap_amt)*span_ms;   // time into the pair (ASW overshoot)
-                        int cand_k=(int)(phase_ms/0.1+0.5);                     // 0.1ms-quantised key
-                        bool backwards=false;
-                        bool backstep_freeze=false;   // (freeze-guard) tick de par-VIEJO → congelar re-mostrando el front (vía fdrop_this)
-                        if(have_last_pres){
-                            if(pair_c<last_pres_cseq) backwards=true;
-                            else if(pair_c==last_pres_cseq && cand_k<last_pres_k) backwards=true;
-                        }
-                        double t_use=phase_global;
-                        if(backwards){
-                            // hold the last shown phase of the held pair (no rewind). If we are on
-                            // a NEWER pair than last but it computed an earlier time, clamp to the
-                            // start of THIS pair so motion still advances forward in content order.
-                            if(pair_c==last_pres_cseq){ cand_k=last_pres_k; t_use=(span_ms>1e-6)?((double)cand_k*0.1/span_ms):phase_global; }
-                            else {
-                                // (freeze-guard WAP — el fix que el path grid ya tenía y el vivo NO) un tick que
-                                // seleccionó un par MÁS VIEJO que el último presentado NUNCA debe renderizarse:
-                                // el path viejo lo presentaba a su fase del reloj y el bookkeeping rebobinaba
-                                // last_pres → el retroceso llegaba al panel (medido: saltos de −2.0 src-frames en
-                                // el CSV de cadencia). Con front async completado → congelar vía el path fdrop
-                                // (do_warp=false, re-show del front, bookkeeping intacto). Sin front (arranque) o
-                                // en el path síncrono se conserva el comportamiento anterior.
-                                if(cfg.async_present && async_front>=0) backstep_freeze=true;
-                                t_use=phase_global;
-                            }
-                            if(t_use<0.0) t_use=0.0; if(t_use>1.0) t_use=1.0;
-                        }
+                        // ── STAGE 4 (CLOCK): the content-order key + the backwards guard + the base t_use.
+                        // Moved VERBATIM (R1/X14). The phase LAYERS below (--phase-norm / s2 / --cphase) reshape t_use
+                        // afterwards; they are NOT the clock.
+                        const pfg::clock::Order _ord = clk.order(phase_global, extrap_amt, span_ms, pair_c,
+                                                                  cfg.async_present && async_front>=0);
+                        double t_use = _ord.t_use;
+                        int    cand_k = _ord.cand_k;
+                        const bool backwards = _ord.backwards;
+                        bool backstep_freeze = _ord.backstep_freeze;
+                        const double _clk_t_use = _ord.t_use;   // the CLOCK's own phase, before the phase LAYERS reshape it
+                        const int    _clk_cand_k = _ord.cand_k;
                         // ── --phase-norm: the NORMALIZED-N frame ladder ──────────────────
                         // Override the (jittery) content-clock phase with the EVEN grid (pe_j+0.5)/N, N =
                         // predicted ticks-this-pair = span·T_robust/tick_period. The clock already SELECTED
@@ -2403,7 +2182,7 @@ void run_present(FgContext& ctx){
                         // over-production drop refuses to over-command the warp (anti-windup; the --pace-variance race fix).
                         double s2_N_over=0.0;
                         if(s2_quant){   // s2 path only (--no-decimate)
-                            const double base_fps    = (T_robust_ms>1e-3) ? 1000.0/T_robust_ms : 0.0;
+                            const double base_fps    = (clk.T_robust_ms()>1e-3) ? 1000.0/clk.T_robust_ms() : 0.0;
                             const double sustain_fps = (s2_pres_ema>1e-3) ? 1000.0/s2_pres_ema : (double)cfg.refresh_hz;
                             double target_eff = (double)cfg.refresh_hz;
                             if((double)cfg.target_output_fps < target_eff) target_eff=(double)cfg.target_output_fps;
@@ -2419,7 +2198,7 @@ void run_present(FgContext& ctx){
                         if((cfg.phase_norm || s2_quant) && !backwards){     // forces the even-grid ON (s2 path only — decimation keeps the passive t_display phase)
                             if(!pe_have || pair_c!=pe_pair){ pe_pair=pair_c; pe_j=0; pe_have=true; }
                             double N = (s2_quant && s2_N_over>0.0) ? s2_N_over   // sustainable count
-                                     : ((tick_period_ms>1e-6) ? ((double)span * T_robust_ms / tick_period_ms) : 1.0);   // the passive count (byte-identical off)
+                                     : ((tick_period_ms>1e-6) ? ((double)span * clk.T_robust_ms() / tick_period_ms) : 1.0);   // the passive count (byte-identical off)
                             if(N<1.0) N=1.0;
                             double te = ((double)pe_j + 0.5) / N;
                             if(te<0.0) te=0.0; if(te>1.0) te=1.0;
@@ -2465,7 +2244,7 @@ void run_present(FgContext& ctx){
                             const int gk=(int)((gt*span_ms)/0.1+0.5);
                             // monotone-key guard (belt + suspenders; g is monotone by construction) never step the
                             // content-order key backwards within the pair → never trip the backwards guard.
-                            if(!(have_last_pres && pair_c==last_pres_cseq && gk<last_pres_k)){ t_use=gt; cand_k=gk; }
+                            if(!(clk.has_last() && pair_c==clk.last_cseq() && gk<clk.last_k())){ t_use=gt; cand_k=gk; }
                         }
                         // ── --fdrop: exact-duplicate present-side drop decision ──────────
                         // cand_k/pair_c are now FINAL (post backwards-clamp). On a tick whose (pair,cand_k)
@@ -2476,8 +2255,8 @@ void run_present(FgContext& ctx){
                         // compare, lock-free. Guards: --fdrop + async_present (the drop route) + a completed
                         // front to re-show (async_front>=0, else the startup black frame). Byte-identical off.
                         bool fdrop_this=false;
-                        if(cfg.fdrop && have_last_pres && cfg.async_present && async_front>=0)
-                            fdrop_this = (pair_c==last_pres_cseq && cand_k==last_pres_k);
+                        if(cfg.fdrop && clk.has_last() && cfg.async_present && async_front>=0)
+                            fdrop_this = (pair_c==clk.last_cseq() && cand_k==clk.last_k());
                         // (freeze-guard) el backstep de par-viejo congela por el MISMO path que fdrop:
                         // do_warp=false → re-show del front completado; el guard !fdrop_this de abajo evita
                         // rebobinar last_pres_* → el regreso al par nuevo no dispara el guard de nuevo.
@@ -2488,8 +2267,8 @@ void run_present(FgContext& ctx){
                         // the warp AND re-present a duplicate (the --pace-variance 395fps race). do_warp=false → the async
                         // tail re-shows the completed front. Generalizes --fdrop, made MANDATORY under target>0; the
                         // free-actuator clamp (async_inflight<0) is already in record_this_tick. Counts op_drops.
-                        if(s2_quant && have_last_pres && cfg.async_present && async_front>=0
-                           && pair_c==last_pres_cseq && cand_k==last_pres_k){
+                        if(s2_quant && clk.has_last() && cfg.async_present && async_front>=0
+                           && pair_c==clk.last_cseq() && cand_k==clk.last_k()){
                             if(!fdrop_this) ++s2_opdrops;
                             fdrop_this=true;
                         }
@@ -2688,8 +2467,22 @@ void run_present(FgContext& ctx){
                         // is byte-identical when --fdrop is off (fdrop_this always false); the wrap is the
                         // forward-correct form for Stage B's soft (non-exact) drop.
                         if(!fdrop_this){
-                            if(have_last_pres){ if(!(pair_c==last_pres_cseq&&cand_k==last_pres_k)) ++uniq_ticks; }
-                            last_pres_cseq=pair_c; last_pres_k=cand_k; have_last_pres=true;
+                            if(clk.has_last()){ if(!(pair_c==clk.last_cseq()&&cand_k==clk.last_k())) ++uniq_ticks; }
+                            clk.commit(pair_c,cand_k);
+                        }
+                        // ── --arrival-log (R1/X14): the CLOCK's own inputs+outputs + the COMMIT outcome ──
+                        // _clk_t_use/_clk_cand_k are the pure clock result (pre phase-norm/cphase/s2); the trailing
+                        // two columns are `committed` and the cand_k actually committed (the layers reshape it).
+                        if(alog){
+                            std::fprintf(alog,"%llu %a %a %llu %llu %a %a %d ",
+                                (unsigned long long)alog_n,now_b,now_d,(unsigned long long)cur_c,(unsigned long long)fs,sc_delta_ms,T_src,(int)(cfg.async_present && async_front>=0));
+                            for(int _g=0;_g<NS;++_g) std::fprintf(alog,"%a %llu %llu %d %d ",_rt[_g],(unsigned long long)_rc[_g],
+                                                                 (unsigned long long)_rsp[_g],_rn[_g],_rsl[_g]);
+                            std::fprintf(alog,"%a %a %a %a %d %d %d %llu %llu %d %d %a %a %a %a %d %d %d %d %d\n",
+                                D,t_display,clk.content_clock(),clk.T_robust_ms(),f_gen,gen_back,(int)found,
+                                (unsigned long long)pair_c,(unsigned long long)span,N_set,rs,tcap_r,phase_global,extrap_amt,_clk_t_use,
+                                _clk_cand_k,(int)backwards,(int)backstep_freeze,(int)(!fdrop_this),cand_k);
+                            ++alog_n;
                         }
                         // per-second stats (WAP marker; uniq counts distinct (pair,0.1ms-phase))
                         const double iter_p=now_ms()-t0_p; sum_iter+=iter_p; if(iter_p>worst)worst=iter_p;
@@ -2869,7 +2662,7 @@ void run_present(FgContext& ctx){
                                 const double comp=(double)lt_compose_us.load()/1000.0, copy=(double)lt_copy_us.load()/1000.0;
                                 const double conv=(double)c_conv_us.load()/1000.0, pick=(double)lt_pickup_us.load()/1000.0;
                                 const double fwake=(double)lt_fwake_us.load()/1000.0;   // publish→consume wake (sub-component of pickup)
-                                const double fpub=(double)lt_fpub_us.load()/1000.0, fresh=freshage_ema_ms;
+                                const double fpub=(double)lt_fpub_us.load()/1000.0, fresh=clk.freshage_ema();
                                 const double pre=(double)lt_preflow_us.load()/1000.0, spin=(double)lt_spin_us.load()/1000.0;
                                 const double bld=fpub>pick?fpub-pick:0.0, det=fresh>fpub?fresh-fpub:0.0;
                                 const double cmp=bld>pre?bld-pre:0.0;   // F-compute = build − pre_flow (≈ fsub flow+cpu)
@@ -2907,9 +2700,9 @@ void run_present(FgContext& ctx){
                     // real of the held pair). Within-pair: higher k = later phase.
                     int cand_k = present_real ? N_set : kstar;
                     bool backwards=false;
-                    if(have_last_pres){
-                        if(pair_c<last_pres_cseq) backwards=true;
-                        else if(pair_c==last_pres_cseq && cand_k<last_pres_k) backwards=true;
+                    if(clk.has_last()){
+                        if(pair_c<clk.last_cseq()) backwards=true;
+                        else if(pair_c==clk.last_cseq() && cand_k<clk.last_k()) backwards=true;
                     }
                     if(backwards){
                         // hold: re-present the newest real we are entitled to (phase-aligned
@@ -2948,8 +2741,8 @@ void run_present(FgContext& ctx){
                         if(tcap_r>0.0){ const double lat=t_present_ret-tcap_r; lat_ema_ms=lat_valid?lat_ema_ms*0.9+lat*0.1:lat; lat_valid=true; }
                     }
                     // ── 8. monotonicity bookkeeping + uniqueness proxy ─────────
-                    if(have_last_pres){ if(!(pair_c==last_pres_cseq&&cand_k==last_pres_k)) ++uniq_ticks; }
-                    last_pres_cseq=pair_c; last_pres_k=cand_k; have_last_pres=true;
+                    if(clk.has_last()){ if(!(pair_c==clk.last_cseq()&&cand_k==clk.last_k())) ++uniq_ticks; }
+                    clk.commit(pair_c,cand_k);
 
                     // ── 9. per-second stats ───────────────────────────────────
                     const double iter_p=now_ms()-t0_p; sum_iter+=iter_p; if(iter_p>worst)worst=iter_p;
@@ -3011,6 +2804,7 @@ void run_present(FgContext& ctx){
                         stat_t=now_ms(); last_stat_presents=total_frames.load();
                     }
                 }
+                if(alog){ std::fclose(alog); std::printf("[ra] --arrival-log: %llu tick lines -> %s\n",(unsigned long long)alog_n,cfg.arrival_log); }   // (R1) the replay oracle
                 if(pdhQuery) PdhCloseQuery(pdhQuery);   // release the PDH query on P exit
                 // FPS-OVERLAY (--fps-overlay) tear down the overlay pipeline on P exit (the loop drained, the last
                 // present's fBridge was waited synchronously → no in-flight use). Null-safe (all VK_NULL_HANDLE when off).

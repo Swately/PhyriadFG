@@ -23,3 +23,5 @@ BOOL WINAPI console_ctrl_handler(DWORD ctrl){
     return FALSE;
 }
 // Made with my soul - Swately <3
+
+VkDebugUtilsMessengerEXT g_dbg_messenger = VK_NULL_HANDLE;   // --validation (R2)
