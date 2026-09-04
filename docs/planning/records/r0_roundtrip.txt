@@ -1,0 +1,1522 @@
+# roundtrip record exe=phyriad_fg.exe tokens=258
+## --afill
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --afill-edge-norm 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --afill-mv-gate 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --afill-strength 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --agreement 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --ambig
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --appear-band 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --appearance
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --assist-gpu 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --asw
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --asw-max 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --async-present
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --band-xfade
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --band-xfade-strength 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --bg-reclaim
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --bg-reclaim-strength 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=1 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xE346D4D1866E71E5
+## --bg-snap
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --bg-snap-norm 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --bg-snap-strength 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --bidir
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --blend-solo 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --camera-twarp
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --camera-twarp-amt 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --cap-fps 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --cap-route-probe
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --cap-slots 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --capture-api 1
+status=other-rc0
+## --change-gate
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --commit-default
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --commit-real
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --commit-thresh 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --commit-warp
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --conf-improv 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --contour
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --convert-gpu 1
+status=other-rc0
+## --copy-device
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --copy-fence
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --cphase
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --cphase-ease 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --cphase-gain 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --crescent
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --csv 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --dedup
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --deficit-tier
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --disoccl-commit
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --disoccl-hardpick 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --div-eps 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --dpi-probe
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --dump 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --dump-config
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --duration 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --exit-after 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --expire
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fdrop
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fdrop-k 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fdrop-quiet-ms 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fg-factor 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fg-gpu 1
+status=other-rc0
+## --fg-prebake
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fg-protect
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fill-div
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --flow-scale 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --flow-scale-target-mp 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --force-single-gpu
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fps-overlay
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fsub
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fwd-pipeline
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --fwd-prestage
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --gme
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --gme-gpu
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --gme-gpu-verify
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --gme-irls2
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --gov-util 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --gov-util-floor
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --gpu-priority 1
+status=other-rc0
+## --hdr
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --igpu-field
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --igpu-field-verify
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --indicator
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --inertia
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --inertia-thresh 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=1 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=1 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0x6B147A3A8A6A87BC
+## --ingest-async
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --ingest-backlog 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --latency-trace
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --layer-dump
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --layer-model-json
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --load-governor
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --low-d
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --low-d-frac 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --low-d-span-cap 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mass-k 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --matte
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --matte-thresh 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --max-frames 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mc-disp 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mc-edge 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mc-nperturb 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mc-perturb 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --member-commit
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --memory
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mes-sim 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0.5 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0.5 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0x3DCAE79F43A0155D
+## --mf-disp 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --monitor 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --motion-fallback
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --multicand
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mv-audit 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mv-candsel
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mv-edge-snap 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=1 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=1 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=1 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0x283F57CD5AF7D686
+## --mv-guided
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mv-median
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mv-prior
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mv-sim 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.5 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.5 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xA313A8806E700935
+## --mv-smooth 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --mv-subpel
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-ambig
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=0 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=0 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0x4AB0930C415571AD
+## --no-appearance
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-asw
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-async-present
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-band-xfade
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-bg-reclaim
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=0 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=0 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=0 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xDB4276C224F3CE77
+## --no-bg-snap
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-bidir
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-change-gate
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-commit
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-commit-default
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-contour
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-copy-fence
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-cphase
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-crescent
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-decimate
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-dedup
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-deficit-tier
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-expire
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-fdrop
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-fg-protect
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-fill-div
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-fwd-prestage
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-gme
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-gme-gpu
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-igpu-field
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-indicator
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-inertia
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=0 inertia_thresh=0 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=0 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xFA15E52AA6D09B0B
+## --no-load-governor
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-low-d
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-matte
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-member-commit
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-memory
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-motion-fallback
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-multicand
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-mv-candsel
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-mv-guided
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=0 mv_sim=0 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=0 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0x8CA4633C1E8BAC3D
+## --no-mv-subpel
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-obj-crescent
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-obj-fill-rim
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-objects
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-onepos
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-pace-present
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-persist-reset
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-phase-anchor
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=0 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=0 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xBBB12045E0E07AF1
+## --no-phase-norm
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-phasefix
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-pin
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-predict
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-present-own-window
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-rescue
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-rfp
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-rfp-fresh
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-sc-select
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-shapefield
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-single-track
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=0 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=0 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xC576A046430A359F
+## --no-soft-gate
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-stasis
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=0 stasis_thresh=0 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=0 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xEED50A195440344D
+## --no-sync-clock
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-tiers
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-travel
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-upscale
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --no-vblend
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=0 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=0 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0x04F6AA227975A13B
+## --no-warp-at-presenter
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --nvofa
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --nvofa-cost-scale 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --nvofa-sadz-scale 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --obj-crescent
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --obj-fill-rim
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --objdump 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --objects
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --occl-thresh 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --onepos
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --onepos-band 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --outdump 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --output-clock 1
+status=other-rc0
+## --overlay
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pace-hard
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pace-present
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pace-variance
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pace-vblank
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pairdump 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --persist-reset
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --ph-spin 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --phase-anchor
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --phase-norm
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --phasefix
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --phaselog 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pin
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pin-test 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pp-safety 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pp-slew 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pp-var 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --predict
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --predict-e 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --predict-p2
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --present-colorspace 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --present-fp16
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --present-gpu 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --present-monitor 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --present-own-window
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --present-surface
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --present-sync 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --present-waitable
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pv-lock-gain 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pv-safety 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --pv-var 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --qdump
+status=needs-arg
+## --real-fast-path
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --refresh-hz 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --rescue
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --residual-ceil 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --rfp
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --rfp-fresh
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --rfp-window 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --s2-sustain 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --sc-freq-alpha 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --sc-phase-gain 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --sc-reseat 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --sc-select
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --shallow-queue
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --shallow-queue-budget-us 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --shapefield
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --single-track
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --soft-gate
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --st-no-stasis
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=1
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=1
+[hash] contract=0xB714D41BC4495DD1
+## --stasis
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --stasis-thresh 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=1 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=1 single_track.no_stasis=0
+[hash] contract=0xAB64D3B3A0F8E8BC
+## --sync-clock
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --target-output-fps 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --tiers
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --travel
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --ts-smooth 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --upload-xfer
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --upscale-lanczos
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --vblend
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --vblend-exact
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=1 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=1 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0x29260EFE2B7D731D
+## --vblend-strength 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=1 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=1 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0x0C6E49CA4A9A8ABC
+## --vblend-t0 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.949999988 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.949999988 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xFFEB58FA3391D431
+## --warp-at-presenter
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --warp-scale 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --window 1
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+## --windowed
+status=other-rc0
+## --wsub
+status=ok
+[dump-config] sizeof(Config)=1424 rows=12 params=12
+[old] mv_guided=1 mv_sim=0.100000001 mv_edge_snap=0 mv_edge_snap_sim=0 inertia=1 inertia_thresh=0.5 bg_reclaim=4 phase_anchor=1 ambig=1 vblend=1 vblend_t0=0.600000024 vblend_strength=0.5 vblend_exact=0 stasis=1 stasis_thresh=0.5 single_track=1 st_no_stasis=0
+[new] fetch_mv=1 mv_edge_snap=0 mv_guided=1 inertia=1 bg_reclaim=1 phase_anchor=1 ambig=1 vblend=1 stasis=1 single_track=1 mv_edge_snap.variant=0 mv_edge_snap.sim=0 mv_guided.sim=0.100000001 inertia.thresh=0.5 bg_reclaim.strength=4 ambig.tie_ratio=1.14999998 ambig.min_sep_px=2 vblend.t0=0.600000024 vblend.strength=0.5 vblend.exact=0 stasis.thresh=0.5 single_track.no_stasis=0
+[hash] contract=0xB8C7BD1BC5BACB3C
+# summary needs-arg=1 ok=251 other-rc0=6
