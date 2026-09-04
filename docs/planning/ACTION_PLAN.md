@@ -133,7 +133,20 @@ exactos que simulen de forma correcta el movimiento".)
     now be tied to an exact pair of KNOWN source frames, which is what M1 needs. It also corrected a
     documented claim: the triple is (N, N+1), not (N, N+2) — the `N+2` wording survived from the
     held-out design and this tap holds nothing out (`cli.cpp:105-106`, `present.cpp:1409` fixed).
-  - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
+  - **S2.T4** the extractor · **`done`** (2026-09-04, `records/S2_T4_GATE.md`) —
+    `tools/motion_truth/marker_extract.py`: NCC of the marker's own pattern (now carried in
+    `trajectories.json`) around `p_model`, sub-pixel by PHASE SEARCH (the plan's parabola pixel-locked
+    at 0.188 px; inverting the zoo's own splat brought it to 0.05). Seen red twice and fixed twice.
+    §4.1 on RAW frames: **0.060 / 0.045 / 0.052 px** (12/24 px, three frames); whole-pixel rolls 0.060;
+    the RED check reports 6.401 px against a true 6.403. §4.2 through the FG: **0.085 px** mean
+    (0.052 on 12/24 px). The 6 px class is REPORTED at 0.14–0.33 px, above the gate, with its 16-bit
+    interior as the reason. A miss now records the strongest sub-floor match, so "degraded" and
+    "absent" are separable — 65 of the 82 first-run misses were degraded, not absent.
+    **The first M1 numbers ever** (one scene, one run, NOT a baseline): HUD class **0.046 px** kept
+    exact; moving classes 0.9–1.5 px from a correct warp with roughly half arriving degraded; the
+    `fast` control 4.7 px — the expected failure fires.
+  - **S2.T5** report + the DI-3 two-run baseline of the shipping default · `next` — the static-background
+    capture is being taken; two runs, `r` on every cell, before any of the T4 numbers may be used
   - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
     passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
 - **S3 — LAYER CONTRACT (the AAP search)** · **`done`** (2026-09-03) · `docs/planning/aap/`

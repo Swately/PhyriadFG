@@ -361,7 +361,11 @@ def main():
             'background': {'class': a.bg, 'pan_px_s': [pan, 0.0], 'pad': pad},
             'barcode': {'bits': BC_BITS, 'block': BC_BLOCK, 'x0': BC_X0, 'y0': BC_Y0,
                         'msb': 'left', 'white': 1, 'top_border': TOP_BORDER},
-            'markers': markers}
+            'markers': markers,
+            # the pattern bits themselves, per size, so the extractor's template comes from the record
+            # and not from re-running the generator's RNG in the same order
+            'patterns': {str(sz): [[[int(v) for v in row] for row in pat.astype(np.uint8)] for pat in pl]
+                         for sz, pl in patterns.items()}}
     json.dump(traj, open(os.path.join(a.out, 'trajectories.json'), 'w', encoding='utf-8'), indent=1)
 
     with open(os.path.join(a.out, 'manifest.txt'), 'w', encoding='utf-8') as f:

@@ -15,8 +15,11 @@
 > deadzone — it was the periodic test content, not the shader — and §7 characterised what replaced it:
 > the residual is driven by displacement MAGNITUDE, not phase, and the oracle reaches **k = 0.989 at
 > 4–8 px**. M4's corpus must be aperiodic and scored at ≥ 2 px.
-> **STILL UNBUILT: T4 and T5** — the extractor and the report, i.e. everything that actually produces
-> the M1 table. M1 remains unmeasured for every path.
+> **T4 is DONE** ([`S2_T4_GATE.md`](records/S2_T4_GATE.md), 2026-09-04): §4.1 at 0.045–0.060 px on raw
+> frames, §4.2 at 0.085 px through the FG, the gate seen red twice and fixed. The first M1 numbers exist
+> as a first look (HUD 0.046 px kept exact; moving classes 0.9–1.5 px; the `fast` control fires).
+> **STILL UNBUILT: T5** — the report and the two-run baseline with `r`. Until it lands no M1 cell may be
+> used (§4.3), so M1 is measured once and not yet measured *reliably*.
 > **§2.3's premise was WRONG and is corrected there**: a replay record is not (prev, next, MV, gme,
 > push, t) — the shipping default reads four more planes, and T1c dumps those plus the two dissidence
 > masks that other feature sets need. Every "exists / builds / measured" claim below was verified
