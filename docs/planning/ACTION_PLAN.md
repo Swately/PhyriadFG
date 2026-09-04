@@ -77,14 +77,15 @@ exactos que simulen de forma correcta el movimiento".)
     refresh ratio, not the sampler.
   - **S2.T1c** COMPLETE the replay record · **`done`** (2026-09-03, `records/S2_T1C_GATE.md`) — unplanned,
     and opened by decoding a real push block instead of trusting the plan's premise. The plan says a
-    replay record is (prev, next, MV, gme, push, t); against the SHIPPING DEFAULT that is false. Six more
-    planes are read: the backward MV (`occl_thresh`, `phase_anchor_on`), both dissidence masks (`gme_on`),
-    persistence (`inertia_thresh`), the SAD candidates (`ambig_on`) and the target-generation MV
-    (`vblend_on`). All six are now dumped, plus `tgen` recorded at the upload site; an absent plane is
-    named `-` so a record states its own scope. Verified NOT read under this default, from the same push
-    block: `u_field` (bg-snap / disoccl-hardpick / mc all 0) and `u_prev_out` (`ts_smooth` 0).
-    `check_qdump_plus.py` now AUDITS replayability per record — the pre-T1c record reads NOT REPLAYABLE
-    with all six gaps named, the T1c record reads REPLAYABLE.
+    replay record is (prev, next, MV, gme, push, t); against the SHIPPING DEFAULT that is false. Four more
+    planes are read: the backward MV (`occl_thresh`, `phase_anchor_on`), persistence (`inertia_thresh`),
+    the SAD candidates (`ambig_on` + `gme_on`) and the target-generation MV (`vblend_on`). Those, plus
+    both dissidence masks for the runs that DO read them, are now dumped, and `tgen` is recorded at the
+    upload site; an absent plane is named `-` so a record states its own scope. Verified NOT read under
+    this default, each at its call site: `u_field`, `u_prev_out`, and the dissidence masks (every
+    ordinary site is gated on `matte_on`, which is 0 — my first pass wrongly gated them on `gme_on` and
+    the correction is recorded in the gate). `check_qdump_plus.py` now AUDITS replayability per record —
+    the pre-T1c record reads NOT REPLAYABLE with the four gaps named, the T1c record reads REPLAYABLE.
   - **S2.T2–T3** marker zoo + player · `next` (parallel to T1)
   - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
   - **S2.T6** CPU reference warp (E7) · `blocked` on T1

@@ -15,18 +15,25 @@ shipping default.**
 | Push field, shipping default | Makes the warp read | In the T1 record? |
 |---|---|---|
 | `occl_thresh = 1.5`, `phase_anchor_on = 1` | `u_motion_vectors_bwd` (binding 5) | **no** |
-| `gme_on = 1` | `u_dissidence` (6) and, with bidir, `u_dissidence_bwd` (7) | **no** |
 | `inertia_thresh = 0.5` | `u_persistence` (8) | **no** |
-| `ambig_on = 1` | `u_candidates` (10) | **no** |
+| `ambig_on = 1`, `gme_on = 1` | `u_candidates` (10) | **no** |
 | `vblend_on = 1` | `u_mv_target` (12) | **no** |
 
-Six planes. A reference warp fed the T1 record could not have reproduced a default tick at all, and the
+Four planes. A reference warp fed the T1 record could not have reproduced a default tick at all, and the
 failure would have looked like a bug in the reference rather than a hole in the record.
 
-Two bindings are genuinely NOT read under this default, and that was verified from the same push block
-rather than assumed: `u_field` (11) — its three call sites are gated on `bg_snap_on`,
-`disoccl_hardpick` and `mc_on`, all zero — and `u_prev_out` (13), gated on `ts_smooth = 0`. The shader
-takes no backward gme model; the backward fit reaches it only through the backward dissidence mask.
+**The table above is the CORRECTED one.** My first pass wrote six, adding both dissidence masks on the
+strength of `gme_on = 1`. Re-reading every `texture(u_dissidence` site and its enclosing gate showed that
+claim is false: all the ordinary sites are gated on `matte_on > 0.5` (0 here), the edge-snap G1 variant
+guides on the forward mask only when `mv_edge_snap` is armed (0 here), and the reveal-fill site needs
+`bg_snap_on` or `band_xfade` (both 0). The masks are dumped anyway — they cost 14,400 B each and a run
+that arms matte needs them — but the checker no longer *requires* them for a push that does not read
+them, and the corrected gate lives in the table it belongs in.
+
+Three bindings are genuinely NOT read under this default, verified from the same push block rather than
+assumed: `u_field` (11), gated on `bg_snap_on` / `disoccl_hardpick` / `mc_on`, all zero; `u_prev_out`
+(13), gated on `ts_smooth = 0`; and the two dissidence masks (6, 7) as just described. The shader takes
+no backward gme model; the backward fit reaches it only through the backward dissidence mask.
 
 ## 2 · What was added
 
@@ -61,8 +68,6 @@ push contract: 58 floats; armed = residual_ceil=32 improvement_frac=0.2 agreemen
   NOT REPLAYABLE for this push:
     - backward MV (binding 5) is READ but the record has no `mvb=` plane
     - SAD candidates (binding 10) is READ but the record has no `c2=` plane
-    - dissidence (fwd) (binding 6) is READ but the record has no `dis=` plane
-    - dissidence (bwd) (binding 7) is READ but the record has no `disb=` plane
     - persistence (binding 8) is READ but the record has no `per=` plane
     - target-generation MV (binding 12) is READ but the record has no `mvt=` plane
 ```
@@ -98,20 +103,21 @@ store is `mix(B_samp, cur[uv], w_s)`, with `w_s` from the screen-static evidence
 stasis bool, and the whole commit / matte / onepos / blend cascade shadowed. So the reference's real work
 is the **effective forward MV**: the guided fetch at `mv_guided = 1.1`, `bg_reclaim = 4`, the phase anchor
 against the backward field, and the vblend tilt toward `mvt`. That is a much smaller surface than the
-1,336-line shader suggests, and it is exactly the surface the six new planes feed.
+1,336-line shader suggests, and it is exactly the surface the new planes feed.
 
 ## 5 · Honesty ledger
 
 - The armed-feature to binding map in the checker is **my reading of the shader's gates**, not a
-  generated artefact. It was checked against the three `u_field` sites and the `u_prev_out` site
-  individually; the rest were read from the binding declarations and the push documentation. If R3
-  changes a gate, this table must move with it, and nothing enforces that today.
+  generated artefact, and its first version was WRONG about the dissidence masks (§1). Every entry has
+  since been checked at each `texture(...)` call site against its enclosing `if`, not inferred from the
+  push field's documentation. If R3 changes a gate this table must move with it, and nothing enforces
+  that today — the map is the weakest link in the audit and should be treated as such.
 - Byte-exactness of the new planes was checked by SIZE and, for the MV planes, by float16 decode and
   magnitude plausibility. The R8 masks and the RGBA16F candidate field were **not** semantically
   validated — only their sizes. A wrong-but-same-size plane would pass.
 - Not measured: the added dump cost per tick, and the record's disk footprint pressure. A 16-triple
-  720p record is 176 MB, dominated by the three full-res RGBA planes; the six new planes add about
-  330 KB per triple, which is noise against that.
+  720p record is 176 MB, dominated by the three full-res RGBA planes; the six new planes (four required,
+  two carried for other feature sets) add about 330 KB per triple, which is noise against that.
 - The default's own `mv_edge_snap = 0` means the edge-snap MV path is off in this corpus. A record that
   arms it is still replayable (it reads no new binding), but it exercises code this corpus does not.
 

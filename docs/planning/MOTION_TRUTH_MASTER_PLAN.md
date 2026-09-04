@@ -10,7 +10,8 @@
 > [`records/S2_T1B_GATE.md`](records/S2_T1B_GATE.md) and
 > [`records/S2_T1C_GATE.md`](records/S2_T1C_GATE.md)); T2–T6 are still `designed` (2026-09-02).
 > **§2.3's premise was WRONG and is corrected there**: a replay record is not (prev, next, MV, gme,
-> push, t) — the shipping default reads six more planes, and T1c dumps them. Every "exists / builds / measured" claim below was verified
+> push, t) — the shipping default reads four more planes, and T1c dumps those plus the two dissidence
+> masks that other feature sets need. Every "exists / builds / measured" claim below was verified
 > first-hand this session; the instrument itself is not built. MUST/SHOULD/MAY are BCP-14.
 > **Serves:** the frozen objective's metric **M1** in
 > [`aap/A0_FROZEN_OBJECTIVE.md`](aap/A0_FROZEN_OBJECTIVE.md) and the fixed points **C8** (quality
@@ -78,9 +79,10 @@ Five pieces, all data-in / data-out, none of which requires a human or an LLM to
    submitted, `sizeof(pcw)` bytes), and manifest tokens `mv= sad= push= gme=a,b,c,d,e,f mvw= mvh= gen=`
    appended to the `triple` line. **CORRECTED 2026-09-03 (T1c, `records/S2_T1C_GATE.md`): that list is
    NOT sufficient.** Decoding a real push block against the shader's bindings showed the SHIPPING DEFAULT
-   also reads the backward MV field (`occl_thresh`, `phase_anchor_on`), both dissidence masks (`gme_on`),
-   the persistence field (`inertia_thresh`), the second-best SAD candidates (`ambig_on`) and the
-   target-generation MV (`vblend_on`) — six more planes, now dumped as `mvb= c2= dis= disb= per= mvt=`
+   also reads the backward MV field (`occl_thresh`, `phase_anchor_on`), the persistence field
+   (`inertia_thresh`), the second-best SAD candidates (`ambig_on` + `gme_on`) and the target-generation MV
+   (`vblend_on`) — four more planes; those and both dissidence masks (which THIS default does not read:
+   every ordinary site is gated on `matte_on` = 0) are dumped as `mvb= c2= dis= disb= per= mvt=`
    with `tgen=` recorded at the upload site. `u_field` and `u_prev_out` are genuinely unread under this
    default (their gates are all 0), verified from the same push block (trailing tokens are ignored by existing parsers — the manifest's own
    contract). The dump needs the SYNC present path, and `resolve_config` (`cli.cpp:227-231`) auto-disables

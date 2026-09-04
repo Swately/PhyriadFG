@@ -40,9 +40,19 @@ disoccl_hardpick predict_p2 blend_solo mv_edge_snap single_track bg_reclaim""".s
 # omission — and the audit says which binding, so the gap is actionable.
 REPLAY_NEEDS = [
     ('backward MV',          lambda p: p['occl_thresh'] > 0 or p['phase_anchor_on'] > 0.5, 'mvb',  'binding 5'),
-    ('SAD candidates',       lambda p: p['ambig_on'] > 0.5,                                'c2',   'binding 10'),
-    ('dissidence (fwd)',     lambda p: p['gme_on'] > 0.5,                                  'dis',  'binding 6'),
-    ('dissidence (bwd)',     lambda p: p['gme_on'] > 0.5 and p['occl_thresh'] > 0,         'disb', 'binding 7'),
+    ('SAD candidates',       lambda p: p['ambig_on'] > 0.5 and p['gme_on'] > 0.5,          'c2',   'binding 10'),
+    # The dissidence masks are gated on matte_on at every ordinary site (the phase-anchor claim, the
+    # ambiguity object proxy, the matte block, the member-commit strength). Two further sites: the
+    # edge-snap G1 variant guides on them, and the bg-snap / band-xfade reveal-fill reads both. gme_on
+    # alone does NOT read them -- an earlier version of this table said it did, and the shader says
+    # otherwise (grep texture(u_dissidence and read each enclosing gate).
+    ('dissidence (fwd)',     lambda p: p['matte_on'] > 0.5
+                                       or 0.5 < p['mv_edge_snap'] < 2.0
+                                       or ((p['bg_snap_on'] > 0.5 or p['band_xfade'] > 0)
+                                           and p['occl_thresh'] > 0),                       'dis',  'binding 6'),
+    ('dissidence (bwd)',     lambda p: p['matte_on'] > 0.5
+                                       or ((p['bg_snap_on'] > 0.5 or p['band_xfade'] > 0)
+                                           and p['occl_thresh'] > 0),                       'disb', 'binding 7'),
     ('persistence',          lambda p: p['inertia_thresh'] > 0,                            'per',  'binding 8'),
     ('target-generation MV', lambda p: p['vblend_on'] > 0.5,                               'mvt',  'binding 12'),
     ('previous output',      lambda p: p['ts_smooth'] > 0,                                 None,   'binding 13'),

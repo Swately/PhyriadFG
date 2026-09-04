@@ -100,13 +100,15 @@
    exactamente cuatro fases, y ese techo lo pone la razón de refresco, no el muestreador.
 4i. **S2.T1c HECHO (2026-09-03 — `planning/records/S2_T1C_GATE.md`)** — no estaba planeado. Al empezar a
    dimensionar T6 decodifiqué un push real (58 floats) en vez de creerle a la premisa del plan, y la
-   premisa NO sobrevivió: bajo el DEFAULT DE PRODUCCIÓN el warp lee seis planos más que el registro de T1
-   no tenía — MV hacia atrás (`occl_thresh`, `phase_anchor_on`), las dos máscaras de disidencia
-   (`gme_on`), persistencia (`inertia_thresh`), los candidatos SAD (`ambig_on`) y el MV de la generación
-   objetivo (`vblend_on`). Un warp de referencia alimentado con el registro de T1 no habría podido
+   premisa NO sobrevivió: bajo el DEFAULT DE PRODUCCIÓN el warp lee cuatro planos más que el registro de T1
+   no tenía — MV hacia atrás (`occl_thresh`, `phase_anchor_on`), persistencia (`inertia_thresh`), los
+   candidatos SAD (`ambig_on` + `gme_on`) y el MV de la generación objetivo (`vblend_on`). (Mi primer
+   pase dijo SEIS: agregué las dos máscaras de disidencia creyéndolas ligadas a `gme_on`. Releyendo cada
+   sitio `texture(u_dissidence` con su `if` envolvente, todas están ligadas a `matte_on`, que aquí es 0.
+   Se vuelcan igual, pero el auditor ya no las exige para un push que no las lee.) Un warp de referencia alimentado con el registro de T1 no habría podido
    reproducir NI UN tick del default, y la falla se habría visto como bug de la referencia y no como
-   hueco del registro. Los seis ya se vuelcan, más `tgen` registrado en el sitio del upload; un plano
-   ausente se nombra `-`. Verificado que NO se leen bajo este default, del mismo push: `u_field` y
+   hueco del registro. Los cuatro ya se vuelcan (más las dos máscaras, para las corridas que sí las leen) y `tgen` queda
+   registrado en el sitio del upload; un plano ausente se nombra `-`. Verificado que NO se leen bajo este default, del mismo push: `u_field` y
    `u_prev_out`. `check_qdump_plus.py` ahora AUDITA la reproducibilidad por registro: el registro previo
    dice NOT REPLAYABLE con los seis huecos nombrados; el de T1c dice REPLAYABLE.
    **Lo que esto le aclara a T6:** bajo `single_track = 1.0` el store final es
