@@ -1,76 +1,69 @@
-# R2 — record: the SEAM adopted, grafted and shape-verified · 2026-09-03
+# R2 — gate record (G-R2, milestone M-R2): the SEAM adopted, grafted, and driving stage 5 · 2026-09-03
 
 > Stage R2 of [`../CONVERGENCE_MASTER_PLAN.md`](../CONVERGENCE_MASTER_PLAN.md) §3 (strategy X15) and
 > spine node **S4.0** (the adoption the operator authorised: the header + its test, not the app).
-> **Status: R2 is PARTIALLY DONE — the seam is adopted, grafted and verified; the live rewiring of the
-> present path's barriers is NOT done and is the next step.** The gate G-R2 as written is therefore NOT
-> claimed. Every number below is quoted from command output.
+> **Verdict: G-R2 PASSED**, with the derived path opt-in behind `--sg-barriers` and the hand-written path
+> kept as the reference and the fallback. Every number is quoted from command output.
 
-## 1 · Done and verified
+## 1 · What was built
 
-| Piece | Evidence |
+| Piece | What it is |
 |---|---|
-| **Vulkan 1.3 + `synchronization2`** — the seam's `vkCmdPipelineBarrier2` is core 1.3; the app ran 1.2 and enabled the KHR extension only under `--nvofa`. Now: the loader version is QUERIED (`vkEnumerateInstanceVersion`), the instance asks for 1.3 only if offered, and the feature is enabled only if the physical device reports 1.3 AND reports it supported. `--no-sync2` forces the old 1.2 path (the A/B arm). | `[ra] vulkan: loader 1.4.357 -> instance 1.3 (synchronization2 available)` · `[ra] device 'NVIDIA GeForce RTX 4090': synchronization2=ENABLED` · `[ra] device 'AMD Radeon(TM) Graphics': synchronization2=ENABLED` |
-| **`--validation`** — the KHRONOS layer + a debug-utils messenger that prints every warning/error, so "sync-validation clean" is a repeatable instrument instead of an environment variable. Default off: no layer, no messenger, byte-identical. | 12 s run on the new 1.3 instance: **0 validation lines** (`[vk-` count = 0) |
-| **The seam adopted** — `apps/minimal_fg/include/minimal_fg/seam_graph.hpp` → `src/seam/seam_graph.hpp` (namespace `minimal_fg` → `pfg::seam`, an adoption note, the signature; the derivation untouched); the test → `tests/seam/test_seam_graph.cpp` with the `pfg_seam_test` target. The container copy got ONE pointer line saying the repo copy is canonical (XR10). | `OK: all 122 checks passed` on the first build inside the repo |
-| **Graft G3 — dominance warning.** A pass that OVERWRITES a resource it does not read is named at compile time (`Compiled::warnings`), unless it declares why via `add_pass_dominating(..., reason)`. Printed by `dump_warnings()`, never by `dump()`. | the 122 golden checks still pass byte-identically; a new check asserts the declared form is silent AND that `dump()` is identical either way |
-| **Graft G4 — `optional_write` + liveness.** `Access::optional`; `compile()` reports optional writes nothing live reads in `Compiled::dead_optional_writes`. | new checks: a dead optional write is reported as `gen:aux`; the same write becomes live when a later pass reads it |
-| **Graft G5 — zero-allocation `execute()`.** The `VkImageMemoryBarrier2` array is built at `compile()`; `execute()` patches only the `VkImage` handles. Fixes a real defect: a per-pass, per-frame heap allocation on the recording thread (~1,920/s at 240 Hz × 8 passes). XR11: handles re-patched every call, and a `graph_id` makes `execute()` refuse a `Compiled` from another graph. | new checks: `vk_barriers` count == derived barrier count for every pass; two graphs never share an id |
-| **Test total** | `OK: all 142 checks passed` (122 adopted + 13 grafts + 7 stage-5 shape) |
-| builds | `build.bat` and `build-release.bat` exit 0 throughout |
+| **Vulkan 1.3 + `synchronization2`** | The seam's `vkCmdPipelineBarrier2` is core 1.3; the app ran 1.2 and enabled the KHR extension only under `--nvofa`. The loader version is now QUERIED (`vkEnumerateInstanceVersion`), the instance asks for 1.3 only if offered, and the feature is enabled only if the physical device reports 1.3 AND reports it supported. `--no-sync2` forces the old path. |
+| **`--validation`** | The KHRONOS layer + a debug-utils messenger printing every warning/error, so "sync-validation clean" is a repeatable instrument. Default off: no layer, no messenger, byte-identical. |
+| **The seam adopted** | `src/seam/seam_graph.hpp` + `tests/seam/test_seam_graph.cpp` (target `pfg_seam_test`), from `apps/minimal_fg`. Namespace, an adoption note and the signature are the only edits; the derivation is untouched. The container copy carries one pointer line and is frozen (XR10). |
+| **Grafts G3 / G4 / G5** | G3: a pass that overwrites a resource it does not read is named at compile time (`dump_warnings()`), unless it declares why (`add_pass_dominating`). G4: `Access::optional` + `dead_optional_writes` liveness. G5: the `VkImageMemoryBarrier2` array is built at `compile()`; `execute()` patches handles only, and a `graph_id` makes it refuse a `Compiled` from another graph (XR11). |
+| **The two engine gaps CLOSED (R2b)** | **Per-image import layout:** `declare_image(name, imported, import_layout)` — the present bridge arrives as `UNDEFINED` because the blit overwrites the whole image; assuming `SHADER_READ_ONLY` would declare contents that must be preserved. **Resting layout:** `set_resting(res, layout, stage, access)` — one compiled graph describes ONE frame, so the cross-frame restore (`wapOutA` back to `GENERAL` for the next tick's warp) had no consumer inside the graph. `compile()` now emits it as an EPILOGUE barrier; `execute()` records it last. Both default to the previous behaviour, so the 122-check golden is unchanged. |
+| **Stage 5 wired** | `--sg-barriers` makes the generation-output path record its barriers through the graph instead of the three hand-written `img_barrier` calls. The blit is the graph's own record callback. Default off → the hand-written arm runs, byte-identical. A missing `synchronization2` or a compile error falls back automatically and says so. |
 
-## 2 · The stage-5 shape, and the two gaps that block the flip
+## 2 · The gate
 
-Rather than assert in prose what the graph "would" derive, check `[10] STAGE-5 SHAPE` declares the real
-generation-output graph (`warp` writes `wapOutA`; `blit` reads it and writes the imported `bridge_img`)
-and asserts what the engine actually produces. It reproduces the hand-written RAW barrier exactly:
-
-```
-wapOutA  COMPUTE_SHADER:SHADER_WRITE -> COPY:TRANSFER_READ   GENERAL -> TRANSFER_SRC_OPTIMAL
-```
-
-and it pins the two things the engine cannot yet express, as assertions so they cannot be forgotten:
-
-- **Gap A — the imported-image layout.** The engine assumes every imported resource arrives in
-  `kImportLayout` (`SHADER_READ_ONLY_OPTIMAL`). `bridge_img` actually arrives as `UNDEFINED`, because the
-  hand-written barrier DISCARDS its contents (the blit overwrites the whole image). Deriving
-  `SRO → TRANSFER_DST` is not "the same but slower": it declares contents that must be preserved. The
-  engine needs a per-image import layout — its header already names this as a later refinement.
-- **Gap B — the cross-frame restore.** The hand-written path returns `wapOutA` to `GENERAL` at the end of
-  every tick so the NEXT tick's warp finds it there. One compiled graph describes ONE frame, so the
-  engine emits no such barrier: the restore has no consumer inside the graph. It needs either a trailing
-  write-back pass or a declared per-frame resting layout.
-
-Both are engine changes, and both sit on the crash class (a wrong layout or a missing cross-frame
-dependency is corruption or device-loss, not a slow frame). Rushing them at the end of a long session
-would be the wrong call; they are the next step's scope, with the flip behind an opt-in flag and the
-G-R2 gate (the `img_barrier` count drop, `--sg-dump` identical ×2, sync-validation clean, 0 steady-state
-allocations, M3 within spread) applied to it.
+| Check | Result (quoted) |
+|---|---|
+| build ×2 | `build.bat` and `build-release.bat` exit 0 |
+| the seam's own tests | **`OK: all 148 checks passed`** (122 adopted + 13 grafts + 13 stage-5 shape/epilogue) |
+| **derived == hand-written, field by field** | check `[10] STAGE-5 SHAPE` asserts the engine derives exactly the three hand-written barriers: `wapOutA GENERAL→TRANSFER_SRC (SHADER_WRITE→TRANSFER_READ)`, `bridge_img UNDEFINED→TRANSFER_DST (0→TRANSFER_WRITE)`, and the epilogue `wapOutA TRANSFER_SRC→GENERAL (TRANSFER_READ→SHADER_WRITE)` with `srcAccess = NONE` because reads do not dirty memory |
+| the live graph | `--sg-dump`: `SG: 2 passes, 2 barriers` + `1 epilogue`; the RAW and the WAW exactly as above; **byte-identical across 2 runs** |
+| G3 in the field | the first dump warned that `blit` overwrites `bridge_img` without reading it. That dominance IS intended (the blit overwrites the whole image), so it is now DECLARED with its reason and the warning count is `0` — the graft caught a real property of the shipping path and made it explicit rather than silent |
+| no `ALL_COMMANDS` | asserted for every derived barrier and every epilogue barrier |
+| **sync-validation clean** | `--validation` on the derived path: **0 lines** over a 10 s run, and **0 lines** over a 60 s soak with `ball_zoo` at 60 fps AND `gpu_load.exe` saturating the 4090, exiting `bounded-run clean exit: total_presents=14383` |
+| **M3, 2 runs/side, interleaved, 60 s** | `ball_zoo` 60 fps 1920×1080. presents: **14,384 on all four runs**. |
+| | | metric | A hand-written | B derived | Δ vs A's spread |
+| | |---|---|---|---|
+| | | presented-phase mean | 0.5013 ± 0.0004 | 0.5019 ± 0.0002 | +0.0006 |
+| | | uniq/s | 238.981 ± 0.046 | 238.991 ± 0.023 | inside |
+| | | lat (ms) | 16.64 ± 0.32 | 16.72 ± 0.08 | +0.08, inside |
+| | | warp / GPU time (ms) | 2.787 ± 0.315 | 2.880 ± 0.104 | +0.093, inside |
+| zero steady-state allocation | structural (G5: the arrays are built at `compile()`; `execute()` only patches `VkImage` handles) and test-checked (`vk_barriers` count == derived barrier count per pass). **Not** counted at runtime with an allocation hook — stated as designed-and-asserted, not measured. |
 
 ## 3 · Defects found and fixed while doing R2
 
 - **The validation instrument caught its own author first.** The first `--validation` run reported
-  `vkDestroyInstance(): VkInstance has 1 leaked object` — my debug messenger, never destroyed. Fixed
-  (the handle is a global the teardown destroys before the instance); the re-run reports 0 lines.
+  `vkDestroyInstance(): VkInstance has 1 leaked object` — my debug messenger, never destroyed. Fixed;
+  the re-run reports 0.
 - The `synchronization2` report first landed inside the `--gpu-priority` retry branch, so it printed
   only on a retry. Moved after the create block.
 - A CRLF-blind multi-line anchor aborted a patch script mid-file, leaving `device.cpp` untouched while
-  its sibling files were already written. Line-based, EOL-agnostic patching from then on.
+  its siblings were already written. Line-based, EOL-agnostic patching from then on.
+- The stage-5 graph state was first declared next to the clock, inside the OUTPUT-CLOCK loop; the blit
+  site lives inside the `wap_warp_present` lambda, which is DEFINED earlier. Moved above the lambda.
+- The barrier text at the blit site is textually identical to one inside the `--ts-smooth` copy; the
+  first patch attempt matched both. Anchored on the first occurrence with the +3 span asserted.
 
 ## 4 · Honesty ledger
 
-- **G-R2 is not passed and is not claimed.** What is verified is the adoption, the three grafts, the
-  prerequisites and the derived-shape comparison. The live present path still records its own barriers,
-  unchanged; the product's behaviour is untouched by R2 so far.
-- The A0 envelope says "the RTX 4090 is the ONLY Vulkan device enumerated". Measured now: **two** devices
-  enumerate — the 4090 and the CPU's AMD Radeon integrated GPU. **Operator, 2026-09-03:** the 1080 Ti is
-  physically installed but NOT driver-available, so the 4090 is the only usable FG device; multi-GPU is
-  deliberately deferred until the generation core is stable, and is then resumed. The app collapses to
-  `SINGLE-GPU: PhyriadFG collapsed onto device A alone. B/G suppressed`, so the envelope's conclusion
-  holds; its wording ("only device enumerated") was imprecise, and the reason is the driver, not absence.
-- The 1.3 instance changes device creation — the crash class. It is queried and degrades to 1.2, and it
-  was exercised by the 12 s validated run plus every build's smoke, but it has NOT had a long soak or a
-  saturated run under `gpu_load`. That belongs to the flip's gate.
-- `--validation` costs real time (it is a layer). No measurement run used it.
+- The derived path is **opt-in**. The default still records the hand-written barriers, so the shipping
+  product is unchanged by R2 unless `--sg-barriers` is passed. Flipping the default is a separate
+  decision with its own evidence (a longer soak, and the operator's eye on a real game).
+- `img_barrier` calls in `present.cpp`: still 40. R2 did not remove any — it added a derived arm beside
+  the three stage-5 ones. The count drops when the default flips and the fallback arm is retired.
+- The A/B ran on `ball_zoo`, a synthetic source, on an otherwise idle machine plus one saturated soak.
+  No real-game run, and no operator-eye verdict.
+- The 1080 Ti is installed but not driver-available (operator, 2026-09-03), so the 4090 is the only
+  usable FG device; the AMD iGPU also enumerates and the app collapses to `SINGLE-GPU`. Multi-GPU is
+  deliberately deferred until the generation core is stable, then resumed. The A0 envelope's wording
+  ("the only device enumerated") was imprecise; the reason is the driver, not absence.
+- The Vulkan 1.3 instance is a device-creation change (crash class). It is queried, degrades to 1.2, and
+  has now had a 60 s saturated validated soak plus every build's smoke — but not a multi-hour session.
 
 *Made with my soul - Swately <3*

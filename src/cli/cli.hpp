@@ -982,6 +982,12 @@ struct Config {
                                     // messenger that PRINTS every message (R2: the "sync-validation clean"
                                     // gate needs a repeatable instrument). Default off -> no layer, no
                                     // messenger, byte-identical.
+    bool  sg_barriers=false;        // --sg-barriers: record the stage-5 output barriers through the SEAM
+                                    // graph (src/seam) instead of the hand-written img_barrier calls. The
+                                    // derived barriers are proven field-identical to the hand-written ones
+                                    // by tests/seam check [10]. Needs synchronization2; default OFF ->
+                                    // the hand-written path runs, byte-identical.
+    bool  sg_dump=false;            // --sg-dump: print the compiled stage-5 graph + its warnings once.
     bool  no_sync2=false;           // --no-sync2: force the Vulkan-1.2 instance + the hand-written barriers
                                     // even where 1.3 is available (the R2 A/B reference arm).
     char  arrival_log[260]={};      // --arrival-log FILE: R1 (X14) — per-tick CLOCK INPUTS+OUTPUTS in exact

@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S4 (CONVERGENCE, in place) → S4.R2b (declare the present path's barriers) · next`**
+**`P → S4 (CONVERGENCE, in place) → S4.R3 (fg_core.comp) / S2.T0-T1 (the instrument) · next`**
 · **R0 and R1 are DONE** (2026-09-03). R0: `records/R0_GATE.md` (parity 0 FAIL / 297 launches, M2a = 2 files,
 M3 inside spread, column closure = 0 new columns → PROCEED). R1: `records/R1_GATE.md` — the CLOCK is now
 `src/clock/phase_clock.{hpp,cpp}` with a CPU test; replay bit-parity on 14,390 live ticks, 0 mismatches;
@@ -21,12 +21,12 @@ the measured content step per present is 0.2501 source frames (the 4x multiplica
 [`STAGE_CONTRACT.md`](STAGE_CONTRACT.md) (`approved`); the base `apps/minimal_fg` is the blueprint, not the
 host; only its seam header + test are adopted (R2). Detail = the v2 Tier-2 triad
 [`CONVERGENCE_MASTER_PLAN.md`](CONVERGENCE_MASTER_PLAN.md) + `_IMPLEMENTATION_STRATEGIES.md` +
-`_RISK_REGISTER.md`; the rule "no new plan without a new measurement" is in force. **R2a is DONE**
-(`records/R2_GATE.md`: Vulkan 1.3 + `synchronization2` enabled, `--validation` clean, the seam adopted
-and grafted, 142 checks). Next intermediate action, on the operator's word: **R2b** — close the two
-engine gaps the stage-5 shape check pins (a per-image import layout; the cross-frame restore), then
-declare the present path's barriers behind an opt-in flag and run gate G-R2. In parallel **S2.T0/T1**
-(the scorer port + `--qdump+`), which R3's M4 gate needs.
+`_RISK_REGISTER.md`; the rule "no new plan without a new measurement" is in force. **R2 is DONE**
+(`records/R2_GATE.md`, G-R2 passed): the seam drives stage 5's barriers behind `--sg-barriers`, deriving
+exactly the three hand-written ones; 148 checks; 0 validation lines under a saturated 60 s soak; M3
+inside spread. Next, on the operator's word: **S2.T0/T1** (the scorer port + the `--qdump+` sidecars),
+which R3's M4 gate REQUIRES, then **R3** (`fg_core.comp`), carrying the column-closure experiment's two
+constraints. Flipping `--sg-barriers` to the default is its own decision (a longer soak + the eye).
 
 ## P — PRINCIPAL (enduring, carried verbatim from the June spine)
 
@@ -86,16 +86,15 @@ exactos que simulen de forma correcta el movimiento".)
     (bit-parity, XR14) + the synthetic-arrival test = **M-R1** · **`done`** (2026-09-03, `records/R1_GATE.md`;
     98.80 % verbatim, 5 transforms; 14,390-tick replay with 0 mismatches; `--arrival-log` + `pfg_clock_test`
     are now the standing regression harness for every later change to the phase)
-  - **S4.R2a** ADOPT the seam + the grafts + the prerequisites · **`done`** (2026-09-03,
-    `records/R2_GATE.md`): Vulkan 1.3 + `synchronization2` queried and ENABLED on both devices,
-    `--validation` (0 lines over 12 s), `src/seam/seam_graph.hpp` + `tests/seam/` with grafts G3/G4/G5,
-    **142 checks pass** (122 adopted + 13 grafts + 7 stage-5 shape). The container copy is frozen (XR10).
-  - **S4.R2b** DECLARE the present path's stage-5 barriers as SG passes and flip behind an opt-in flag
-    = M-R2 · **`next`** — blocked on two engine gaps the shape check pins: (A) a per-image IMPORT LAYOUT
-    (`bridge_img` arrives UNDEFINED, the engine assumes SHADER_READ_ONLY), (B) the CROSS-FRAME restore of
-    `wapOutA` to GENERAL (one compiled graph describes one frame). Both are crash-class; the flip carries
-    the G-R2 gate (barrier-count drop, `--sg-dump` identical x2, sync-validation clean, 0 steady-state
-    allocations, M3 in spread).
+  - **S4.R2** the seam adopted + grafted + DRIVING stage 5's barriers = **M-R2** · **`done`**
+    (2026-09-03, `records/R2_GATE.md`, G-R2 passed): Vulkan 1.3 + `synchronization2` queried and ENABLED,
+    `--validation` added, `src/seam/` + `tests/seam/` with grafts G3/G4/G5, the two engine gaps CLOSED
+    (a per-image import layout; a declared resting layout emitting a cross-frame EPILOGUE barrier), and
+    `--sg-barriers` recording stage 5's output barriers through the graph. **148 checks**; the derived
+    barriers are field-identical to the three hand-written ones; `--sg-dump` byte-identical x2; **0
+    validation lines** over a 60 s soak saturated with `gpu_load`; M3 inside spread on 2 runs/side.
+    The derived path is OPT-IN: the default still records the hand-written barriers, so the product is
+    unchanged. Flipping the default is a separate decision (a longer soak + the operator's eye).
   - **S4.R3** Stage 5: `fg_core.comp` + the 8 fused rows replace `wap_warp.comp` for the default set =
     **M-R3**; M4 by S2.T6 on the `--qdump+` replay (packed value first, XR1); bg-reclaim bug-for-bug (XR7) ·
     `blocked (R0 exit gate, R2, S2.T1, S2.T6)`

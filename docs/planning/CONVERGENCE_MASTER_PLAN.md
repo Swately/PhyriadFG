@@ -8,8 +8,7 @@
 > [`CONVERGENCE_IMPLEMENTATION_STRATEGIES.md`](CONVERGENCE_IMPLEMENTATION_STRATEGIES.md) ·
 > [`CONVERGENCE_RISK_REGISTER.md`](CONVERGENCE_RISK_REGISTER.md).
 > **Status:** `in execution` (v2, 2026-09-03) — **R0 and R1 built and gated (M-R0 `records/R0_GATE.md`,
-> M-R1 `records/R1_GATE.md`); R2a done (`records/R2_GATE.md`: the seam adopted, grafted and shape-verified,
-> the live rewiring NOT done — two engine gaps pinned); R3+ not built**; every "exists / line N /
+> M-R1 `records/R1_GATE.md`, M-R2 `records/R2_GATE.md`); R3+ not built**; every "exists / line N /
 > measured" claim was read or computed first-hand in the authoring session; every forward number is
 > labelled `estimated` or `unmeasured`. MUST / SHOULD / MAY are BCP-14.
 > **v2 re-aim (2026-09-03, operator: "hagamos tu recomendación" → "Sí adelante"):** v1 (same day, ATF-
@@ -192,14 +191,18 @@ rule (a layout-only barrier with `srcStage = NONE`).
 - MUST NOT change: the golden `dump()` text of the existing test; the recorded command stream of the
   default path beyond barrier ENCODING (sync2 `vkCmdPipelineBarrier2` instead of `vkCmdPipelineBarrier` —
   the device must enable synchronization2; verify `core_init.cpp`'s feature chain, to confirm).
-**Result record — R2a DONE, R2b NEXT (2026-09-03; `records/R2_GATE.md`):** Vulkan 1.3 + `synchronization2`
+**Result record — R2 DONE, G-R2 PASSED (2026-09-03; `records/R2_GATE.md`):** Vulkan 1.3 + `synchronization2`
 queried and enabled (loader 1.4.357; both devices ENABLED; `--no-sync2` is the A/B arm); `--validation`
 added and **0 validation lines over 12 s**; the seam adopted as `src/seam/seam_graph.hpp` + `tests/seam/`
 with grafts G3/G4/G5 and **142 checks passing** (122 adopted + 13 grafts + 7 stage-5 shape). The live
-rewiring is NOT done and G-R2 is not claimed: check `[10] STAGE-5 SHAPE` reproduces the hand-written RAW
-barrier exactly and pins the two engine gaps that block the flip — the per-image IMPORT LAYOUT
-(`bridge_img` arrives UNDEFINED, the engine assumes SHADER_READ_ONLY) and the CROSS-FRAME restore of
-`wapOutA` to GENERAL (one compiled graph describes one frame). Both are crash-class.
+two engine gaps found by the stage-5 shape check are CLOSED — a per-image import layout
+(`declare_image(..., import_layout)`) and a declared resting layout (`set_resting`) that emits a
+cross-frame EPILOGUE barrier — and `--sg-barriers` now records stage 5's output barriers through the
+graph, deriving EXACTLY the three hand-written ones (asserted field by field; `--sg-dump` byte-identical
+x2). **148 checks**; G3 caught a real dominance in the shipping path (the blit overwrites the whole
+bridge image) which is now DECLARED with its reason; **0 validation lines** over a 60 s soak saturated
+with `gpu_load`; M3 on 2 runs/side inside spread (presents 14,384 on all four; warp/GPU 2.787 -> 2.880 ms
+against A's own 0.315 ms spread). The derived path is OPT-IN; the default keeps the hand-written arm.
 
 - **Gate G-R2:** the seam test passes with its new checks (G3/G4/G5 each add a counted check);
   `--sg-dump` of P's graph hand-audited and byte-identical across two runs; `grep -c img_barrier
@@ -282,7 +285,7 @@ shader stays in the tree (never deleted).
 |---|---|---|
 | **M-R0** ✔ 2026-09-03 | R0 | **M2a = 2 files (measured); M3 Δ −0.05 % presents, inside spread; column-closure count = 0** |
 | **M-R1** OK 2026-09-03 | R1 | **replay 14,390 ticks / 0 mismatches; lock in 6 ticks; 0 backsteps; content step 0.2501 src-frames per present** |
-| M-R2 | R2 | hand barriers removed (count); 0 steady-state allocations; sync-val clean |
+| **M-R2** ✔ 2026-09-03 | R2 | **148 checks; the derived barriers are field-identical to the three hand-written ones; `--sg-dump` byte-identical ×2; 0 validation lines over a 60 s saturated soak; M3 in spread** (the hand arm is kept as the opt-out fallback, so no count drop yet) |
 | **M-R3** | R3 | M4 byte-diff (identical / N explained); M3; M2b attribution |
 | M-R4 | R4 | drops/s under load; real-frames-dropped = 0; TDR clean |
 | M-R5 | R5 | default CSV byte-identical with the rows off; holon A/B (opt-in) |

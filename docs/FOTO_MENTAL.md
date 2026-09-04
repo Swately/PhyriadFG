@@ -68,16 +68,17 @@
    **142 checks pasan** (122 adoptados + 13 de injertos + 7 de forma). La copia del contenedor quedó
    congelada con una nota (XR10). El instrumento se cazó a sí mismo: la primera corrida con validación
    reportó una fuga que era mi propio mensajero sin destruir; corregido.
-   **Lo que NO se hizo:** re-cablear las barreras vivas del hilo de presentación; G-R2 no se reclama.
-   El check [10] declara el grafo real de la etapa 5, reproduce exactamente la barrera RAW escrita a mano
-   y fija dos huecos del motor: (A) la capa de importación por imagen (`bridge_img` llega en UNDEFINED,
-   el motor asume SHADER_READ_ONLY) y (B) el restablecimiento entre frames de `wapOutA` a GENERAL (un
-   grafo compilado describe UN frame). Ambos son de clase crash.
-5. **NEXT** — (a) **R2b** con la luz verde: cerrar esos dos huecos del motor, luego declarar como pases SG
-   las barreras de la etapa 5 en `present.cpp` (warp / overlay / blit) detrás de un flag opt-in;
-   compuerta G-R2: el conteo de `img_barrier` baja, `--sg-dump` idéntico ×2, validación limpia 60 s,
-   0 asignaciones en estado estable, M3 dentro de la dispersión. (b) En paralelo S2.T0/T1 (port del
-   scorer + sidecars `--qdump+`), que la compuerta M4 de R3 necesita. (c) R3 lleva las dos
+   **R2b, mismo día: los dos huecos del motor CERRADOS** — capa de importación por imagen
+   (`declare_image(..., import_layout)`) y capa de reposo declarada (`set_resting`) que emite una barrera
+   de EPÍLOGO entre frames. `--sg-barriers` ya graba las barreras de salida de la etapa 5 por el grafo, y
+   deriva EXACTAMENTE las tres escritas a mano (afirmado campo por campo; `--sg-dump` idéntico ×2).
+   **148 checks**; G3 cazó una dominancia real del camino vivo (el blit sobrescribe todo el puente), ahora
+   DECLARADA con su razón; **0 líneas de validación** en un soak de 60 s saturado con `gpu_load`; M3 con
+   2 corridas por lado dentro de la dispersión (14,384 presents en las cuatro). **G-R2 PASÓ.** La ruta
+   derivada es OPT-IN: el default sigue con las barreras a mano, así que el producto no cambió.
+5. **NEXT** — (a) **S2.T0/T1** con la luz verde: el port del scorer y los sidecars `--qdump+`, que la
+   compuerta M4 de R3 EXIGE. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
+   soak largo y el ojo del operador sobre un juego real, no solo `ball_zoo`. (c) R3 lleva las dos
    restricciones del experimento de columnas: etapa `WEIGHT` con el núcleo partido en
    `fg_sample`/`fg_blend`, y el canal `CH_BLEND` con `select` como fila.
 6. **CONSTRAINTS in play** — child projects relocated by the operator only; never delete invested work

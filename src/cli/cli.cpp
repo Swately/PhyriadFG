@@ -288,6 +288,8 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--arrival-log")){ if(auto v=next(arg)){ std::snprintf(c.arrival_log,sizeof(c.arrival_log),"%s",v);
                 std::printf("[ra] --arrival-log %s: R1 instrument — one line per WAP tick with the clock inputs+outputs in exact hex-float (the PhaseClock replay oracle). Measurement runs only.\n",v); return 0; } return 1; }
             if(!std::strcmp(arg,"--validation")){ c.validation=true; std::printf("[ra] --validation: VK_LAYER_KHRONOS_validation + debug-utils messenger ON (a DIAGNOSTIC run: the layer costs real time; never a measurement run).\n"); return 0; }
+            if(!std::strcmp(arg,"--sg-barriers")){ c.sg_barriers=true; std::printf("[ra] --sg-barriers: the stage-5 output barriers are DERIVED by the seam graph (src/seam) instead of hand-written. Needs synchronization2; falls back automatically if unavailable.\n"); return 0; }
+            if(!std::strcmp(arg,"--sg-dump")){ c.sg_dump=true; std::printf("[ra] --sg-dump: printing the compiled stage-5 seam graph once at first record.\n"); return 0; }
             if(!std::strcmp(arg,"--no-sync2")){ c.no_sync2=true; std::printf("[ra] --no-sync2: forcing the Vulkan 1.2 instance + hand-written barriers (the R2 A/B reference arm).\n"); return 0; }
             if(!std::strcmp(arg,"--layer-dump")){ c.layer_dump=true; return 0; }
             if(!std::strcmp(arg,"--layer-model-json")){ c.layer_model_json=true; return 0; }

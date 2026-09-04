@@ -144,11 +144,16 @@ struct Compiled {
     std::vector<Warning>      warnings;         // G3: compile-time notices (dominance). NEVER printed by dump().
     std::vector<std::string>  dead_optional_writes;   // G4: "pass:resource" — an optional write nothing live reads.
     uint64_t                  graph_id = 0;     // G5/XR11: the SeamGraph that produced this Compiled.
+    // R2b (GAP B): barriers recorded AFTER the last pass, returning resources to their declared RESTING
+    // layout for the next frame. Empty unless set_resting() was called. execute() records them last.
+    std::vector<Barrier>               epilogue;
+    std::vector<VkImageMemoryBarrier2> epilogue_vk;
 
     size_t barrier_count() const {
         size_t n = 0;
         for (const CompiledPass& p : passes) n += p.barriers.size();
-        return n;
+        return n;   // NOTE: the epilogue is counted separately (epilogue.size()) so the golden dump and
+                    // every existing count assertion are unchanged by R2b.
     }
 };
 
@@ -261,10 +266,22 @@ public:
     static constexpr VkImageLayout kImportLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     // Register an image resource. imported = an external producer wrote it (e.g. a WGC capture).
-    ResId declare_image(const char* name, bool imported = false) {
+    ResId declare_image(const char* name, bool imported = false,
+                        VkImageLayout import_layout = kImportLayout) {
         const ResId id = static_cast<ResId>(res_.size());
-        res_.push_back(ResDecl{ name ? name : "", imported, VK_NULL_HANDLE });
+        ResDecl d{ name ? name : "", imported, VK_NULL_HANDLE };
+        d.import_layout = import_layout;
+        res_.push_back(std::move(d));
         return id;
+    }
+
+    // R2b (GAP B): declare where this resource must be LEFT at the end of the frame, and the scope that
+    // will touch it next. compile() then emits an epilogue barrier when the frame does not already end
+    // there. This is how a per-frame invariant ("the warp output lives in GENERAL") becomes declared
+    // instead of hand-written after the graph.
+    void set_resting(ResId r, VkImageLayout layout, VkPipelineStageFlags2 stage, VkAccessFlags2 access) {
+        if (r >= res_.size()) return;
+        res_[r].rest_layout = layout; res_[r].rest_stage = stage; res_[r].rest_access = access;
     }
 
     // Register a pass with the resources it READS and WRITES (each carries its stage/access/layout)
@@ -375,7 +392,7 @@ public:
                 st[r].prod_pass    = -1;                  // EXTERNAL
                 st[r].prod_stage   = VK_PIPELINE_STAGE_2_NONE;
                 st[r].prod_access  = VK_ACCESS_2_NONE;
-                st[r].layout       = kImportLayout;
+                st[r].layout       = res_[r].import_layout;   // R2b (GAP A): per-image, not a constant
             }
         }
 
@@ -498,6 +515,28 @@ public:
             out.passes.push_back(std::move(cp));
         }
 
+        // ── R2b (GAP B): the EPILOGUE. For every resource with a declared resting layout that the
+        //    frame does not already leave there, emit one barrier from its LAST access to that layout.
+        //    A last access that was a READ gives an execution dependency (reads do not dirty memory);
+        //    a last access that was a WRITE gives the full flush. Nothing declared -> nothing emitted.
+        for (ResId r = 0; r < static_cast<ResId>(res_.size()); ++r) {
+            const ResDecl& rd = res_[r];
+            if (rd.rest_layout == VK_IMAGE_LAYOUT_UNDEFINED) continue;
+            const RState& sr = st[r];
+            if (!sr.has_producer && sr.rsw_stage == 0) continue;      // untouched this frame
+            if (sr.layout == rd.rest_layout) continue;                // already where it must be
+            const bool last_was_read = (sr.rsw_stage != 0);
+            out.epilogue.push_back(make_barrier(
+                r, last_was_read ? Hazard::WAR : Hazard::WAW,
+                last_was_read ? sr.last_read_pass : sr.prod_pass, -1,
+                last_was_read ? sr.rsw_stage : sr.prod_stage,
+                last_was_read ? VkAccessFlags2(0) : sr.prod_access,
+                rd.rest_stage, rd.rest_access,
+                sr.layout, rd.rest_layout));
+        }
+        out.epilogue_vk.reserve(out.epilogue.size());
+        for (const Barrier& b : out.epilogue) out.epilogue_vk.push_back(b.vk);
+
         // ── G5 (R2): build the Vulkan barrier arrays ONCE, here. execute() then patches only the
         //    VkImage handles — no allocation on the recording thread. ──────────────────────────────
         for (CompiledPass& cp : out.passes) {
@@ -571,6 +610,19 @@ public:
                 if (rec) rec(cmd);
             }
         }
+        // R2b (GAP B): the epilogue — return the declared resources to their resting layout so the NEXT
+        // frame's first access finds them there. Same zero-allocation patching as the per-pass arrays.
+        if (!c.epilogue_vk.empty()) {
+            for (size_t i = 0; i < c.epilogue_vk.size(); ++i) {
+                const ResId r = c.epilogue[i].res;
+                c.epilogue_vk[i].image = (r < res_.size()) ? res_[r].image : VK_NULL_HANDLE;
+            }
+            VkDependencyInfo dep{};
+            dep.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            dep.imageMemoryBarrierCount = static_cast<uint32_t>(c.epilogue_vk.size());
+            dep.pImageMemoryBarriers    = c.epilogue_vk.data();
+            vkCmdPipelineBarrier2(cmd, &dep);
+        }
     }
 
     // A deterministic, human-readable barrier+pass listing (the golden-test + hand-audit artifact).
@@ -605,7 +657,19 @@ public:
     }
 
 private:
-    struct ResDecl  { std::string name; bool imported; VkImage image; };
+    struct ResDecl  {
+        std::string   name;
+        bool          imported;
+        VkImage       image;
+        // R2b (GAP A): the layout an IMPORTED resource actually arrives in. UNDEFINED means "contents
+        // discardable" — the correct declaration for an image the graph fully overwrites.
+        VkImageLayout import_layout = kImportLayout;
+        // R2b (GAP B): where this resource must be left for the NEXT frame, and what will touch it
+        // there. layout == UNDEFINED (the default) = no epilogue barrier for this resource.
+        VkImageLayout         rest_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkPipelineStageFlags2 rest_stage  = VK_PIPELINE_STAGE_2_NONE;
+        VkAccessFlags2        rest_access = VK_ACCESS_2_NONE;
+    };
     struct PassDecl {
         std::string                          name;
         std::vector<Access>                  reads;

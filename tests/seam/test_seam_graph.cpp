@@ -500,14 +500,20 @@ static void test_grafts_r2() {
 //     img_barrier bridge   UNDEFINED -> TRANSFER_DST (0 -> TRANSFER_WRITE)
 //     vkCmdBlitImage wapOutA -> bridge
 //     img_barrier wapOutA  TRANSFER_SRC -> GENERAL   (TRANSFER_READ -> SHADER_WRITE)   <- the RESTORE
-// This check declares that graph and records what the engine derives, so the flip from hand-written to
-// derived is a diff, not a leap. It also PINS the two gaps that block the flip today — as assertions,
-// so they cannot be forgotten or silently "fixed" without the test noticing.
+// This check declares that graph with the R2b capabilities (a per-image IMPORT layout and a declared
+// RESTING layout) and asserts the engine derives EXACTLY the three hand-written barriers, field by
+// field. That equality is the evidence the flip needs: replacing the hand-written barriers with
+// sg.execute() then changes which code emits them, not what the GPU is told.
 static void test_stage5_shape() {
     std::fprintf(stderr, "[10] STAGE-5 SHAPE (the real generation output path)\n");
     SeamGraph g;
-    const ResId wapOut = g.declare_image("wapOutA");                 // internal, lives in GENERAL
-    const ResId bridge = g.declare_image("bridge_img", /*imported*/ true);
+    // wapOutA is internal and LIVES in GENERAL: the next frame's warp writes it there. That per-frame
+    // invariant is declared, not left to a hand-written trailing barrier (R2b, GAP B).
+    const ResId wapOut = g.declare_image("wapOutA");
+    // the present bridge is imported and its contents are DISCARDABLE — the blit overwrites the whole
+    // image, which is why the hand-written barrier uses UNDEFINED as the old layout (R2b, GAP A).
+    const ResId bridge = g.declare_image("bridge_img", /*imported*/ true, VK_IMAGE_LAYOUT_UNDEFINED);
+    g.set_resting(wapOut, GEN, CS, SW);
     g.add_pass("warp", {}, { Access{ wapOut, CS, SW, GEN } });
     g.add_pass("blit", { Access{ wapOut, CP, TR, TSRC } }, { Access{ bridge, CP, TW, TDST } });
     g.mark_output(bridge);
@@ -515,39 +521,46 @@ static void test_stage5_shape() {
     CHECK(c.errors.empty());
     const std::vector<Barrier> b = flat(c);
 
-    // 1. the RAW the hand-written code writes as barrier #1: warp's write -> the blit's read, with the
-    //    layout transition. The engine derives it with PRECISE masks (never ALL_COMMANDS).
-    CHECK(b.size() == 2);
-    bool raw_ok = false, acq_ok = false;
+    // The hand-written sequence in src/present/present.cpp, barrier for barrier:
+    //   #1 wapOutA GENERAL -> TRANSFER_SRC   (SHADER_WRITE -> TRANSFER_READ)
+    //   #2 bridge  UNDEFINED -> TRANSFER_DST (0 -> TRANSFER_WRITE)
+    //   #3 wapOutA TRANSFER_SRC -> GENERAL   (TRANSFER_READ -> SHADER_WRITE)   [the restore]
+    CHECK(b.size() == 2);              // #1 and #2 are per-pass barriers
+    CHECK(c.epilogue.size() == 1);     // #3 is the epilogue
+
+    bool one = false, two = false;
     for (const Barrier& x : b) {
-        if (x.res == wapOut && x.hazard == pfg::seam::Hazard::RAW
-            && x.vk.srcStageMask == CS && x.vk.srcAccessMask == SW
+        if (x.res == wapOut && x.vk.srcStageMask == CS && x.vk.srcAccessMask == SW
             && x.vk.dstStageMask == CP && x.vk.dstAccessMask == TR
-            && x.vk.oldLayout == GEN && x.vk.newLayout == TSRC) raw_ok = true;
-        if (x.res == bridge) acq_ok = true;
+            && x.vk.oldLayout == GEN && x.vk.newLayout == TSRC) one = true;
+        if (x.res == bridge && x.vk.oldLayout == VK_IMAGE_LAYOUT_UNDEFINED
+            && x.vk.newLayout == TDST && x.vk.dstStageMask == CP && x.vk.dstAccessMask == TW) two = true;
     }
-    CHECK(raw_ok);   // == the hand-written wapOutA GENERAL->TRANSFER_SRC barrier, derived
-    CHECK(acq_ok);   // the imported bridge gets an acquire
+    CHECK(one);   // == hand-written barrier #1, derived
+    CHECK(two);   // == hand-written barrier #2, derived — UNDEFINED, not SHADER_READ_ONLY (GAP A closed)
+    if (c.epilogue.size() == 1) {
+        const Barrier& e = c.epilogue[0];
+        CHECK(e.res == wapOut);
+        CHECK(e.vk.oldLayout == TSRC && e.vk.newLayout == GEN);     // == hand-written barrier #3
+        CHECK(e.vk.srcStageMask == CP);                             // the blit's read is what we wait on
+        CHECK(e.vk.srcAccessMask == VK_ACCESS_2_NONE);              // reads do not dirty memory
+        CHECK(e.vk.dstStageMask == CS && e.vk.dstAccessMask == SW);  // the next frame's warp
+    }
+    // no ALL_COMMANDS anywhere — the anti-pattern the whole seam exists to remove
+    CHECK(no_all_commands(c));
+    for (const Barrier& e : c.epilogue) CHECK(e.vk.srcStageMask != ALL && e.vk.dstStageMask != ALL);
 
-    // 2. GAP A — the imported-image layout. The engine assumes every imported resource arrives in
-    //    kImportLayout (SHADER_READ_ONLY_OPTIMAL); the bridge actually arrives as UNDEFINED, because the
-    //    hand-written barrier DISCARDS its contents (the blit overwrites the whole image). Deriving
-    //    SRO->TRANSFER_DST instead of UNDEFINED->TRANSFER_DST is not wrong-but-slower: it declares
-    //    contents that must be preserved. A per-image import layout is the engine change the flip needs.
-    for (const Barrier& x : b)
-        if (x.res == bridge)
-            CHECK(x.vk.oldLayout == SeamGraph::kImportLayout);   // pins the gap: SRO, not UNDEFINED
-    CHECK(SeamGraph::kImportLayout != VK_IMAGE_LAYOUT_UNDEFINED);
-
-    // 3. GAP B — the cross-frame RESTORE. The hand-written path returns wapOutA to GENERAL at the end of
-    //    every tick so the NEXT tick's warp finds it there. One compiled graph describes ONE frame, so
-    //    the engine emits no such barrier: the restore has no consumer inside the graph. Modelling it
-    //    (a trailing write-back pass, or a declared per-frame resting layout) is the second thing the
-    //    flip needs. Asserted here as: nothing in the derived list returns wapOutA to GENERAL.
-    bool restores = false;
-    for (const Barrier& x : b)
-        if (x.res == wapOut && x.vk.newLayout == GEN) restores = true;
-    CHECK(!restores);
+    // A resource with NO declared resting layout gets NO epilogue (the default is inert).
+    {
+        SeamGraph g2;
+        const ResId a = g2.declare_image("a");
+        const ResId out = g2.declare_image("out", true, VK_IMAGE_LAYOUT_UNDEFINED);
+        g2.add_pass("w", {}, { Access{ a, CS, SW, GEN } });
+        g2.add_pass("b", { Access{ a, CP, TR, TSRC } }, { Access{ out, CP, TW, TDST } });
+        g2.mark_output(out);
+        Compiled c2 = g2.compile();
+        CHECK(c2.epilogue.empty());
+    }
 }
 
 int main() {

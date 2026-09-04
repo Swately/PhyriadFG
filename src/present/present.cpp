@@ -3,6 +3,7 @@
 // external linkage here (main calls them).
 #include "present/present.hpp"
 #include "clock/phase_clock.hpp"   // STAGE 4: the content clock (R1/X14)
+#include "seam/seam_graph.hpp"     // STAGE 5 output barriers, derived (R2b/X15)
 #include "core/compat_reason.hpp"    // ra::compat::emit / ReasonCode (named-reason present-init bail)
 #include "flow/flow.hpp"             // MedianPipe (the P-thread medPipe member access)
 #include <phyriad/hal/CpuWait.hpp>   // phyriad::hal::cpu_wait_for_ns (paced spin-finish)
@@ -877,6 +878,17 @@ void run_present(FgContext& ctx){
             int async_front=-1;     // slot holding the last COMPLETED warp (presentable); -1 = none yet
             int async_inflight=-1;  // slot with a submitted-but-not-yet-complete warp; -1 = none
             uint64_t sq_hits=0, sq_misses=0, last_sqh_p=0, last_sqm_p=0;   // --shallow-queue: early-promote hit/miss windowed counters (sq:H/M in the stats) — the depth-collapse + count-regression measure. P-thread-local, lock-free.
+            // ── STAGE 5 (the seam): the output path's barriers, DERIVED (R2b). Declared lazily on the
+            // first recording tick (wapOutA / bridge_img exist by then) and re-executed every tick;
+            // execute() patches handles and allocates nothing (graft G5). --sg-barriers off -> never
+            // built, never executed, and the hand-written img_barrier path below runs byte-identically.
+            pfg::seam::SeamGraph  sg5;
+            pfg::seam::Compiled   sg5_c;
+            pfg::seam::ResId      sg5_out=0, sg5_bridge=0;
+            bool sg5_ready=false, sg5_failed=false, sg5_dumped=false;
+            const bool sg5_want = cfg.sg_barriers && A.has_sync2;
+            if(cfg.sg_barriers && !A.has_sync2)
+                std::printf("[ra] --sg-barriers: synchronization2 is NOT enabled on device A -- falling back to the hand-written barriers\n");
             auto wap_warp_present=[&](float t,float extrap,const float* gme6,bool bwd_ok,float thr_eff,uint32_t* presented_out,bool do_warp=true){
                 const double wsub_rec0 = cfg.wsub ? now_ms() : 0.0;
                 double wsub_gpu0 = 0.0;   // hoisted out of the record block (assigned inside it) so the
@@ -1213,10 +1225,46 @@ void run_present(FgContext& ctx){
                   bb.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; bb.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
                   bb.buffer=hMass_a.buf; bb.offset=0; bb.size=VK_WHOLE_SIZE;
                   vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&bb,0,nullptr); }
-                img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
-                img_barrier(cmdBridge,bridge_img.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
-                { VkImageBlit bl{}; bl.srcSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; bl.dstSubresource=bl.srcSubresource; bl.srcOffsets[1]={(int)WW_warp,(int)WH_warp,1}; bl.dstOffsets[1]={(int)bridge_w,(int)bridge_h,1}; vkCmdBlitImage(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,bridge_img.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&bl,VK_FILTER_LINEAR); }   // src = the SCALED wapOutA (WW/N×WH/N); the EXISTING linear filter upsamples it to the bridge/present extent (no new pass). warp_div==1 ⇒ srcOffsets {WW,WH} (byte-identical). The dst (game-facing present extent) is UNCHANGED — no game downscale.
-                img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_WRITE_BIT);
+                // ── STAGE 5 output: warp -> blit -> bridge. Two ways to record the SAME three barriers.
+                // The seam derives them (proven field-identical in tests/seam check [10]); the hand-written
+                // path below is the reference and the fallback. --sg-barriers picks the derived one.
+                if(sg5_want && !sg5_failed){
+                    if(!sg5_ready){
+                        // wapOutA LIVES in GENERAL (the next tick's warp writes it there) -> a declared resting
+                        // layout. bridge_img is imported and its contents are DISCARDABLE (the blit overwrites
+                        // the whole image) -> UNDEFINED as its import layout.
+                        sg5_out    = sg5.declare_image("wapOutA");
+                        sg5_bridge = sg5.declare_image("bridge_img", true, VK_IMAGE_LAYOUT_UNDEFINED);
+                        sg5.set_resting(sg5_out, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_WRITE_BIT);
+                        sg5.add_pass("warp", {}, { pfg::seam::Access{ sg5_out, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_GENERAL } });
+                        sg5.add_pass_dominating("blit",
+                            { pfg::seam::Access{ sg5_out,    VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL } },
+                            { pfg::seam::Access{ sg5_bridge, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL } },
+                        "the blit overwrites the WHOLE bridge image every tick: its prior contents are discardable (that is why the import layout is UNDEFINED)",
+                            [&](VkCommandBuffer c){ VkImageBlit bl{}; bl.srcSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; bl.dstSubresource=bl.srcSubresource;
+                                bl.srcOffsets[1]={(int)WW_warp,(int)WH_warp,1}; bl.dstOffsets[1]={(int)bridge_w,(int)bridge_h,1};
+                                vkCmdBlitImage(c,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,bridge_img.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&bl,VK_FILTER_LINEAR); });
+                        sg5.mark_output(sg5_bridge);
+                        sg5_c = sg5.compile();
+                        if(!sg5_c.errors.empty()){
+                            for(const auto& e : sg5_c.errors) std::printf("[ra] SG-ERROR: %s\n", e.c_str());
+                            sg5_failed=true;
+                        } else { sg5_ready=true; }
+                    }
+                    if(sg5_ready){
+                        sg5.bind_image(sg5_out, wapOutA.img); sg5.bind_image(sg5_bridge, bridge_img.img);
+                        if(cfg.sg_dump && !sg5_dumped){ sg5_dumped=true;
+                            std::printf("---- BEGIN --sg-dump (stage 5) ----\n%s%s---- END --sg-dump (%zu epilogue) ----\n",
+                                sg5.dump(sg5_c).c_str(), sg5.dump_warnings(sg5_c).c_str(), sg5_c.epilogue.size()); }
+                        sg5.execute(cmdBridge, sg5_c);
+                    }
+                }
+                if(!sg5_want || sg5_failed || !sg5_ready){
+                    img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+                    img_barrier(cmdBridge,bridge_img.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
+                    { VkImageBlit bl{}; bl.srcSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; bl.dstSubresource=bl.srcSubresource; bl.srcOffsets[1]={(int)WW_warp,(int)WH_warp,1}; bl.dstOffsets[1]={(int)bridge_w,(int)bridge_h,1}; vkCmdBlitImage(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,bridge_img.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&bl,VK_FILTER_LINEAR); }   // src = the SCALED wapOutA (WW/N×WH/N); the EXISTING linear filter upsamples it to the bridge/present extent (no new pass). warp_div==1 ⇒ srcOffsets {WW,WH} (byte-identical). The dst (game-facing present extent) is UNCHANGED — no game downscale.
+                    img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_WRITE_BIT);
+                }
                 // --ts-smooth: copy THIS tick's warp output (wapOutA) → the prev-output history
                 // (wapPrevOutA) so NEXT tick's warp samples it (binding 13). This runs AFTER the blend (which is
                 // inside THIS tick's warp dispatch above — it already read the OLD wapPrevOutA, populated by the
