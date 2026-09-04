@@ -112,7 +112,14 @@ exactos que simulen de forma correcta el movimiento".)
     rule as a damper (fires on 0.06% of blocks), and `bg_reclaim` as a damper (its `nonconf` gate is 0
     on the background). Open lead: the MV field carries a period-3 sub-pixel pattern matching the zoo's
     24 px lattice on blocks whose own `sad_best` is 0.
-  - **S2.T2–T3** marker zoo + player · `next` (parallel to T1)
+  - **S2.T2** the ground-truth marker zoo · **`done`** (2026-09-04, `records/S2_T2_GATE.md`) —
+    `tools/motion_truth/marker_zoo.py`: six trajectory classes, three marker sizes, three background
+    classes (`flat`/`noise`/`grating`), a 16-bit per-frame barcode, and the closed forms written beside
+    the pixels so `p(t)` is evaluable at any real `t`. Gate run against the files ON DISK: 60/60
+    barcodes decode to their own index; `p(t)` vs the written table worst |delta| **4.99e-10 px**;
+    0 byte-identical consecutive frame pairs; displacement span 1.75–15.33 px/frame including the
+    `fast` expected-failure control outside the matcher's reach.
+  - **S2.T3** the on-screen player · `next` — what puts the zoo where the capture path can see it
   - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
   - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
     passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
