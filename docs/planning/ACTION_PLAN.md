@@ -96,7 +96,10 @@ exactos que simulen de forma correcta el movimiento".)
     ring at the moving silhouette). **Does NOT pass:** under `--st-no-stasis`, which strips the 99%
     stasis copy and leaves a bare `result = B_samp`, exact match falls to 84.39% and the least-squares
     displacement scale is **k = 0.702** (0.829 on the default record) against the 1.000 the gate needs.
-    The reference moves content about a third too far, systematically, with correlation 0.87–0.95.
+    **The error's SHAPE matters more than its size:** binning the fit by displacement magnitude shows a
+    sub-pixel DEADZONE, not a scale. Above 4 px the reference is right (k = 0.955, corr 0.97); below
+    0.5 px the shader moves essentially nothing (mean change 0.03–0.09 of 255) while the reference moves
+    0.9–4.0. The frame-wide k is just those two populations averaged.
     **Ruled out, each by a number:** a stale record (a snapshot taken at the `wap_upload` call is
     identical to the late read on 100.00% of texels), GPU sub-texel filter quantization (8 and 6 bits
     both make the fit worse), every MV stage individually (ablation moves k by 0.005), the ambiguity

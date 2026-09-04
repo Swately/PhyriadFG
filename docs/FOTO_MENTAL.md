@@ -124,8 +124,11 @@
    **Pasa:** 99.88% de píxeles exactos en el default (739–788 px por cuadro fuera, todos en un anillo en
    la silueta en movimiento). **NO pasa:** con `--st-no-stasis` (que quita la copia de stasis del 99% y
    deja `result = B_samp` pelado) el exacto cae a 84.39% y la escala de desplazamiento por mínimos
-   cuadrados da **k = 0.702** (0.829 en el registro default) contra el 1.000 que la compuerta exige: la
-   referencia mueve el contenido como un tercio de más, sistemáticamente, con correlación 0.87–0.95.
+   cuadrados da **k = 0.702** (0.829 en el registro default) contra el 1.000 que la compuerta exige.
+   **La FORMA del error importa más que su tamaño:** al binear el ajuste por magnitud de desplazamiento
+   aparece una ZONA MUERTA sub-píxel, no una escala. Arriba de 4 px la referencia acierta (k = 0.955,
+   corr 0.97); abajo de 0.5 px el shader NO mueve nada (cambio medio 0.03–0.09 de 255) mientras la
+   referencia mueve 0.9–4.0. El k de cuadro entero es sólo el promedio de esas dos poblaciones.
    **Descartado, cada uno con un número:** registro rancio (una instantánea tomada en la llamada a
    `wap_upload` es idéntica a la lectura tardía en 100.00% de los téxeles), cuantización del filtro de la
    GPU (8 y 6 bits EMPEORAN el ajuste), cada etapa del MV por ablación (k se mueve 0.005), la regla de
