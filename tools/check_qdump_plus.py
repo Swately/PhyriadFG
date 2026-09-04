@@ -100,20 +100,33 @@ def main():
     # ── CORPUS COVERAGE ────────────────────────────────────────────────────────────────────────
     # A record whose ticks all sit at one phase tests the core at that phase only. R3's M4 gate
     # (byte-identical or explained, over the replay set) is only as strong as the phases the set
-    # covers, so coverage is CHECKED, not assumed. Measured 2026-09-03 on a 16-triple run: ten
-    # triples at t≈0.125 and six at t≈0.375, all in generation 2 — the sampling stride's own comment
-    # claims successive dumps "land on DIFFERENT phases", and on this configuration they do not.
+    # covers, so coverage is CHECKED, not assumed.
+    #
+    # THE CEILING IS THE REFRESH RATIO, NOT THE SAMPLER. A locked ladder at panel/source = 4 emits
+    # exactly four phases (~0.125, 0.375, 0.625, 0.875 = eighth-bins 1,3,5,7); no sampler can dump a
+    # fifth. So read the HISTOGRAM below, not just the bin count: uniform hits across the bins that
+    # appear is full coverage of what this configuration can produce. A finer phase sweep needs a
+    # different ratio (a non-integer source rate), which is a corpus-DESIGN choice, not a bug here.
+    # History: the pre-S2.T1b stride sampler dumped ten triples at t≈0.125 and six at t≈0.375, all in
+    # one ring slot, because the dump stalls its own tick and the clock recovers identically each time.
     ts = sorted(float(r['t']) for r in rows if 't' in r)
     gens = sorted({r['gen'] for r in rows if 'gen' in r})
     if ts:
-        bins = sorted({round(t * 8) for t in ts})          # eighth-of-a-pair buckets
+        bins = sorted({min(7, int(t * 8)) for t in ts})    # eighth-of-a-pair buckets, binned EXACTLY as the C++ sampler does
         span = max(ts) - min(ts)
+        hist = {b: sum(1 for t in ts if min(7, int(t * 8)) == b) for b in bins}
         print(f'coverage: {len(rows)} triples | t in [{min(ts):.3f},{max(ts):.3f}] span={span:.3f} '
               f'| distinct t-bins(1/8) = {len(bins)} | generations = {sorted(gens)}')
+        print('  phase histogram (bin/8 -> triples): ' +
+              '  '.join(f'{b}:{n}' for b, n in sorted(hist.items())))
         if len(bins) < 3:
             print('  WARN: fewer than 3 distinct phase bins — this record is NOT a representative M4 corpus.')
-            print('        The dump stride samples the pair at a near-fixed offset. Fix the SAMPLING before')
-            print('        using this as R3\'s replay set (rotate the within-pair offset, or target phases).')
+            print('        Either the sampler is pinning, or the ladder itself is that coarse. Check the')
+            print('        refresh ratio before blaming the sampler.')
+        lo, hi = min(hist.values()), max(hist.values())
+        if len(bins) >= 3 and hi > 2 * lo:
+            print(f'  WARN: the phase histogram is lopsided ({lo}..{hi} per bin) - some phases are'
+                  ' under-represented in this corpus.')
         if len(gens) < 2:
             print('  WARN: every triple came from ONE generation — the record does not exercise the ring.')
     print('RESULT:', 'all checks passed' if fails == 0 else f'{fails} FAILURE(S)')

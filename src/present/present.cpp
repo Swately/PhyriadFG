@@ -849,13 +849,31 @@ void run_present(FgContext& ctx){
             // No host bounce, no G in the present path (lowest latency).
             int outdump_left=cfg.outdump_n, outdump_idx=0;   // instrument (declared before the lambda that uses them)
             // layer 1 (--qdump <dir> N) the data-tap state, declared before the lambda that captures it.
-            // qdump_left counts DOWN the remaining triples; qdump_idx names the file index. qdump_tick counts
-            // present ticks for the sampling stride: we dump only every kQdumpStride-th tick so the N triples
-            // SPAN the run (do NOT dump every tick — at 240Hz that would be ~N triples in <N ticks, clustered).
-            // kQdumpStride=120 ticks ≈ 0.5s at refresh 240 → N triples over ~N×0.5s of footage. qdump_man_open
-            // gates the one-time `size W H` manifest header (written on the FIRST dump, after the dir exists).
+            // qdump_left counts DOWN the remaining triples; qdump_idx names the file index. qdump_man_open gates
+            // the one-time `size W H` manifest header (written on the FIRST dump, after the dir exists).
+            //
+            // SAMPLING (S2.T1b, 2026-09-03) - a COVERAGE sampler, not a stride. The record exists to be R3's
+            // M4 replay set, and a set whose ticks all sit at one phase tests the core at one phase. The former
+            // fixed stride (11, "coprime with the phase steps") was MEASURED not to spread: over 16 triples the
+            // phase landed in two eighth-of-a-pair bins and one ring slot. A stride CANNOT spread here, because
+            // the dump stalls its own tick (three full-frame copies + a fence), the content clock recovers from
+            // that stall the same way every time, and so the phase N ticks later is a deterministic function of
+            // the stall rather than of N - the sampler synchronises with its own perturbation.
+            //
+            // Instead: dump on a tick whose phase bin is the LEAST-COVERED bin the ladder has actually produced
+            // (seen[] gates the minimum, so we can never wait forever for a bin this refresh ratio never emits),
+            // and whose generation ring slot is likewise least-covered - the slot condition is dropped after
+            // kQdumpStarve skipped candidates so the two conditions can never deadlock each other. Dumping a bin
+            // makes it ineligible until the others catch up, which is exactly what pinning cannot survive.
+            // kQdumpMinGap keeps the next candidate away from the stall we just caused, so the phase we record
+            // is a SETTLED phase and not the clock's recovery transient.
             int qdump_left=cfg.qdump_n, qdump_idx=0; uint32_t qdump_tick=0; bool qdump_man_open=false;
-            const uint32_t kQdumpStride=11u;   // present ticks between qdump samples. 11 is coprime with the ~16 phase-steps/span so successive dumps land on DIFFERENT phases (dense phase coverage for the --blend-solo track-vs-phase measurement) while the 1-tick dump stall never accumulates into phase-pinning (unlike --outdump's consecutive dumps). Was 120 (~0.5s @ 240Hz footage-spanning); lowered for phase-sweep diagnostics.
+            static constexpr int      kQdBins      = 8;    // eighth-of-a-pair phase buckets (check_qdump_plus.py bins the same way)
+            static constexpr uint32_t kQdumpMinGap = 8u;   // ticks before the next candidate: let the clock re-lock after the dump stall
+            static constexpr uint32_t kQdumpStarve = 64u;  // skipped candidates after which the ring-slot condition is dropped
+            uint32_t qd_bin_hits[kQdBins]={}, qd_gen_hits[kGenRing]={};
+            bool     qd_bin_seen[kQdBins]={}, qd_gen_seen[kGenRing]={};
+            uint32_t qd_skip=0, qd_last_tick=0; bool qd_any=false;
             // --wsub sub-timings of the per-tick warp lambda. These split the `warp` cost EMA
             // (= the wap_warp_present end-to-end) into: rec = CPU cmd record (reset→begin→bind→push→
             // dispatch→barriers→blit→end), gpu = submit + the BLOCKING vkWaitForFences (the warp dispatch
@@ -1376,7 +1394,18 @@ void run_present(FgContext& ctx){
                 // anchors use SHADER_READ_ONLY_OPTIMAL endpoints (preserving the layout the next warp/upload
                 // expects). The oneshot stalls this tick (irrelevant for a dump run, like --outdump).
                 if(!ap && qdump_left>0 && hostOutD && hostPrevD && hostCurD){
-                    if((qdump_tick % kQdumpStride)==0u){
+                    // classify THIS tick, then decide. seen[] is updated on every tick (dumped or not) so the
+                    // minimum below ranges over the bins/slots this configuration actually reaches.
+                    int qd_b=(int)(t*(float)kQdBins); if(qd_b<0) qd_b=0; if(qd_b>=kQdBins) qd_b=kQdBins-1;
+                    const int qd_g=(qd_gen>=0&&qd_gen<kGenRing)?qd_gen:0;
+                    qd_bin_seen[qd_b]=true; qd_gen_seen[qd_g]=true;
+                    uint32_t qd_bmin=0xFFFFFFFFu, qd_gmin=0xFFFFFFFFu;
+                    for(int _i=0;_i<kQdBins;++_i)  if(qd_bin_seen[_i]&&qd_bin_hits[_i]<qd_bmin) qd_bmin=qd_bin_hits[_i];
+                    for(int _i=0;_i<kGenRing;++_i) if(qd_gen_seen[_i]&&qd_gen_hits[_i]<qd_gmin) qd_gmin=qd_gen_hits[_i];
+                    const bool qd_gap_ok = !qd_any || (qdump_tick-qd_last_tick)>=kQdumpMinGap;
+                    const bool qd_want   = qd_gap_ok && qd_bin_hits[qd_b]==qd_bmin
+                                           && (qd_gen_hits[qd_g]==qd_gmin || qd_skip>=kQdumpStarve);
+                    if(qd_want){
                         oneshot(A,[&](VkCommandBuffer c){
                             // wapOutA: GENERAL → TRANSFER_SRC → GENERAL (identical to --outdump).
                             img_barrier(c,wapOutA.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
@@ -1421,6 +1450,9 @@ void run_present(FgContext& ctx){
                         if(mf){
                             if(!qdump_man_open){
                                 std::fprintf(mf,"# qdump (--qdump) HSR FG-quality test-field — TRUTH-LESS held-out triples (live FG, no mid=)\n");
+                                std::fprintf(mf,"# sampler: coverage (S2.T1b) - least-covered phase bin of %d, ring slot of %d;"
+                                                " min gap %u ticks, slot condition dropped after %u skips\n",
+                                                kQdBins,kGenRing,kQdumpMinGap,kQdumpStarve);
                                 std::fprintf(mf,"size %u %u\n",WW,WH);
                                 // at --warp-scale N>1 the `live` plane is the SCALED warp output
                                 // (WW/N×WH/N), while prev/next (pair-reals) stay WW×WH. Annotate the divisor so the
@@ -1442,9 +1474,12 @@ void run_present(FgContext& ctx){
                                 qd_gme?(double)qd_gme[3]:0.0,qd_gme?(double)qd_gme[4]:0.0,qd_gme?(double)qd_gme[5]:0.0);
                             std::fclose(mf);
                         }
+                        ++qd_bin_hits[qd_b]; ++qd_gen_hits[qd_g];   // this bin/slot is now covered - ineligible until the rest catch up
+                        qd_last_tick=qdump_tick; qd_any=true; qd_skip=0;
                         ++qdump_idx; --qdump_left;
                         if(qdump_left==0) std::printf("[ra] qdump: wrote %d triples to %s\n",qdump_idx,cfg.qdump_dir);
                     }
+                    else ++qd_skip;
                     ++qdump_tick;
                 }
                 // ── --shallow-queue: BOUNDED early-promote of THIS tick's warp ──────────────────

@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S2.T1b (fix the dump SAMPLING) → S4.R3 (fg_core.comp) · next`**
+**`P → S4.R3 (fg_core.comp) / S2.T2-T6 (the marker track) · next`**
 · **R0 and R1 are DONE** (2026-09-03). R0: `records/R0_GATE.md` (parity 0 FAIL / 297 launches, M2a = 2 files,
 M3 inside spread, column closure = 0 new columns → PROCEED). R1: `records/R1_GATE.md` — the CLOCK is now
 `src/clock/phase_clock.{hpp,cpp}` with a CPU test; replay bit-parity on 14,390 live ticks, 0 mismatches;
@@ -65,11 +65,16 @@ exactos que simulen de forma correcta el movimiento".)
     is snapshotted at the submit site. `tools/check_qdump_plus.py` validates a record: sizes, the float16
     MV decode, and the push block's own `t` against the manifest's `t` (equal on every tick — the bytes
     provably belong to that tick). The scorer reads the `+` manifest unchanged.
-  - **S2.T1b** fix the dump SAMPLING · **`next`** — **an R3 PRECONDITION.** Measured on 16 triples: `t`
-    landed in only 2 eighth-of-a-pair bins (ten at ≈0.125, six at ≈0.375) and every triple came from ONE
-    generation. `kQdumpStride=11`'s comment claims successive dumps land on different phases; at 60 fps
-    source on a 240 Hz panel (4 phase-steps/pair) they do not. M4 over such a set would test the core at
-    one or two phases only. `check_qdump_plus.py` now WARNS on it so it cannot be inherited silently.
+  - **S2.T1b** fix the dump SAMPLING · **`done`** (2026-09-03, `records/S2_T1B_GATE.md`) — the R3 corpus
+    precondition, **lifted**. The stride is replaced by a COVERAGE sampler: dump on a tick whose phase bin
+    is the least-covered bin the ladder has actually produced, and whose ring slot is likewise least-covered
+    (slot condition dropped after 64 skips so the two cannot deadlock; an 8-tick gap keeps the next
+    candidate off the stall we just caused). A stride could never work here — the dump stalls its own tick
+    and the clock recovers identically every time, so the phase N ticks later is a function of the stall.
+    Measured, two independent runs of 16 triples: **8/8 bins at 2 each** and **4/4 reachable bins at 4
+    each**, 3/3 ring slots in both (was 2 bins, 10/6, 1 slot). The 8-vs-4 spread is the clock ACQUISITION
+    transient, not sampler variance: a locked 4× ladder emits exactly four phases, and that ceiling is the
+    refresh ratio, not the sampler.
   - **S2.T2–T3** marker zoo + player · `next` (parallel to T1)
   - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
   - **S2.T6** CPU reference warp (E7) · `blocked` on T1
@@ -112,7 +117,7 @@ exactos que simulen de forma correcta el movimiento".)
     unchanged. Flipping the default is a separate decision (a longer soak + the operator's eye).
   - **S4.R3** Stage 5: `fg_core.comp` + the 8 fused rows replace `wap_warp.comp` for the default set =
     **M-R3**; M4 by S2.T6 on the `--qdump+` replay (packed value first, XR1); bg-reclaim bug-for-bug (XR7) ·
-    `blocked (S2.T1b — the corpus samples 2 phases / 1 generation today; and S2.T6, the CPU reference warp)`
+    `blocked (S2.T6, the CPU reference warp — the corpus itself is now unblocked: S2.T1b)`
   - **S4.R4** Stage 6 PRESENT extracted (`PresentStage`, `Phase.decision`, `FlipStats`) = M-R4 · `blocked (R1)`
   - **S4.R5** Stage 3: `FlowSet` + `FlowRing` declared; holons → `kind = P` rows (off); MV median → stage 3;
     `wap_upload` conditional on device count = M-R5 · `blocked (R2)`

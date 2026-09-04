@@ -88,8 +88,18 @@
    **HALLAZGO que bloquea R3:** el MUESTREO no reparte fases. En 16 triples el `t` cayó en solo 2 bins
    (diez en ≈0.125, seis en ≈0.375) y todos en UNA generación. M4 sobre ese corpus probaría el núcleo en
    una o dos fases. El checker ya AVISA. Eso es S2.T1b y es precondición de R3.
-5. **NEXT** — (a) **S2.T1b**: arreglar el muestreo del volcado (rotar el desfase dentro del par, o apuntar
-   a fases explícitas) y re-verificar la cobertura con `check_qdump_plus.py`. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
+4h. **S2.T1b HECHO (2026-09-03 — `planning/records/S2_T1B_GATE.md`)** — el stride se reemplazó por un
+   MUESTREADOR DE COBERTURA: se vuelca en el tick cuyo bin de fase es el menos cubierto de los que la
+   escalera realmente produce, y cuyo slot del anillo también lo es (la condición de slot se suelta tras 64
+   descartes para que las dos no se traben; un hueco de 8 ticks aleja al siguiente candidato del stall que
+   acabamos de causar). Un stride NUNCA podía funcionar: el volcado frena su propio tick y el reloj se
+   recupera igual cada vez, así que la fase N ticks después es función del stall, no de N. Medido en dos
+   corridas independientes de 16 triples: **8/8 bins a 2 cada uno** y **4/4 bins alcanzables a 4 cada
+   uno**, 3/3 slots del anillo en ambas (antes: 2 bins, 10/6, 1 slot). La diferencia 8 contra 4 es el
+   transitorio de ENGANCHE del reloj, no varianza del muestreador: una escalera enganchada a 4× emite
+   exactamente cuatro fases, y ese techo lo pone la razón de refresco, no el muestreador.
+5. **NEXT** — (a) **S2.T6** (warp de referencia en CPU) o **R3** directamente; el corpus de M4 ya no es el
+   bloqueo. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
    soak largo y el ojo del operador sobre un juego real, no solo `ball_zoo`. (c) R3 lleva las dos
    restricciones del experimento de columnas: etapa `WEIGHT` con el núcleo partido en
    `fg_sample`/`fg_blend`, y el canal `CH_BLEND` con `select` como fila.

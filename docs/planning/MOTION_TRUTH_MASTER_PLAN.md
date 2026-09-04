@@ -5,9 +5,9 @@
 > readback and adds sidecar dumps on the SAME synchronous path — the async-present path is explicitly
 > out of scope, so no use-after-reset surface is opened). Companion:
 > [`MOTION_TRUTH_IMPLEMENTATION_STRATEGIES.md`](MOTION_TRUTH_IMPLEMENTATION_STRATEGIES.md).
-> **Status:** `in execution` — **T0 and T1 are DONE and gated** (2026-09-03,
-> [`records/S2_T0_T1_GATE.md`](records/S2_T0_T1_GATE.md)); T1b (fix the dump sampling) is next and is
-> an R3 precondition; T2–T6 are still `designed` (2026-09-02). Every "exists / builds / measured" claim below was verified
+> **Status:** `in execution` — **T0, T1 and T1b are DONE and gated** (2026-09-03,
+> [`records/S2_T0_T1_GATE.md`](records/S2_T0_T1_GATE.md) and
+> [`records/S2_T1B_GATE.md`](records/S2_T1B_GATE.md)); T2–T6 are still `designed` (2026-09-02). Every "exists / builds / measured" claim below was verified
 > first-hand this session; the instrument itself is not built. MUST/SHOULD/MAY are BCP-14.
 > **Serves:** the frozen objective's metric **M1** in
 > [`aap/A0_FROZEN_OBJECTIVE.md`](aap/A0_FROZEN_OBJECTIVE.md) and the fixed points **C8** (quality
