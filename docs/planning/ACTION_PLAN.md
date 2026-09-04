@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S4 (CONVERGENCE, in place) → S4.R3 (fg_core.comp) / S2.T0-T1 (the instrument) · next`**
+**`P → S2.T1b (fix the dump SAMPLING) → S4.R3 (fg_core.comp) · next`**
 · **R0 and R1 are DONE** (2026-09-03). R0: `records/R0_GATE.md` (parity 0 FAIL / 297 launches, M2a = 2 files,
 M3 inside spread, column closure = 0 new columns → PROCEED). R1: `records/R1_GATE.md` — the CLOCK is now
 `src/clock/phase_clock.{hpp,cpp}` with a CPU test; replay bit-parity on 14,390 live ticks, 0 mismatches;
@@ -53,8 +53,23 @@ exactos que simulen de forma correcta el movimiento".)
   - **S1.E7** · core-vs-full equivalence test · **`superseded`** by S2.T6 (the CPU reference warp).
 - **S2 — MOTION_TRUTH (exact motion as data)** · **`next`** ·
   [`MOTION_TRUTH_MASTER_PLAN.md`](MOTION_TRUTH_MASTER_PLAN.md) + `_IMPLEMENTATION_STRATEGIES.md` (Tier-1).
-  - **S2.T0** scorer port + `--qdump` precondition documented · `next`
-  - **S2.T1** `--qdump+` replay sidecars (MV, SAD, push, gme) · `next`
+  - **S2.T0** scorer port + the `--qdump` present-path fact documented · **`done`** (2026-09-03,
+    `records/S2_T0_T1_GATE.md`): `tools/fg_quality_scorer/` builds from the repo against the VENDORED
+    pipeline (exit 0, 155,648 B); Mode T on a fresh dump → 6 rows. Two catalog build defects fixed
+    (hard-coded `/O2` vs Debug's `/RTC1`; no default build type). **A documented claim was WRONG and is
+    corrected**: `--qdump` is NOT inert under the shipping default — `resolve_config` auto-disables
+    `--async-present` for the run and says so (verified).
+  - **S2.T1** `--qdump+` replay sidecars (MV, SAD, push, gme) · **`done`** (2026-09-03, same record):
+    per tick `q*_mv.rg16f` + `q*_sad.rg16f` (129,600 B = 240×135×4) + `q*_push.bin` (232 B, constant) and
+    the manifest tokens; the generation is RECORDED at the `wap_upload()` site, never recomputed; the push
+    is snapshotted at the submit site. `tools/check_qdump_plus.py` validates a record: sizes, the float16
+    MV decode, and the push block's own `t` against the manifest's `t` (equal on every tick — the bytes
+    provably belong to that tick). The scorer reads the `+` manifest unchanged.
+  - **S2.T1b** fix the dump SAMPLING · **`next`** — **an R3 PRECONDITION.** Measured on 16 triples: `t`
+    landed in only 2 eighth-of-a-pair bins (ten at ≈0.125, six at ≈0.375) and every triple came from ONE
+    generation. `kQdumpStride=11`'s comment claims successive dumps land on different phases; at 60 fps
+    source on a 240 Hz panel (4 phase-steps/pair) they do not. M4 over such a set would test the core at
+    one or two phases only. `check_qdump_plus.py` now WARNS on it so it cannot be inherited silently.
   - **S2.T2–T3** marker zoo + player · `next` (parallel to T1)
   - **S2.T4–T5** extractor + report + DI-3 baseline of the shipping default · `blocked` on T1–T3
   - **S2.T6** CPU reference warp (E7) · `blocked` on T1
@@ -97,7 +112,7 @@ exactos que simulen de forma correcta el movimiento".)
     unchanged. Flipping the default is a separate decision (a longer soak + the operator's eye).
   - **S4.R3** Stage 5: `fg_core.comp` + the 8 fused rows replace `wap_warp.comp` for the default set =
     **M-R3**; M4 by S2.T6 on the `--qdump+` replay (packed value first, XR1); bg-reclaim bug-for-bug (XR7) ·
-    `blocked (R0 exit gate, R2, S2.T1, S2.T6)`
+    `blocked (S2.T1b — the corpus samples 2 phases / 1 generation today; and S2.T6, the CPU reference warp)`
   - **S4.R4** Stage 6 PRESENT extracted (`PresentStage`, `Phase.decision`, `FlipStats`) = M-R4 · `blocked (R1)`
   - **S4.R5** Stage 3: `FlowSet` + `FlowRing` declared; holons → `kind = P` rows (off); MV median → stage 3;
     `wap_upload` conditional on device count = M-R5 · `blocked (R2)`

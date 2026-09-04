@@ -97,6 +97,8 @@ void run_present(FgContext& ctx){
     auto& use_ambig = ctx.use_ambig;
     auto& ofp = ctx.ofp;
     auto& hostI = ctx.hostI;
+    auto& hostMV = ctx.hostMV;    // --qdump+ (S2.T1): the per-generation MV plane (RG16F, W/8)
+    auto& hostSAD = ctx.hostSAD;  // --qdump+ (S2.T1): the per-generation SAD plane (RG16F, W/8)
     auto& hI_a = ctx.hI_a;
     auto& f_pair_cseq_a = ctx.f_pair_cseq_a;
     auto& f_pair_slot_a = ctx.f_pair_slot_a;
@@ -706,6 +708,11 @@ void run_present(FgContext& ctx){
             // ofp.motion_width() at the post-init site). All three MUST agree; ofp.motion_width()/height()
             // is the single source of truth (valid here — after init). At flow_div==1 == (WW+7)/8.
             const uint32_t wap_mvw=ofp.motion_width(), wap_mvh=ofp.motion_height();
+            // --qdump+ (S2.T1): the generation whose MV/SAD/gme the CURRENT upload published, recorded at
+            // the wap_upload() call site and NEVER recomputed — the sidecars must describe exactly the
+            // fields the warp read. -1 until the first upload. Declared here (before the warp lambda) so
+            // the dump block inside it can capture it; inert unless --qdump is on.
+            int qd_gen=-1;
             // WAP runs on A (the bridge owner): the per-pair upload reads the A-side host bridges
             // (hR_a/hMV_a/hSAD_a) into A's WAP sampled images, and the upload, the warp dispatch, and
             // the bridge blit ALL run on A.q. cmdBridge is A.pool/qfam-bound, so a same-family A.q2
@@ -890,6 +897,11 @@ void run_present(FgContext& ctx){
             if(cfg.sg_barriers && !A.has_sync2)
                 std::printf("[ra] --sg-barriers: synchronization2 is NOT enabled on device A -- falling back to the hand-written barriers\n");
             auto wap_warp_present=[&](float t,float extrap,const float* gme6,bool bwd_ok,float thr_eff,uint32_t* presented_out,bool do_warp=true){
+                // --qdump+ (S2.T1): a byte copy of the push block AS SUBMITTED. `pcw` lives in a nested
+                // block that closes before the dump tap below, and copying at the submit site is also the
+                // truer record: these are exactly the bytes the GPU received this tick. Inert unless
+                // --qdump is on (qd_push_sz stays 0 and nothing is written).
+                unsigned char qd_push[512]; size_t qd_push_sz=0;
                 const double wsub_rec0 = cfg.wsub ? now_ms() : 0.0;
                 double wsub_gpu0 = 0.0;   // hoisted out of the record block (assigned inside it) so the
                                           // --wsub `gpu` segment timing below still resolves on a dropped tick.
@@ -1162,6 +1174,8 @@ void run_present(FgContext& ctx){
                       sto_push,   // --single-track: the composite base becomes the B-track (offset 224). 0 → wa_eff==wa → byte-identical. Quality layers stay active on the base; A re-admitted only where the occlusion machinery owns it.
                       bgr_push};  // --bg-reclaim: tile-level gravity fix — damp gme-nonconform bg-fringe MV toward the model (offset 228). Carries strength (>0.001=ON). 0 → mv untouched → byte-identical.
                 vkCmdPushConstants(cmdBridge,wapPipeA.layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcw),&pcw);
+                if(cfg.qdump_n>0){ static_assert(sizeof(pcw)<=sizeof(qd_push),"qd_push too small for the warp push block");
+                    qd_push_sz=sizeof(pcw); std::memcpy(qd_push,&pcw,qd_push_sz); }   // --qdump+ record
                 vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);   // dispatch the warp over the SCALED wapOutA extent (one 8×8 workgroup per scaled output tile; the shader's imageSize(u_output) valid-test bounds it). warp_div==1 ⇒ == (WW+7)/8,(WH+7)/8 (byte-identical).
                 // the field VISUALIZER pass — A reads the iGPU contour field (wapFIELDA,
                 // GENERAL, uploaded this pair in wap_upload) and tints the boundary band onto wapOutA IN-PLACE
@@ -1385,6 +1399,23 @@ void run_present(FgContext& ctx){
                         // Append a TRUTH-LESS manifest line (NO mid= — live FG has no held-out ground truth; the
                         // fg_quality_scorer's truth-less mode scores crossfade-only). Write the `size W H` header
                         // ONCE, on the first dump (manifest opened in "w" then switched to "a" via the flag).
+                        // --qdump+ (S2.T1) the REPLAY RECORD: the triple alone cannot be replayed. Dump the fields the
+                        // warp actually consumed for THIS tick — the MV and SAD planes of the uploaded generation, and
+                        // the push block exactly as submitted. Host pointers, already mapped; no new synchronisation:
+                        // this block runs after the tick's fence on the sync path. RING SAFETY: we read generation
+                        // qd_gen while F may be writing qd_gen+1; kGenRing=3 makes that safe by construction.
+                        size_t qd_pushsz=0; uint32_t qd_mvw=0, qd_mvh=0; int qd_gv=0; const float* qd_gme=nullptr;
+                        if(qd_gen>=0){
+                            qd_mvw=wap_mvw; qd_mvh=wap_mvh;
+                            const size_t qd_plane=(size_t)qd_mvw*qd_mvh*4u;   // RG16F = 4 bytes/texel
+                            if(hostMV[qd_gen]){ std::snprintf(qp,sizeof(qp),"%s\\q%06d_mv.rg16f",cfg.qdump_dir,qdump_idx);
+                                if(FILE* f=std::fopen(qp,"wb")){ std::fwrite(hostMV[qd_gen],1,qd_plane,f); std::fclose(f); } }
+                            if(hostSAD[qd_gen]){ std::snprintf(qp,sizeof(qp),"%s\\q%06d_sad.rg16f",cfg.qdump_dir,qdump_idx);
+                                if(FILE* f=std::fopen(qp,"wb")){ std::fwrite(hostSAD[qd_gen],1,qd_plane,f); std::fclose(f); } }
+                            qd_gv=f_pair_gme_valid_a[qd_gen]; qd_gme=f_pair_gme_a[qd_gen];
+                        }
+                        std::snprintf(qp,sizeof(qp),"%s\\q%06d_push.bin",cfg.qdump_dir,qdump_idx);
+                        if(qd_push_sz){ if(FILE* f=std::fopen(qp,"wb")){ qd_pushsz=qd_push_sz; std::fwrite(qd_push,1,qd_pushsz,f); std::fclose(f); } }
                         std::snprintf(qp,sizeof(qp),"%s\\manifest.txt",cfg.qdump_dir);
                         FILE* mf=std::fopen(qp,qdump_man_open?"ab":"wb");
                         if(mf){
@@ -1398,8 +1429,17 @@ void run_present(FgContext& ctx){
                                 if(warp_div>1u) std::fprintf(mf,"live_div %u %u %u\n",warp_div,WW_warp,WH_warp);
                                 qdump_man_open=true;
                             }
-                            std::fprintf(mf,"triple q%06d prev=q%06d_prev.rgba next=q%06d_next.rgba live=q%06d_live.rgba t=%.4f\n",
-                                         qdump_idx,qdump_idx,qdump_idx,qdump_idx,t);   // t=phase appended (DIAGNOSTIC): lets the analyzer plot the live-track position vs phase; parsers ignoring trailing tokens are unaffected.
+                            // --qdump+ : the sidecar tokens are APPENDED. The scorer's manifest parser ignores trailing
+                            // tokens (its README states so; re-verified by running Mode T on a + manifest), so an older
+                            // consumer still reads the triple exactly as before.
+                            std::fprintf(mf,"triple q%06d prev=q%06d_prev.rgba next=q%06d_next.rgba live=q%06d_live.rgba t=%.4f"
+                                            " gen=%d mvw=%u mvh=%u mv=q%06d_mv.rg16f sad=q%06d_sad.rg16f push=q%06d_push.bin pushsz=%zu"
+                                            " gme_valid=%d gme=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
+                                qdump_idx,qdump_idx,qdump_idx,qdump_idx,t,
+                                qd_gen,qd_mvw,qd_mvh,qdump_idx,qdump_idx,qdump_idx,qd_pushsz,
+                                qd_gv,
+                                qd_gme?(double)qd_gme[0]:0.0,qd_gme?(double)qd_gme[1]:0.0,qd_gme?(double)qd_gme[2]:0.0,
+                                qd_gme?(double)qd_gme[3]:0.0,qd_gme?(double)qd_gme[4]:0.0,qd_gme?(double)qd_gme[5]:0.0);
                             std::fclose(mf);
                         }
                         ++qdump_idx; --qdump_left;
@@ -2389,6 +2429,7 @@ void run_present(FgContext& ctx){
                             }
                             if(cfg.vblend && target_gen!=f_gen) ++vblend_hit;   // a valid target pair was available (≈cons/s confirms the tilt fires every pair)
                             wap_upload(prev_slot,rs,f_gen,target_gen);
+                            qd_gen=f_gen;   // --qdump+ (S2.T1): the generation now uploaded to A
                             if(cfg.wsub){ const double up=now_ms()-wsub_up0; w_up_ema=w_up_ema>0.0?w_up_ema*0.8+up*0.2:up; }
                             wap_pair_c_up=pair_c; wap_have_up=true;
                             // instrument: dump the warp's actual input pair (the two full-res frames the

@@ -76,8 +76,20 @@
    DECLARADA con su razón; **0 líneas de validación** en un soak de 60 s saturado con `gpu_load`; M3 con
    2 corridas por lado dentro de la dispersión (14,384 presents en las cuatro). **G-R2 PASÓ.** La ruta
    derivada es OPT-IN: el default sigue con las barreras a mano, así que el producto no cambió.
-5. **NEXT** — (a) **S2.T0/T1** con la luz verde: el port del scorer y los sidecars `--qdump+`, que la
-   compuerta M4 de R3 EXIGE. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
+4g. **S2.T0 + T1 HECHOS (2026-09-03 — `planning/records/S2_T0_T1_GATE.md`)** — scorer portado a
+   `tools/fg_quality_scorer/` apuntando al flujo VENDORIZADO (build exit 0; modo T sobre un volcado fresco
+   → 6 filas). Dos defectos de build del catálogo corregidos (`/O2` fijo contra `/RTC1` de Debug; sin tipo
+   de build por defecto). **Una afirmación documentada era FALSA y quedó corregida**: `--qdump` NO es
+   inerte bajo el default — `resolve_config` desactiva `--async-present` para la corrida y lo anuncia
+   (verificado). T1: sidecars por tick `mv.rg16f` + `sad.rg16f` (129,600 B = 240×135×4) + `push.bin`
+   (232 B constante) + tokens del manifiesto; la generación se RECORDA en el sitio de `wap_upload()`, no
+   se recalcula; el push se copia en el sitio del submit. `tools/check_qdump_plus.py` valida tamaños, el
+   decode float16 del MV, y el `t` del push contra el `t` del manifiesto (iguales en todos los ticks).
+   **HALLAZGO que bloquea R3:** el MUESTREO no reparte fases. En 16 triples el `t` cayó en solo 2 bins
+   (diez en ≈0.125, seis en ≈0.375) y todos en UNA generación. M4 sobre ese corpus probaría el núcleo en
+   una o dos fases. El checker ya AVISA. Eso es S2.T1b y es precondición de R3.
+5. **NEXT** — (a) **S2.T1b**: arreglar el muestreo del volcado (rotar el desfase dentro del par, o apuntar
+   a fases explícitas) y re-verificar la cobertura con `check_qdump_plus.py`. (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
    soak largo y el ojo del operador sobre un juego real, no solo `ball_zoo`. (c) R3 lleva las dos
    restricciones del experimento de columnas: etapa `WEIGHT` con el núcleo partido en
    `fg_sample`/`fg_blend`, y el canal `CH_BLEND` con `select` como fila.

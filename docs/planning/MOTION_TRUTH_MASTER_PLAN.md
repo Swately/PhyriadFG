@@ -5,7 +5,9 @@
 > readback and adds sidecar dumps on the SAME synchronous path — the async-present path is explicitly
 > out of scope, so no use-after-reset surface is opened). Companion:
 > [`MOTION_TRUTH_IMPLEMENTATION_STRATEGIES.md`](MOTION_TRUTH_IMPLEMENTATION_STRATEGIES.md).
-> **Status:** `designed` (2026-09-02). Every "exists / builds / measured" claim below was verified
+> **Status:** `in execution` — **T0 and T1 are DONE and gated** (2026-09-03,
+> [`records/S2_T0_T1_GATE.md`](records/S2_T0_T1_GATE.md)); T1b (fix the dump sampling) is next and is
+> an R3 precondition; T2–T6 are still `designed` (2026-09-02). Every "exists / builds / measured" claim below was verified
 > first-hand this session; the instrument itself is not built. MUST/SHOULD/MAY are BCP-14.
 > **Serves:** the frozen objective's metric **M1** in
 > [`aap/A0_FROZEN_OBJECTIVE.md`](aap/A0_FROZEN_OBJECTIVE.md) and the fixed points **C8** (quality
@@ -72,7 +74,10 @@ Five pieces, all data-in / data-out, none of which requires a human or an LLM to
    `q%06d_mv.rg16f` (mvw×mvh×4 B), `q%06d_sad.rg16f`, `q%06d_push.bin` (the warp's push block as
    submitted, `sizeof(pcw)` bytes), and manifest tokens `mv= sad= push= gme=a,b,c,d,e,f mvw= mvh= gen=`
    appended to the `triple` line (trailing tokens are ignored by existing parsers — the manifest's own
-   contract). Measurement runs use `--no-async-present` (the documented precondition; making the async
+   contract). The dump needs the SYNC present path, and `resolve_config` (`cli.cpp:227-231`) auto-disables
+   `--async-present` for any run that asks for it, printing the reason — so `--qdump` alone is enough
+   (verified 2026-09-03; the earlier "inert under the default" note was a misreading of the present-side
+   `!ap` gate). Passing `--no-async-present` explicitly is equivalent. Making the async
    path dumpable is a separate Tier-2 item, out of scope here).
 4. **`marker_extract.py` (numpy).** For each triple: decode `k_prev`, `k_next` from the barcodes of the
    two real planes (exact, jitter-immune); compute the two references for each marker at the triple's

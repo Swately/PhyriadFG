@@ -60,7 +60,7 @@ document is written under this arc until a new measurement exists**; each R-stag
 | `shaders/wap_warp.comp` (1,336): core `:496–529/637/679`; `mv_fwd` `:344`, bg-reclaim damp `:394`, phase-anchor `:410`, single-track `:1321–1328` | the product's math; the override chain | stage 5 (LAYERTAB) |
 | `src/cli/cli.hpp` (1,011) + `cli.cpp` (787) + `ui/src/main.js`: 257 flags vs 173 UI entries | the four-site drift | CONTROL plane |
 | E1 result: `main()` 1,222; 13 `init_*`; G1 baseline 240 presents/s, 28,799 / 120 s | the M3 baseline | — |
-| Instruments: `--csv`, `--qdump` (inert under `async_present=true`), `tools/ball_zoo.ps1`, `tools/gate_zoo.ps1` (operator's), `tools/gpu_load.exe`, `fg_quality_scorer` (catalog, builds) | the M3 / M4 / load fixtures | INSTRUMENT plane |
+| Instruments: `--csv`, `--qdump` (needs the sync present path; `resolve_config` AUTO-DISABLES `--async-present` for the run and says so — verified 2026-09-03, an earlier note calling it "inert under the default" was wrong), `tools/ball_zoo.ps1`, `tools/gate_zoo.ps1` (operator's), `tools/gpu_load.exe`, `fg_quality_scorer` (catalog, builds) | the M3 / M4 / load fixtures | INSTRUMENT plane |
 | MOTION_TRUTH | `designed`; T0–T6 unbuilt | **M1 not measurable yet** (§4.3) |
 
 ### 1.2 What is taken from the base (`apps/minimal_fg`, container, no git) — and only this

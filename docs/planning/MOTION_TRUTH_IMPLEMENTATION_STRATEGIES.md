@@ -23,7 +23,8 @@
   `docs/evidence/FG_QUALITY_BASELINE.json` for PhyriadFG (copy the catalog schema; the values WILL differ
   from the catalog's because the flow differs — that is the point of relocking, stated in the file).
 - **Document** in `README.md` (Run section) and in `print_help` (`src/cli/cli.cpp`, the `--qdump` line):
-  "`--qdump` requires `--no-async-present` (the dump reads the synchronous present path)". Do NOT change
+  "`--qdump` needs the synchronous present path; `resolve_config` auto-disables `--async-present` for the
+  run and prints why, so the flag alone suffices". Do NOT change
   the gating code (`present.cpp:1315`) in this plan.
 - **Verification:** scorer builds from the repo (exit 0); `phyriad_fg.exe --monitor 0 --no-async-present
   --qdump <dir> 6 --exit-after 12` then scorer Mode T → 6 rows (the shape of this session's smoke).
