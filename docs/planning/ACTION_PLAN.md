@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S4.R3 (fg_core.comp) on an APERIODIC, ≥ 2 px M4 corpus · next`**
+**`P → operator decision on the consensus-pass default (M1 finding) → S4.R3 on an APERIODIC, ≥ 2 px corpus · next`**
 > **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
 > background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
 > a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.
@@ -157,6 +157,19 @@ exactos que simulen de forma correcta el movimiento".)
     warp", measured. In time: the generated frame sits **4–6 ms** from where it claims to be, against a
     16.7 ms pair. The panning scene is a second document, one run, stamped NOT a baseline by the tool;
     its HUD class (screen-fixed over a moving world) is **0.046 px**.
+  - **S2.F1** the low-phase error, explained · **`done`** (2026-09-04, `records/M1_LOWPHASE_FINDING.md`) —
+    the operator asked whether 1.7 px at low phase is acceptable. **It is not a property of frame
+    generation: it is ONE default-on layer.** The dumped MV field is honest (EPE 0.164 px on `linear`);
+    the error is signed forward along the motion (88–100 % of markers displaced toward their t=1
+    position); and four conditions, two runs each, isolate it: `--st-no-stasis` leaves it (1.693),
+    `--no-mv-guided --mv-median` leaves it (1.493), **`--no-mv-guided` removes it — 1.668 → 0.271 px,
+    flat across phase**. The cause is `shaders/mv_median.comp`, the 3×3 vector-median consensus pass,
+    armed by default through `mv_guided = true`, which votes a small moving object's tile toward its
+    static neighbours' zero. **By standard:** A0 froze M1 as COMPARATIVE (≤ 0.10 px vs the shipping
+    default) with no absolute bar — which, as frozen, would penalise the fix; the field has no
+    positional-error bar; perceptually the mean is 2.5–3 arcmin and 21–97 % of a frame's motion,
+    in the range cinema judder literature treats as visible. **The default is untouched; the switch
+    is the operator's.** The pass's own purpose (flat-content rim stamps) was NOT tested here.
   - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
     passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
 - **S3 — LAYER CONTRACT (the AAP search)** · **`done`** (2026-09-03) · `docs/planning/aap/`

@@ -182,10 +182,28 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    cuadro generado está a 4–6 ms de donde dice estar contra un par de 16.7 ms. HUD sobre mundo en
    movimiento: 0.046 px (una corrida). También corregido: el triple es (N, N+1), no (N, N+2).
 
-5. **NEXT** — (a) con T0–T5 hechos y M1 medido, la decisión es del operador: leer
-   `docs/evidence/MOTION_TRUTH_BASELINE.md` y decidir si 1.7 px a fase baja es aceptable; (b) R3 sobre un
-   corpus aperiódico a ≥ 2 px; (c) subir `n` de la línea base (64 triples por corrida) para que `linear`
-   pase de r 0.47 a citable. Arriba de 4 px la referencia ya
+4m. **HALLAZGO M1 (2026-09-04 — `planning/records/M1_LOWPHASE_FINDING.md`)** — el operador preguntó si
+   1.7 px a fase baja es aceptable. Descompuesto antes de contestar: el campo MV volcado es honesto
+   (EPE 0.164 px en `linear`), `(1−t)·EPE` explica sólo 0.52 de 1.67, y el error tiene SIGNO hacia
+   adelante a lo largo del movimiento (88–100 % de los marcadores hacia su posición de t=1, ~0.5 de
+   `(1−t)·|v|`). Cuatro condiciones, dos corridas cada una: `--st-no-stasis` no cambia nada (1.693);
+   `--no-mv-guided --mv-median` tampoco (1.493); **`--no-mv-guided` solo lo elimina: 1.668 → 0.271 px,
+   plano en fase**. Causa: `shaders/mv_median.comp`, la mediana vectorial 3×3 de consenso, armada por
+   defecto vía `mv_guided=true` (`present.cpp:820`, corre si `mv_median||mv_guided`): la tile de un
+   objeto pequeño en movimiento ES el vector "disidente" y sus 8 vecinos estáticos lo votan a cero.
+   El pase reescribe `wapMVA` en GPU DESPUÉS de la copia host → el `mv=` de `--qdump+` es PRE-pase y T6
+   nunca lo vio (parte de su residuo). **Estándar:** A0 congeló M1 como COMPARATIVO (≤ 0.10 px contra
+   el default) sin cota absoluta — tal como está, penalizaría el arreglo; la literatura no tiene cota
+   posicional para FG; perceptualmente 2.5–3 arcmin media, 21–97 % del movimiento por cuadro, rango que
+   la literatura de judder trata como visible. **El default NO se tocó.**
+
+5. **NEXT** — (a) **decisión del operador:** el pase de consenso del MV (`mv_median.comp`, armado por
+   defecto vía `mv_guided`) explica el 1.7 px a fase baja entero; apagarlo deja 0.27 px plano. Su
+   propósito propio (sellos/huecos de borde en contenido plano) NO se midió aquí — antes de tocar
+   el default hay que medir ambas cosas, y el instrumento ya puede. (b) un readback post-consenso
+   `mv1` en `--qdump+` (el plano `mv=` es PRE-pase; T6 nunca vio el pase). (c) R3 sobre corpus
+   aperiódico ≥ 2 px. (d) revisar A0: M1 congelado como COMPARATIVO contra un default que es el
+   outlier penaliza el arreglo. Arriba de 4 px la referencia ya
    acierta (k = 0.955); abajo de 0.5 px el shader no mueve nada y la referencia sí. M4 no debe correr
    sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4 existe
    para detectar. La pista: el patrón de periodo 3 (−0.5, +0.1666, 0) sobre bloques cuyo `sad_best`

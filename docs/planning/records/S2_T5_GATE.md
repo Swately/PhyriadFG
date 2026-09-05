@@ -113,6 +113,7 @@ step 1 on every triple), which leaves sample size.
 - The 0.3 `ncc_max` threshold that separates "degraded" from "absent" is chosen, not derived.
 - **Nothing here says whether 1.7 px at low phase is acceptable.** That is the operator's call and the
   objective's; the instrument's job was to make the number exist with its reliability attached, and it
-  now does.
+  now does. **Answered the same day:** [`M1_LOWPHASE_FINDING.md`](M1_LOWPHASE_FINDING.md) — the error
+  is one default-on layer (the MV consensus pass) and drops to 0.27 px, flat in phase, with it off.
 
 *Made with my soul - Swately <3*

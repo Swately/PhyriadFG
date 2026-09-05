@@ -24,6 +24,10 @@
 > accel/circular/crossing/fast. The instrument is `measured` for four classes and not for the one the
 > criterion names; sample size is the remedy, jitter and duplicates being excluded.
 > **Every phase T0–T5 is now built and gated.** T6 remains built with its gate not passed.
+> **First result of the instrument used as intended** (`records/M1_LOWPHASE_FINDING.md`): the
+> baseline's 1.7 px low-phase error is the MV consensus pass (`mv_median.comp`, default-armed via
+> `mv_guided`), not the core — 0.271 px flat in phase with it off. Also found: the pass rewrites the
+> GPU MV after the host copy, so `--qdump+`'s `mv=` plane is PRE-pass; a post-pass readback is owed.
 > **§2.3's premise was WRONG and is corrected there**: a replay record is not (prev, next, MV, gme,
 > push, t) — the shipping default reads four more planes, and T1c dumps those plus the two dissidence
 > masks that other feature sets need. Every "exists / builds / measured" claim below was verified
