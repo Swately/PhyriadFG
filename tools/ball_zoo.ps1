@@ -16,7 +16,8 @@
 # source frame differs by exactly the same displacement (the uniform-step gold standard for
 # FG cadence tests). If the loop can't hold the target, fps prints tell you honestly.
 #
-#   -BgClass grid|noise  the background field. grid = the 24/96px lattice (DEFAULT, byte-identical).
+#   -BgClass grid|noise|flat  the background field. grid = the 24/96px lattice (DEFAULT, byte-identical).
+#                  flat = a uniform field: the consensus pass's own target content (rim stamps/holes).
 #                  noise = an aperiodic value-noise field of comparable contrast, for a
 #                  measurement that must not be confounded by a periodic background (S2.T6).
 #   -Fps 60        target source rate (accepts high values; achieved rate printed every 1s)
@@ -38,7 +39,11 @@ param(
   # case-INSENSITIVE, so a parameter named $Bg IS the same variable as the background bitmap $bg
   # a few lines below -- and a [ValidateSet] parameter installs the attribute on the variable, so
   # the later `$bg = New-Object Drawing.Bitmap` is REJECTED and $bg silently stays a string.
-  [ValidateSet('grid','noise')][string]$BgClass = 'grid',
+  [ValidateSet('grid','noise','flat')][string]$BgClass = 'grid',
+                        # -BgClass flat: a UNIFORM field, no texture at all. This is the content the MV
+                        # consensus pass (mv_median.comp) was built for -- a wrong block vector at a moving
+                        # rim over flat content passes every photometric check -- so it is the scene
+                        # that measures the pass's PURPOSE, where the marker zoo measured only its cost.
                         # -BgClass noise: replace the 24px lattice with an APERIODIC value-noise field
                         # of comparable contrast. Everything else - pacing, ball, window, capture
                         # path - is unchanged, so a measurement can attribute a difference to the
@@ -77,7 +82,11 @@ $bgW = $W + 96
 $bg = New-Object Drawing.Bitmap($bgW,$H)
 $gb = [Drawing.Graphics]::FromImage($bg)
 $gb.Clear([Drawing.Color]::FromArgb(18,18,40))
-if($BgClass -eq 'noise'){
+if($BgClass -eq 'flat'){
+  # nothing to draw: the Clear above IS the background. Panning a uniform field is a no-op, so it
+  # is allowed and meaningless; the crosshair below still marks the centre when not panning.
+  Write-Host '[ball-zoo] -BgClass flat: uniform background (the consensus pass''s target content)'
+} elseif($BgClass -eq 'noise'){
   # APERIODIC field. Two coarse random lattices upscaled with a smooth interpolator: a
   # low-resolution bitmap of independent random values, drawn scaled with HighQualityBicubic, IS
   # value noise - gradient at every pixel, no repeating structure. Two octaves so the block

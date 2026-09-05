@@ -177,6 +177,14 @@ exactos que simulen de forma correcta el movimiento".)
     0.891 / 0.867 whole-frame, from 0.730 / 0.735). The pass touches 97.5 % of texels and doubles the
     marker-tile EPE (0.83 → 1.64 px). **T6's own criterion is met at ≥ 4 px.** The audit now requires
     `mv1` for any push with the pass armed.
+  - **S2.F3** the pass on its OWN content · **`done`** (2026-09-04, `M1_LOWPHASE_FINDING.md` §6) —
+    `ball_zoo.ps1 -BgClass flat`, a 260 px disc over a uniform field: the matcher emits 500–900 stray
+    vectors per frame there and **the pass removes none** (stamps 7,494 → 7,500), 5 % of the holes, and
+    leaves the disc's motion untouched; at the output the disc lands at 0.13 px with the pass and
+    0.06 px without, 0 % rim tearing either way. Its design premise (an ISOLATED outlier) does not match
+    what the matcher produces (clusters). **Both halves of the decision now exist; the default is still
+    untouched.** Found and not closed: the pass also filters the BACKWARD field and `--qdump+` reads
+    back only the forward one — a `mvb1` readback is owed.
   - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
     passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
 - **S3 — LAYER CONTRACT (the AAP search)** · **`done`** (2026-09-03) · `docs/planning/aap/`

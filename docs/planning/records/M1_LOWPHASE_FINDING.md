@@ -167,3 +167,62 @@ lower degraded count at low phase (42 vs 47), and the raw matcher underneath is 
   not depend on it.
 
 *Made with my soul - Swately <3*
+
+---
+
+## 6 · The pass on its OWN target content (2026-09-04) — the other number the decision needed
+
+§4.2 said the cost was measured and the purpose was not. `ball_zoo.ps1` gained `-BgClass flat` — a
+uniform field with a 260 px disc moving 7 px/frame over it — which is the content `mv_median.comp`'s
+header describes: "a wrong block MV that lands both warp samples on identical flat content passes the
+photometric check … isolated bad vectors at a moving rim (block holes inside the object, detached block
+stamps outside)". Two default captures (both `mv=` and `mv1=` in the same record) and two with the
+pass off, bare B-track (`--st-no-stasis`), 16 triples each.
+
+### 6.1 · In the MV field, before and after the pass, on the default records
+
+| | before (`mv`) | after (`mv1`) |
+|---|---|---|
+| **stamps** — tiles outside the disc with \|mv\| > 1 px | **7,494** | **7,500** |
+| **holes** — tiles inside the disc with \|mv\| < 3.5 px (half the true step) | 1,166 | 1,106 (−5 %) |
+| the disc's own tiles, mean \|mv\| (true 7.0) | 6.1–9.9 | unchanged to ±0.05 |
+
+The raw matcher emits **500–900 stray vectors per frame** on the flat field — the failure mode the header
+names is real — and **the pass removes none of them**. Its design premise is an *isolated* outlier a 3×3
+median can vote down; what the matcher produces on flat content is *clusters*, which a 3×3 median
+preserves. It removes 5 % of the holes. It does not touch a large object's motion, so its cost is
+specific to objects at or below the tile size — which §2 measured.
+
+### 6.2 · At the output
+
+| | pass ON (fed `mv1`) | pass OFF |
+|---|---|---|
+| disc position error, T4 method (run A / B) | **0.129 / 0.126 px** | **0.050 / 0.062 px** |
+| rim tearing (gold pixels > 2 px outside the expected disc) | 0.00 % | 0.00 % |
+| oracle, triples at `t ≤ 0.4` | max 1–7 levels, 0 px > 8 | max 1–2 levels, 0 px > 8 |
+| oracle, triples at `t ≈ 0.62–0.88` | max 42–175, **424–1,058 px > 8** | max 30–103, 259–471 px > 8 |
+
+On the content it was built for, the pass **produces no measurable benefit** — no stamp removed, no
+rim protected (there was nothing to protect: 0 % tearing either way) — and a small cost: the disc lands
+0.07 px further from where it should, and the oracle agrees with the output less.
+
+### 6.3 · A second content hole, found here and NOT closed
+
+The pass filters the **backward** field too (`if(use_bidir) median_filter(medPipe.set_mvb, wapMVBA)`,
+`present.cpp:837`), and `--qdump+` reads back only the forward one. The phase anchor uses `−mv_bwd`
+above `t ≈ 0.65`, so at high phase the oracle is still fed a pre-pass field — which is exactly where the
+pass-ON records keep 424–1,058 disagreeing pixels while the pass-OFF ones keep fewer. A `mvb1` readback
+is the fix; it is the same 20 lines as `mv1` and is owed, not taken.
+
+### 6.4 · What the two numbers say together
+
+| content | the pass's cost | the pass's benefit |
+|---|---|---|
+| small objects (6–24 px) over aperiodic texture (§2) | **1.4 px** at low phase, half the markers degraded | — |
+| a large object over flat content (§6) | 0.07 px | **none measured**: 0 of 7,494 stamps, 5 % of holes, 0 % tearing either way |
+
+**The default is still untouched, and the switch is still the operator's.** What has changed is that the
+decision now has both halves. Honesty: one disc, one speed, one flat field; the header's specific
+scenario — a *moving rim* over flat content — is present but the disc is far larger than a tile, and a
+rim at tile scale was not tested. The DI-3 `r` for the pass-ON disc error is 0.06 (both runs sit at the
+0.1 px floor with no variance to correlate); the pass-OFF one is 0.86.
