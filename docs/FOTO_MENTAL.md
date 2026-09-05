@@ -215,13 +215,21 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    El default sigue intacto; el interruptor es del operador.** Hueco nuevo: el pase filtra también el
    campo hacia atrás y `--qdump+` sólo lee el de ida — `mvb1` pendiente.
 
+4p. **T6 PASA (2026-09-04 — `S2_T6_GATE.md` §9)** — `mvb1=` (el campo hacia atrás post-pase; el pase lo
+   reescribe tanto como el de ida, 97.6 % de téxeles en textura). Con AMBOS campos post-pase el oráculo
+   es **exacto al byte en 12 de 16 triples por corrida** en la escena plana (máx 1 nivel, 0 px > 8,
+   k = 1.000) y en el default texturizado con el store de producción llega a k 0.966 / 0.999 / 1.000 /
+   1.000 por banda (0.5–1 / 1–2 / 2–4 / 4–8 px), exacto 99.88 / 99.86 % en dos corridas. Las tres cosas
+   que estuvieron entre el oráculo y esto nunca fueron el oráculo: la retícula periódica, el campo de
+   ida pre-pase, el campo hacia atrás pre-pase. **Regla final del corpus de M4: aperiódico, con `mv1` +
+   `mvb1`, puntuado desde 1 px.** Residuo restante: sólo t≈0.87, ≤ 0.06 % del cuadro, registrado.
+
 5. **NEXT** — (a) **decisión del operador:** el pase de consenso del MV (`mv_median.comp`, armado por
    defecto vía `mv_guided`) explica el 1.7 px a fase baja entero; apagarlo deja 0.27 px plano. Su
    propósito propio (sellos/huecos de borde en contenido plano) NO se midió aquí — antes de tocar
    el default hay que medir ambas cosas, y el instrumento ya puede. (b) R3 sobre corpus aperiódico
    ≥ 2 px que lleve `mv1`. (c) revisar A0: M1 congelado como COMPARATIVO contra un default que es el
-   outlier penaliza el arreglo. (d) el readback post-pase del campo HACIA ATRÁS (`mvb1`): el pase
-   filtra `wapMVBA` también y el ancla de fase lo usa arriba de t≈0.65 — mismas 20 líneas que `mv1`. Arriba de 4 px la referencia ya
+   outlier penaliza el arreglo. (d) R3 puede empezar: su oráculo M4 pasa su propia compuerta. Arriba de 4 px la referencia ya
    acierta (k = 0.955); abajo de 0.5 px el shader no mueve nada y la referencia sí. M4 no debe correr
    sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4 existe
    para detectar. La pista: el patrón de periodo 3 (−0.5, +0.1666, 0) sobre bloques cuyo `sad_best`

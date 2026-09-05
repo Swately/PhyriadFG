@@ -497,6 +497,7 @@ int main(int argc, char** argv) {
     auto& hostPrevD=o_wap.hostPrevD; auto& hPrevD_a=o_wap.hPrevD_a;
     auto& hostCurD=o_wap.hostCurD; auto& hCurD_a=o_wap.hCurD_a;
     auto& hostMV1=o_wap.hostMV1; auto& hMV1_a=o_wap.hMV1_a;   // --qdump+ post-consensus MV readback
+    auto& hostMVB1=o_wap.hostMVB1; auto& hMVB1_a=o_wap.hMVB1_a;   // ... and the backward field
 
     // ── Devices + the derived feature gates (E1 → core/core_init.cpp) ──────
     if(!init_devices(cfg,pA,pB,pG,single_gpu,want_pfg,IS_HDR,NAT_W,NAT_H,WW,WH,route,o_dev)) goto done;
@@ -954,6 +955,7 @@ int main(int argc, char** argv) {
             .hFIELD_a = hFIELD_a,
             .hGout = hGout,
             .hMV1_a = hMV1_a,
+            .hMVB1_a = hMVB1_a,
             .hMVB_a = hMVB_a,
             .hMV_a = hMV_a,
             .hMass_a = hMass_a,
@@ -964,6 +966,7 @@ int main(int argc, char** argv) {
             .hSAD_a = hSAD_a,
             .hostCurD = hostCurD,
             .hostMV1 = hostMV1,
+            .hostMVB1 = hostMVB1,
             .hostMassPtr = hostMassPtr,
             .hostOutD = hostOutD,
             .hostPrevD = hostPrevD,
@@ -1136,6 +1139,7 @@ done:
     hbuf_destroy(A,hPrevD_a); if(hostPrevD) _aligned_free(hostPrevD);   // --qdump anchor (null-safe)
     hbuf_destroy(A,hCurD_a);  if(hostCurD)  _aligned_free(hostCurD);    // --qdump anchor (null-safe)
     hbuf_destroy(A,hMV1_a);   if(hostMV1)   _aligned_free(hostMV1);     // --qdump+ post-consensus MV (null-safe)
+    hbuf_destroy(A,hMVB1_a);  if(hostMVB1)  _aligned_free(hostMVB1);    // --qdump+ post-consensus MVB (null-safe)
     // The MV consensus pipeline + scratch (created when mv-median OR mv-guided; both are cleared together
     // on a create failure, so either being set means the resources exist).
     if(use_mv_median||use_mv_guided){ med_destroy(A,medPipe); img_destroy(A,wapMVScratchA); }

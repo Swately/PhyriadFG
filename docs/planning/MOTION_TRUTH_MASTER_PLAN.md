@@ -28,7 +28,8 @@
 > baseline's 1.7 px low-phase error is the MV consensus pass (`mv_median.comp`, default-armed via
 > `mv_guided`), not the core — 0.271 px flat in phase with it off. The pass rewrites the GPU MV after
 > the host copy, so `--qdump+`'s `mv=` plane is PRE-pass; **`mv1=` (post-pass) now exists**, and fed
-> it the T6 oracle reaches k = 1.000 at ≥ 4 px — its residual was the pass (`S2_T6_GATE.md` §8).
+> it the T6 oracle reaches k = 1.000 at ≥ 4 px — its residual was the pass (`S2_T6_GATE.md` §8). With the
+> backward field too (`mvb1=`, §9) the oracle is byte-exact on flat content and **T6's gate PASSES**.
 > **§2.3's premise was WRONG and is corrected there**: a replay record is not (prev, next, MV, gme,
 > push, t) — the shipping default reads four more planes, and T1c dumps those plus the two dissidence
 > masks that other feature sets need. Every "exists / builds / measured" claim below was verified

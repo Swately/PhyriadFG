@@ -9,7 +9,10 @@
 > refuted), and the oracle reaches **k = 0.989 at 4–8 px over 2,241 pixels**. §8 (2026-09-04) then
 > EXPLAINS the residual: the oracle had been fed the MV field BEFORE the consensus pass rewrote it on
 > the GPU. Fed the field the shader actually sampled (`mv1`), **k = 1.000 at 4–8 px and 0.957 at 2–4**
-> on the shipping default. The gate's own criterion is met at ≥ 4 px.**
+> on the shipping default. The gate's own criterion is met at ≥ 4 px. §9 closes the LAST content hole
+> (the backward field, also rewritten by the pass): fed both post-pass fields the oracle is **byte-exact
+> on 12 of 16 triples per run** on the flat scene and reaches **k = 0.999 at 1–2 px, 1.000 above 2 px** on
+> the textured shipping default. **The gate PASSES.**
 >
 > *(Original verdict, kept:)* **BUILT, PARTIAL — the gate does NOT pass.**
 > The reference reproduces 99.88% of the shipping default's stored pixels exactly. A controlled
@@ -360,3 +363,50 @@ REPLAYABLE for its absence — which they are. Records taken with the pass off a
 **Honesty.** Two runs; run-to-run spread of the post-pass k is 0.024 against a pre/post effect of
 +0.15. The 0.5–2 px bands stay at 0.84–0.88 and are not explained here. One scene class. The `mv1`
 readback stalls the dump tick like the other three planes and was not timed.
+
+---
+
+## 9 · The gate PASSES (2026-09-04): both post-pass fields, and the oracle is byte-exact
+
+§8 left one hole named: the consensus pass filters the **backward** field too
+(`present.cpp:837`, `median_filter(medPipe.set_mvb, wapMVBA)` when bidir), and the phase anchor mixes
+`−mv_bwd` in above `t ≈ 0.65`. A second readback, `mvb1=`, closes it; `ref_warp.py --mvb-plane` feeds it.
+The pass rewrites the backward field exactly as much as the forward one (97.6 % of texels on texture,
+1.9 % on the flat field).
+
+### 9.1 · The flat scene (260 px disc over a uniform field, bare B-track), high-phase triples
+
+| triple (`t`) | fed `mv1` only | fed `mv1` + `mvb1` |
+|---|---|---|
+| q000003 (0.627) | max 115, 356 px > 8, k 0.994 | max 29, **10** px > 8, k 1.001 |
+| q000007 (0.627) | max 85, 534 px > 8 | **max 2, 0 px > 8, k 1.000** |
+| q000010 (0.624) | max 191, 853 px > 8 | **max 1, 0, 1.000** |
+| q000013 (0.601) | max 142, 941 px > 8 | **max 1, 0, 1.000** |
+| q000014 (0.845) | max 91, 650 px > 8, k 0.945 | **max 1, 0, 1.000** |
+
+Run B, all 16 triples: **12 are byte-exact** (max 1 level, 0 px > 8, k = 1.000, corr 1.000); the four at
+`t ≈ 0.86–0.88` keep 333–588 px > 8 with max 35–41 and k 0.963–0.995. Run A is the same shape. That
+`t ≈ 0.87` residual is the same in both runs and is now the **only** unexplained disagreement on this
+scene: 0.04–0.06 % of the frame, ≤ 41 levels, at the phase where the vblend tilt is largest.
+
+### 9.2 · The textured shipping default (`single_track = 1.0`, the store as shipped)
+
+| run | exact | within 1 LSB | `k` | corr |
+|---|---|---|---|---|
+| A | 99.88 % | 99.96 % | 0.977 | 0.986 |
+| B | 99.86 % | 99.94 % | 0.974 | 0.982 |
+
+By displacement band, run A: **0.966 at 0.5–1 px · 0.999 at 1–2 · 1.000 at 2–4 · 1.000 at 4–8.**
+
+### 9.3 · What this settles
+
+- **T6's gate — `k → 1.000` — passes**, byte-exact on flat content at low and mid phase, 0.999 from
+  1 px up on the textured default. The three things that had stood between the oracle and this were
+  never the oracle: the periodic test lattice (§6), the pre-pass forward field (§8), the pre-pass
+  backward field (§9).
+- **M4's corpus rule, final form:** aperiodic; **must carry `mv1` and `mvb1`** (the audit refuses a
+  record without them when the pass is armed); the displacement restriction relaxes from ≥ 2 px to
+  **≥ 1 px** (k 0.999), and 0.5–1 px is usable at 0.966 with that stated.
+- The remaining residual is at `t ≈ 0.87` only, ≤ 0.06 % of the frame, and is recorded, not explained.
+
+*DI-3: two runs per scene; the byte-exact result holds in both; the textured k spread is 0.003.*

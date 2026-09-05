@@ -33,6 +33,7 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
     auto& hostPrevD=o_wap.hostPrevD; auto& hPrevD_a=o_wap.hPrevD_a;
     auto& hostCurD=o_wap.hostCurD; auto& hCurD_a=o_wap.hCurD_a;
     auto& hostMV1=o_wap.hostMV1; auto& hMV1_a=o_wap.hMV1_a;   // --qdump+ post-consensus MV readback
+    auto& hostMVB1=o_wap.hostMVB1; auto& hMVB1_a=o_wap.hMVB1_a;   // ... and the backward field
     // ── warp-at-presenter pipeline (A, the bridge owner) ──────────
     // Presenter-local sampled inputs (two pair reals WW×WH RGBA8, MV+SAD grids RG16F) + the rgba8 warp
     // output, re-uploaded per pair-advance and re-warped per tick at the exact phase. The warper is A
@@ -266,6 +267,10 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
                     if(!hostMV1||!hbuf_import(WD,hostMV1,mbr,hMV1_a,VK_BUFFER_USAGE_TRANSFER_DST_BIT)){
                         std::printf("[ra] qdump: post-consensus MV readback alloc/import failed — mv1 plane disabled\n");
                         if(hostMV1){ _aligned_free(hostMV1); hostMV1=nullptr; } }
+                    hostMVB1=_aligned_malloc((size_t)mbr,(size_t)mass_al);
+                    if(!hostMVB1||!hbuf_import(WD,hostMVB1,mbr,hMVB1_a,VK_BUFFER_USAGE_TRANSFER_DST_BIT)){
+                        std::printf("[ra] qdump: post-consensus MVB readback alloc/import failed — mvb1 plane disabled\n");
+                        if(hostMVB1){ _aligned_free(hostMVB1); hostMVB1=nullptr; } }
                 }
                 if(cfg.qdump_n>0) CreateDirectoryA(cfg.qdump_dir,nullptr);
             }

@@ -174,6 +174,7 @@ void run_present(FgContext& ctx){
     auto& hMass_a = ctx.hMass_a;
     auto& hOutD_a = ctx.hOutD_a;
     auto& hMV1_a = ctx.hMV1_a;     // --qdump+ post-consensus MV readback
+    auto& hMVB1_a = ctx.hMVB1_a;   // ... and the backward field
     auto& hPER_a = ctx.hPER_a;
     auto& hPrevD_a = ctx.hPrevD_a;
     auto& hR_g = ctx.hR_g;
@@ -182,6 +183,7 @@ void run_present(FgContext& ctx){
     auto& hostMassPtr = ctx.hostMassPtr;
     auto& hostOutD = ctx.hostOutD;
     auto& hostMV1 = ctx.hostMV1;   // --qdump+ post-consensus MV readback
+    auto& hostMVB1 = ctx.hostMVB1; // ... and the backward field
     auto& hostPrevD = ctx.hostPrevD;
     auto& luidA = ctx.luidA;
     auto& luidA_ok = ctx.luidA_ok;
@@ -1451,6 +1453,13 @@ void run_present(FgContext& ctx){
                                 { VkBufferImageCopy cp=full_bic(wap_mvw,wap_mvh); vkCmdCopyImageToBuffer(c,wapMVA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hMV1_a.buf,1,&cp); }
                                 img_barrier(c,wapMVA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_READ_BIT);
                             }
+                            // wapMVBA: the BACKWARD field, also rewritten by the pass (present.cpp median_filter on
+                            // set_mvb when bidir). Only bound/uploaded under use_bidir; same barrier pair.
+                            if(hostMVB1 && use_bidir){
+                                img_barrier(c,wapMVBA.img,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_READ_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+                                { VkBufferImageCopy cp=full_bic(wap_mvw,wap_mvh); vkCmdCopyImageToBuffer(c,wapMVBA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hMVB1_a.buf,1,&cp); }
+                                img_barrier(c,wapMVBA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_READ_BIT);
+                            }
                         });
                         // Write the three RAW RGBA8 planes (NO channel swap — the source is RGBA8; see dump_rgba).
                         char qp[320];
@@ -1466,7 +1475,7 @@ void run_present(FgContext& ctx){
                         // this block runs after the tick's fence on the sync path. RING SAFETY: we read generation
                         // qd_gen while F may be writing qd_gen+1; kGenRing=3 makes that safe by construction.
                         size_t qd_pushsz=0; uint32_t qd_mvw=0, qd_mvh=0; int qd_gv=0; const float* qd_gme=nullptr;
-                        bool qd_has_mvb=false,qd_has_c2=false,qd_has_dis=false,qd_has_disb=false,qd_has_per=false,qd_has_mvt=false; bool qd_has_mv0=false; bool qd_has_mvt0=false; bool qd_has_mv1=false;
+                        bool qd_has_mvb=false,qd_has_c2=false,qd_has_dis=false,qd_has_disb=false,qd_has_per=false,qd_has_mvt=false; bool qd_has_mv0=false; bool qd_has_mvt0=false; bool qd_has_mv1=false; bool qd_has_mvb1=false;
                         if(qd_gen>=0){
                             qd_mvw=wap_mvw; qd_mvh=wap_mvh;
                             const size_t qd_plane=(size_t)qd_mvw*qd_mvh*4u;   // RG16F = 4 bytes/texel
@@ -1496,12 +1505,13 @@ void run_present(FgContext& ctx){
                             qd_has_mv0=qd_mv0_ok && qd_write("mv0.rg16f",qd_mv0.data(),qd_plane);   // the upload-time snapshot
                             qd_has_mvt0=qd_mvt0_ok && qd_write("mvt0.rg16f",qd_mvt0.data(),qd_plane);   // the upload-time TARGET snapshot
                             qd_has_mv1=(hostMV1!=nullptr) && qd_write("mv1.rg16f",hostMV1,qd_plane);   // the POST-consensus MV the warp sampled
+                            qd_has_mvb1=(hostMVB1!=nullptr) && use_bidir && qd_write("mvb1.rg16f",hostMVB1,qd_plane);   // ... and the backward one
                         }
                         std::snprintf(qp,sizeof(qp),"%s\\q%06d_push.bin",cfg.qdump_dir,qdump_idx);
                         if(qd_push_sz){ if(FILE* f=std::fopen(qp,"wb")){ qd_pushsz=qd_push_sz; std::fwrite(qd_push,1,qd_pushsz,f); std::fclose(f); } }
                         // A written plane is named by its file; an absent one is named '-'. Six small buffers so every name
                         // is alive for the single fprintf below (snprintf into qp would be overwritten by the next call).
-                        char qb0[48],qb1[48],qb2[48],qb3[48],qb4[48],qb5[48],qb6[48],qb7[48],qb8[48];
+                        char qb0[48],qb1[48],qb2[48],qb3[48],qb4[48],qb5[48],qb6[48],qb7[48],qb8[48],qb9[48];
                         auto qd_nm=[&](bool have,char* buf,const char* suffix)->const char*{
                             if(!have){ buf[0]='-'; buf[1]='\0'; return buf; }
                             std::snprintf(buf,48,"q%06d_%s",qdump_idx,suffix); return buf; };
@@ -1527,7 +1537,7 @@ void run_present(FgContext& ctx){
                             std::fprintf(mf,"triple q%06d prev=q%06d_prev.rgba next=q%06d_next.rgba live=q%06d_live.rgba t=%.4f"
                                             " gen=%d mvw=%u mvh=%u mv=q%06d_mv.rg16f sad=q%06d_sad.rg16f push=q%06d_push.bin pushsz=%zu"
                                             " gme_valid=%d gme=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g"
-                                            " tgen=%d mvb=%s c2=%s dis=%s disb=%s per=%s mvt=%s mv0=%s mvt0=%s mv1=%s\n",
+                                            " tgen=%d mvb=%s c2=%s dis=%s disb=%s per=%s mvt=%s mv0=%s mvt0=%s mv1=%s mvb1=%s\n",
                                 qdump_idx,qdump_idx,qdump_idx,qdump_idx,t,
                                 qd_gen,qd_mvw,qd_mvh,qdump_idx,qdump_idx,qdump_idx,qd_pushsz,
                                 qd_gv,
@@ -1539,7 +1549,8 @@ void run_present(FgContext& ctx){
                                 qd_nm(qd_has_per,qb4,"per.r8"),     qd_nm(qd_has_mvt,qb5,"mvt.rg16f"),
                                 qd_nm(qd_has_mv0,qb6,"mv0.rg16f"),
                                 qd_nm(qd_has_mvt0,qb7,"mvt0.rg16f"),
-                                qd_nm(qd_has_mv1,qb8,"mv1.rg16f"));
+                                qd_nm(qd_has_mv1,qb8,"mv1.rg16f"),
+                                qd_nm(qd_has_mvb1,qb9,"mvb1.rg16f"));
                             std::fclose(mf);
                         }
                         ++qd_bin_hits[qd_b]; ++qd_gen_hits[qd_g];   // this bin/slot is now covered - ineligible until the rest catch up

@@ -211,8 +211,9 @@ rim protected (there was nothing to protect: 0 % tearing either way) — and a s
 The pass filters the **backward** field too (`if(use_bidir) median_filter(medPipe.set_mvb, wapMVBA)`,
 `present.cpp:837`), and `--qdump+` reads back only the forward one. The phase anchor uses `−mv_bwd`
 above `t ≈ 0.65`, so at high phase the oracle is still fed a pre-pass field — which is exactly where the
-pass-ON records keep 424–1,058 disagreeing pixels while the pass-OFF ones keep fewer. A `mvb1` readback
-is the fix; it is the same 20 lines as `mv1` and is owed, not taken.
+pass-ON records keep 424–1,058 disagreeing pixels while the pass-OFF ones keep fewer. **Closed the same
+day:** `mvb1=` added; fed both post-pass fields the oracle is byte-exact on those triples (0 px > 8,
+max 1 level) — `S2_T6_GATE.md` §9. The pass rewrites the backward field as much as the forward.
 
 ### 6.4 · What the two numbers say together
 

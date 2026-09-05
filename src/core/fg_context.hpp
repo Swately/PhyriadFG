@@ -259,6 +259,7 @@ struct FgContext {
     HBuf* hFIELD_a;
     HBuf& hGout;
     HBuf& hMV1_a;
+    HBuf& hMVB1_a;
     HBuf* hMVB_a;
     HBuf* hMV_a;
     HBuf& hMass_a;
@@ -269,6 +270,7 @@ struct FgContext {
     HBuf* hSAD_a;
     void*& hostCurD;
     void*& hostMV1;
+    void*& hostMVB1;
     void*& hostMassPtr;
     void*& hostOutD;
     void*& hostPrevD;

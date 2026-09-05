@@ -333,6 +333,10 @@ def main():
                          'the consensus pass -- what the matcher produced) or mv1 (read back from wapMVA '
                          'AFTER the pass -- what the shader actually sampled). The difference between the '
                          'two fits IS the consensus pass, measured through the oracle.')
+    ap.add_argument('--mvb-plane', default='mvb',
+                    help='manifest token of the BACKWARD MV plane to feed the reference: mvb (host field, '
+                         'before the consensus pass) or mvb1 (read back from wapMVBA after it). The phase '
+                         'anchor mixes in -mv_bwd above t~0.65, so at high phase this is the field that matters.')
     ap.add_argument('--fit', action='store_true',
                     help='also report the least-squares scale k and correlation between the change the '
                          'reference makes to cur[uv] and the change the GPU made. k=1 means the '
@@ -383,11 +387,11 @@ def main():
                 mv=planef16(os.path.join(a.dir, r[a.mv_plane]), gw, gh, 2),   # --mv-plane: which MV the oracle is fed
                 sad=planef16(os.path.join(a.dir, r['sad']), gw, gh, 2),
             )
-            for key, loader in (('mvb', lambda p: planef16(p, gw, gh, 2)),
+            for key, loader in (('mvb', lambda p: planef16(p, gw, gh, 2)),   # NOTE: r['mvb'] is remapped below when --mvb-plane is given
                                 ('mvt', lambda p: planef16(p, gw, gh, 2)),
                                 ('c2',  lambda p: planef16(p, gw, gh, 4)),
                                 ('per', lambda p: planer8(p, gw, gh))):
-                nm = r.get(key, '-')
+                nm = r.get(a.mvb_plane if key == 'mvb' else key, '-')   # --mvb-plane: which BACKWARD field the oracle is fed
                 triple[key] = loader(os.path.join(a.dir, nm)) if nm != '-' else None
         except (OSError, ValueError) as e:
             print(f'  FAIL {rid}: {e}'); fails += 1; continue

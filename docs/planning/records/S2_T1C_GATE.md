@@ -132,4 +132,6 @@ This record proved every plane the shader *binds* is present. It did not prove e
 `wapMVA` on the GPU after the host field is uploaded, so `mv=` was the field BEFORE the pass. Found
 by `M1_LOWPHASE_FINDING.md`; closed by a post-pass readback, `mv1=`, and by a new audit rule: a push
 with the pass armed (`mv_guided > 0.5`) is NOT REPLAYABLE without `mv1`. The default records taken
-before this date now audit as such, correctly.
+before this date now audit as such, correctly. **The same day, the same hole in the backward field**
+(the pass filters `wapMVBA` too): closed by `mvb1=`, required by the audit when the pass is armed and
+bidir is on. With both, the oracle is byte-exact on flat content (`S2_T6_GATE.md` §9).

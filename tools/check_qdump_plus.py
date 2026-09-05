@@ -57,6 +57,9 @@ REPLAY_NEEDS = [
     ('target-generation MV', lambda p: p['vblend_on'] > 0.5,                               'mvt',  'binding 12'),
     # the consensus pass rewrites binding 2 on the GPU; with it armed the shader reads mv1, not mv
     ('post-consensus MV',    lambda p: p['mv_guided'] > 0.5,                               'mv1',  'binding 2 after mv_median.comp'),
+    # ... and it filters the BACKWARD field too (present.cpp median_filter on set_mvb, when bidir)
+    ('post-consensus MV bwd', lambda p: p['mv_guided'] > 0.5 and (p['occl_thresh'] > 0 or p['phase_anchor_on'] > 0.5),
+                                                                                             'mvb1', 'binding 5 after mv_median.comp'),
     ('previous output',      lambda p: p['ts_smooth'] > 0,                                 None,   'binding 13'),
     ('iGPU contour field',   lambda p: p['bg_snap_on'] > 0.5 or p['disoccl_hardpick'] > 0
                                        or p['mc_on'] > 0.5,                                None,   'binding 11'),
@@ -121,7 +124,7 @@ def main():
         # mv1 = wapMVA read back AFTER the consensus pass (mv_median.comp): the field the shader actually
         # sampled. mv= is the host field BEFORE it. A record without mv1 is replayable only for a push
         # with the pass off (mv_guided <= 0.5 and mv_median off); see M1_LOWPHASE_FINDING.md.
-        planes = [('mv', rg16f), ('mv1', rg16f), ('sad', rg16f), ('push', pushsz), ('mvb', rg16f), ('mvt', rg16f),
+        planes = [('mv', rg16f), ('mv1', rg16f), ('sad', rg16f), ('push', pushsz), ('mvb', rg16f), ('mvb1', rg16f), ('mvt', rg16f),
                   ('c2', rgba16f), ('dis', r8), ('disb', r8), ('per', r8)]
         present = set()
         for key, expect in planes:

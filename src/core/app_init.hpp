@@ -411,6 +411,7 @@ struct WapInit {
     // wapMVA on the GPU after the host field was uploaded, so hostMV is the field BEFORE it; this
     // is the field the warp actually sampled. mvw*mvh*4 (RG16F), allocated only under --qdump.
     void* hostMV1 =nullptr; HBuf hMV1_a{};
+    void* hostMVB1=nullptr; HBuf hMVB1_a{};   // the same, for the BACKWARD field (the pass filters wapMVBA too)
 };
 // ── The init functions (E1) — each moved verbatim from main.cpp's init-seq into its module;
 //    each returns false where its section did `goto done` (main() converts back to the jump).

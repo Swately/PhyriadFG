@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → operator decision on the consensus-pass default (M1 finding) → S4.R3 on an APERIODIC, ≥ 2 px, mv1-carrying corpus · next`**
+**`P → operator decision on the consensus-pass default (M1 finding) → S4.R3 on an APERIODIC corpus carrying mv1 + mvb1 · next`**
 > **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
 > background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
 > a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.
@@ -96,7 +96,7 @@ exactos que simulen de forma correcta el movimiento".)
     ordinary site is gated on `matte_on`, which is 0 — my first pass wrongly gated them on `gme_on` and
     the correction is recorded in the gate). `check_qdump_plus.py` now AUDITS replayability per record —
     the pre-T1c record reads NOT REPLAYABLE with the four gaps named, the T1c record reads REPLAYABLE.
-  - **S2.T6** the CPU reference warp · **`built; gate MET at ≥ 4 px with the post-pass MV (§8, 2026-09-04)`** (2026-09-03, `records/S2_T6_GATE.md`)
+  - **S2.T6** the CPU reference warp · **`done — gate PASSED (§9, 2026-09-04): byte-exact on flat content, k 0.999 from 1 px on the textured default, fed both post-pass fields`** (2026-09-03, `records/S2_T6_GATE.md`)
     — `tools/ref_warp.py` replays a `--qdump+` triple and rebuilds the store. The surface is small
     because `single_track = 1.0` makes the store `mix(B_samp, cur[uv], w_s)` and shadows the whole
     commit/matte/onepos/blend cascade, so only shader lines 279–522 plus the stasis bool decide the
@@ -183,8 +183,12 @@ exactos que simulen de forma correcta el movimiento".)
     leaves the disc's motion untouched; at the output the disc lands at 0.13 px with the pass and
     0.06 px without, 0 % rim tearing either way. Its design premise (an ISOLATED outlier) does not match
     what the matcher produces (clusters). **Both halves of the decision now exist; the default is still
-    untouched.** Found and not closed: the pass also filters the BACKWARD field and `--qdump+` reads
-    back only the forward one — a `mvb1` readback is owed.
+    untouched.** The pass also filters the BACKWARD field — `mvb1=` now reads it back too.
+  - **S2.F4** T6's gate PASSED · **`done`** (2026-09-04, `S2_T6_GATE.md` §9) — with `mv1` + `mvb1` the oracle
+    is **byte-exact on 12 of 16 triples per run** on the flat scene (max 1 level, 0 px > 8, k = 1.000) and
+    reaches **k 0.966 / 0.999 / 1.000 / 1.000** at 0.5–1 / 1–2 / 2–4 / 4–8 px on the textured shipping
+    default (exact 99.88 / 99.86 %, two runs). M4's corpus rule, final: aperiodic, carrying `mv1` +
+    `mvb1`, scored from 1 px. Remaining residual: `t ≈ 0.87` only, ≤ 0.06 % of the frame, recorded.
   - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
     passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
 - **S3 — LAYER CONTRACT (the AAP search)** · **`done`** (2026-09-03) · `docs/planning/aap/`
