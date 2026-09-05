@@ -359,6 +359,12 @@ struct WapInit {
     // wapOutA; a blit (rgba8→bgra8 channel reinterpretation) lands it in bridge_img.
     WapPipe wapPipeA{};
     FillPipe fillPipeA{};   // the field VISUALIZER pipe (wapOutA + wapFIELDA storage images; --afill only)
+    // R3: the fg_core.comp pipeline + its LayerParams UBO (binding 15, config-time, written once) + the
+    // --fg-core-ab instrument: a second rgba8 output image, the byte-diff pass, its stats SSBO (VRAM running
+    // totals) and the host copy the P thread prints from. All null-safe when the flags are off.
+    FgPipe fgPipeA{}; AbPipe abPipeA{}; Img fgOutA{};
+    void* hostLP=nullptr; HBuf hLP_a{};
+    HBuf devAb{}; void* hostAb=nullptr; HBuf hAb_a{};
     Img wapPrevA{},wapCurA{},wapMVA{},wapSADA{},wapOutA{};
     Img wapFIELDA{};        // A-side iGPU contour field image (R32_UINT, full-res; --afill OR --bg-snap)
     Img wapFIELDph{};       // 1×1 r32ui binding-11 placeholder when neither --afill nor --bg-snap owns wapFIELDA (never sampled)

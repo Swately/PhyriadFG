@@ -6,6 +6,10 @@
 #include <cstdio>
 #include "core/app_init.hpp"
 #include "wap_warp_spv.hpp"
+#include "fg_core_spv.hpp"      // R3: the LAYERTAB kernel
+#include "fg_ab_diff_spv.hpp"   // R3: the --fg-core-ab byte-diff pass
+#include "layers/layer_config.hpp"
+#include <cstring>
 #include "mv_median_spv.hpp"
 #include "wap_fill_spv.hpp"
 
@@ -21,6 +25,9 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
     auto& ofp=o_flow.ofp;
     auto& xfer_on=o_wap.xfer_on; auto& xfer_fams=o_wap.xfer_fams; auto& cmdUpload=o_wap.cmdUpload;
     auto& wapPipeA=o_wap.wapPipeA; auto& fillPipeA=o_wap.fillPipeA;
+    auto& fgPipeA=o_wap.fgPipeA; auto& abPipeA=o_wap.abPipeA; auto& fgOutA=o_wap.fgOutA;   // R3
+    auto& hostLP=o_wap.hostLP; auto& hLP_a=o_wap.hLP_a;
+    auto& devAb=o_wap.devAb; auto& hostAb=o_wap.hostAb; auto& hAb_a=o_wap.hAb_a;
     auto& wapPrevA=o_wap.wapPrevA; auto& wapCurA=o_wap.wapCurA; auto& wapMVA=o_wap.wapMVA;
     auto& wapSADA=o_wap.wapSADA; auto& wapOutA=o_wap.wapOutA;
     auto& wapFIELDA=o_wap.wapFIELDA; auto& wapFIELDph=o_wap.wapFIELDph;
@@ -289,6 +296,58 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
             if(use_wap && !wap_create(WD,wPrev.view,wCur.view,wMV.view,wSAD.view,wOut.view,wMVB.view,dis_view,disb_view,per_view,devMass.buf,cand_view,field_view,mvt_view,prevout_view,spvw,WP)){
                 std::printf("[ra] WAP pipeline failed — disabling warp-at-presenter\n"); use_wap=false;
             } else if(use_wap){
+                // ── R3: the fg_core.comp pipeline (stage 5's LAYERTAB kernel), opt-in ────────────────────────
+                // --fg-core routes the PRODUCT through it (its output = wOut); --fg-core-ab runs it BESIDE the legacy
+                // warp into fgOutA and the byte-diff pass counts the differing pixels (the M4 instrument). Both are
+                // created only under WAP (the legacy pipeline just succeeded, so every view above is valid).
+                if(cfg.legacy_warp && cfg.fg_core){ std::printf("[layertab] --legacy-warp: --fg-core ignored (the legacy path drives the product)\n"); cfg.fg_core=false; }
+                if(cfg.fg_core_ab && cfg.fg_core){ std::printf("[layertab] --fg-core-ab: the product stays on the legacy path; fg_core runs beside it (--fg-core ignored)\n"); cfg.fg_core=false; }
+                if(cfg.fg_core || cfg.fg_core_ab){
+                    bool fg_ok=true;
+                    // 1. the LayerParams UBO (binding 15): config-time, written ONCE from the registry (Candidate C §3.3).
+                    const VkDeviceSize lpb=((VkDeviceSize)pfg::layers::layer_params_bytes()+mass_al-1)/mass_al*mass_al;
+                    hostLP=_aligned_malloc((size_t)lpb,(size_t)mass_al);
+                    if(!hostLP) fg_ok=false;
+                    else { std::memset(hostLP,0,(size_t)lpb); pfg::layers::layer_params_fill(cfg,hostLP,cfg.fg_core_clean_sim);
+                           if(!hbuf_import(WD,hostLP,lpb,hLP_a,VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)) fg_ok=false; }
+                    // 2. the specialization map: one VkBool32 per fused row, constant_id = layer id — the registry's on[]
+                    //    (post-cascade) folded at pipeline creation. A disabled row's body is dead code in this pipeline.
+                    VkSpecializationMapEntry sme[pfg::layers::kLayerCount]; VkBool32 sval[pfg::layers::kLayerCount]; uint32_t sn=0;
+                    for(uint16_t i=0;i<pfg::layers::kLayerCount;++i){ if(pfg::layers::kLayers[i].kind!=pfg::layers::Kind::F) continue;
+                        sme[sn].constantID=(uint32_t)i; sme[sn].offset=sn*4u; sme[sn].size=4u; sval[sn]=cfg.layers.on[i]?VK_TRUE:VK_FALSE; ++sn; }
+                    VkSpecializationInfo si{}; si.mapEntryCount=sn; si.pMapEntries=sme; si.dataSize=(size_t)sn*4u; si.pData=sval;
+                    // 3. the output: --fg-core → wOut (the product image); --fg-core-ab → fgOutA (a second rgba8 STORAGE image, GENERAL).
+                    if(fg_ok && cfg.fg_core_ab){
+                        if(!img_create(WD,WW_warp,WH_warp,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_STORAGE_BIT,fgOutA)) fg_ok=false;
+                        else oneshot(WD,[&](VkCommandBuffer c){ img_barrier(c,fgOutA.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT); });
+                    }
+                    if(fg_ok){
+                        const std::vector<uint32_t> spvf(kFgCoreSpv.begin(),kFgCoreSpv.end());
+                        fg_ok=fgcore_create(WD,wPrev.view,wCur.view,wMV.view,wSAD.view,cfg.fg_core_ab?fgOutA.view:wOut.view,wMVB.view,dis_view,disb_view,per_view,devMass.buf,cand_view,field_view,mvt_view,prevout_view,
+                                            hLP_a.buf,lpb,&si,(uint32_t)sizeof(pfg::layers::FgPush),spvf,fgPipeA);
+                    }
+                    // 4. the byte-diff instrument: the stats SSBO in VRAM (running totals, never reset) + the host copy.
+                    if(fg_ok && cfg.fg_core_ab){
+                        const VkDeviceSize abb=((VkDeviceSize)kAbStatsBytes+mass_al-1)/mass_al*mass_al;
+                        hostAb=_aligned_malloc((size_t)abb,(size_t)mass_al);
+                        if(!hostAb) fg_ok=false;
+                        else { std::memset(hostAb,0,(size_t)abb);
+                            if(!hbuf_import(WD,hostAb,abb,hAb_a,VK_BUFFER_USAGE_TRANSFER_DST_BIT)) fg_ok=false;
+                            else if(!dbuf_create(WD,abb,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,devAb)) fg_ok=false;
+                            else { oneshot(WD,[&](VkCommandBuffer c){ vkCmdFillBuffer(c,devAb.buf,0,VK_WHOLE_SIZE,0u); });
+                                   const std::vector<uint32_t> spva(kFgAbDiffSpv.begin(),kFgAbDiffSpv.end());
+                                   fg_ok=abdiff_create(WD,wOut.view,fgOutA.view,devAb.buf,spva,abPipeA); } }
+                    }
+                    if(!fg_ok){ std::printf("[layertab] R3: fg_core pipeline setup FAILED -- --fg-core/--fg-core-ab disabled, the legacy warp drives the product\n"); cfg.fg_core=false; cfg.fg_core_ab=false; }
+                    else {
+                        std::printf("[layertab] R3: fg_core.comp %s -- contract=0x%016llX, %u spec constants, LayerParams %zu B (mv_guided.sim %s), push %zu B = CorePush 20 + gen-scalars 24\n",
+                                    cfg.fg_core?"drives the PRODUCT (--fg-core)":"runs BESIDE the legacy warp (--fg-core-ab byte-diff)",
+                                    (unsigned long long)pfg::layers::layer_contract_hash(cfg),sn,pfg::layers::layer_params_bytes(),cfg.fg_core_clean_sim?"CLEAN":"PACKED, XR1",sizeof(pfg::layers::FgPush));
+                        // the envelope: fg_core reproduces the shipping DEFAULT set; these legacy features have no row in R3.
+                        if(cfg.matte||cfg.blend_solo||cfg.camera_twarp||cfg.ts_smooth>0.f||(cfg.igpu_field&&cfg.bg_snap)||cfg.band_xfade>0.f||cfg.mc_on||!cfg.single_track)
+                            std::printf("[layertab] R3 envelope: a legacy feature outside the R3 row set is armed (matte / blend-solo / camera-twarp / ts-smooth / bg-snap / band-xfade / multicand / no-single-track) -- the two kernels are NOT expected to be byte-identical on this configuration\n");
+                    }
+                }
                 // Initial layouts: sampled inputs → SHADER_READ_ONLY (the per-pair upload
                 // transitions DST→RO each time), output → GENERAL (the warp dispatch target).
                 oneshot(WD,[&](VkCommandBuffer c){

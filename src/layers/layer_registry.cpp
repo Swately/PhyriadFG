@@ -182,18 +182,53 @@ uint64_t layer_contract_hash(const Config& c) {
 }
 
 // ── --layer-dump ────────────────────────────────────────────────────────────────────────────────
+// ── R3: the fg_core.comp host halves ─────────────────────────────────────────────────────────────
+size_t layer_params_bytes() { return kParamCount * 4; }
+void layer_params_fill(const Config& c, void* out, bool clean_sim) {
+    unsigned char* b = (unsigned char*)out;
+    const size_t p_sim = pidx(LayerId::MV_GUIDED, "sim");
+    const size_t p_mes = pidx(LayerId::MV_EDGE_SNAP, "sim");
+    const float  sim_eff = c.layers.on[(uint16_t)LayerId::MV_GUIDED] ? c.layers.val[p_sim] : 0.f;   // the effective value (a gated param is 0 when its row is off)
+    for (size_t p = 0; p < kParamCount; ++p) {
+        const ParamDesc& P = kParams[p];
+        float v = c.layers.val[p];
+        if (p == p_sim && !clean_sim) { volatile float one = 1.0f; const float packed = one + v; v = packed - one; }   // XR1: wap_warp.comp:325 bit-for-bit
+        if (p == p_mes && v <= 0.f) v = sim_eff;   // the "0 = use --mv-sim" CLI-COMPAT cascade (present.cpp mes_push), resolved host-side
+        if (P.type == ParamType::F32) std::memcpy(b + p * 4, &v, 4);
+        else { const int32_t iv = (int32_t)std::lround(v); std::memcpy(b + p * 4, &iv, 4); }
+    }
+}
+uint32_t layer_arm_mask(const ArmInputs& in) {
+    uint32_t m = 0;
+    for (uint16_t i = 0; i < kLayerCount; ++i) {
+        bool ok = false;
+        switch (kLayers[i].arm) {   // every ArmId has a case: a new value is a compile-time warning here, not a silent disarm
+            case ArmId::ALWAYS:      ok = true; break;
+            case ArmId::GME:         ok = in.gme_ok; break;
+            case ArmId::BWD:         ok = in.bwd_ok; break;
+            case ArmId::GME_AND_BWD: ok = in.gme_ok && in.bwd_ok; break;
+            case ArmId::COMMIT:      ok = in.commit_ok; break;
+        }
+        if (ok) m |= (1u << i);
+    }
+    return m;
+}
 void layer_dump(const Config& c) {
     uint16_t order[kLayerCount]; layer_exec_order(order);
     int enabled = 0, real = 0;
     for (uint16_t i = 0; i < kLayerCount; ++i) if (kLayers[i].kind != Kind::X) { ++real; if (c.layers.on[i]) ++enabled; }
-    std::printf("[layertab] contract=0x%016llX  (%d rows enabled of %d; %zu params; R0: registry SHADOW, wap_warp.comp drives the product)\n",
+    std::printf("[layertab] contract=0x%016llX  (%d rows enabled of %d; %zu params; R3: fg_core.comp drives the product under --fg-core; wap_warp.comp is the default)\n",
                 (unsigned long long)layer_contract_hash(c), enabled, real, (size_t)kParamCount);
-    bool core_printed = false;
+    bool sample_printed = false, blend_printed = false;
     for (uint16_t k = 0; k < kLayerCount; ++k) {
         const LayerDesc& L = kLayers[order[k]];
-        if (!core_printed && (uint8_t)L.stage >= (uint8_t)Stage::COMPOSE) {
-            std::printf("CORE       fg_core          res_ceil=%.3f improv=%.3f agree=%.3f t=<per-tick>\n", (double)c.res_ceil, (double)c.conf_improv, (double)c.agreement);
-            core_printed = true;
+        if (!sample_printed && (uint8_t)L.stage >= (uint8_t)Stage::WEIGHT) {   // the core split (COLUMN_CLOSURE §2.1): fg_sample before WEIGHT, fg_blend before COMPOSE
+            std::printf("CORE       fg_sample        res_ceil=%.3f improv=%.3f agree=%.3f t=<per-tick>  push=CorePush 20 B + gen-scalars 24 B\n", (double)c.res_ceil, (double)c.conf_improv, (double)c.agreement);
+            sample_printed = true;
+        }
+        if (!blend_printed && (uint8_t)L.stage >= (uint8_t)Stage::COMPOSE) {
+            std::printf("CORE       fg_blend         wa * A + (1 - wa) * B ; blend = (1-t) prev + t cur (CH_BLEND)\n");
+            blend_printed = true;
         }
         if (L.kind == Kind::X) { std::printf("%-7s%4u %-16s (pseudo-row)\n", stage_name(L.stage), (unsigned)L.rank, L.name); continue; }
         std::printf("%-7s%4u %-16s %c  arm=%-7s %s", stage_name(L.stage), (unsigned)L.rank, L.name, kind_char(L.kind), arm_name(L.arm),
@@ -220,7 +255,8 @@ void layer_dump(const Config& c) {
         if (L.dominates_ok) std::printf("\n           dominates_ok: %s", L.dominates_ok);
         std::printf("\n");
     }
-    if (!core_printed) std::printf("CORE       fg_core\n");
+    if (!sample_printed) std::printf("CORE       fg_sample\n");
+    if (!blend_printed)  std::printf("CORE       fg_blend\n");
 }
 
 // ── --dump-config (the round-trip corpus record) ────────────────────────────────────────────────
@@ -260,6 +296,11 @@ void print_layer_help() {
             if (P.flag_alias) std::printf("  %-24s alias of %s (value required).\n", P.flag_alias, P.flag);
         }
     }
+    std::printf("  R3 (stage 5, shaders/fg_core.comp — the rows above as ONE generated kernel; opt-in until its M4 gate passes):\n"
+                "    --fg-core            route the product through fg_core.comp (default: shaders/wap_warp.comp, the legacy path)\n"
+                "    --fg-core-ab         run BOTH kernels every tick from the same inputs and count differing pixels (the M4 instrument)\n"
+                "    --fg-core-clean-sim  mv_guided.sim = the exact --mv-sim (default: the legacy's packed (1+sim)-1, XR1)\n"
+                "    --legacy-warp        pin the legacy path (today's default; R7's name for it)\n");
 }
 
 // ── --layer-model-json (the UI renders THIS; ui/src/main.js keeps no layer literal) ─────────────

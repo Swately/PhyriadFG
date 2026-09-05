@@ -42,3 +42,18 @@ void fillpipe_destroy(VDev& d,FillPipe& p);
 struct WapPipe { VkSampler samp=VK_NULL_HANDLE; VkDescriptorSetLayout dsl=VK_NULL_HANDLE; VkPipelineLayout layout=VK_NULL_HANDLE; VkPipeline pipe=VK_NULL_HANDLE; VkDescriptorPool pool=VK_NULL_HANDLE; VkDescriptorSet set=VK_NULL_HANDLE; };
 bool wap_create(VDev& d,VkImageView prev_v,VkImageView cur_v,VkImageView mv_v,VkImageView sad_v,VkImageView out_v,VkImageView mvb_v,VkImageView dis_v,VkImageView disb_v,VkImageView per_v,VkBuffer mass_buf,VkImageView c2_v,VkImageView field_v,VkImageView mvt_v,VkImageView prev_out_v,const std::vector<uint32_t>& spv,WapPipe& p);
 void wap_destroy(VDev& d,WapPipe& p);
+
+// R3 — the fg_core.comp pipeline (stage 5's LAYERTAB kernel): the SAME fourteen bindings as WapPipe, written
+// from the SAME views (so both kernels see identical inputs — the --fg-core-ab diff is a same-tick, same-input
+// comparison) + binding 15 = the LayerParams UBO (config-time), a specialization map (one VkBool32 per fused
+// row, constant_id = layer id) and a push of push_bytes (FgPush: CorePush 20 B + the gme gen-scalars 24 B).
+struct FgPipe { VkSampler samp=VK_NULL_HANDLE; VkDescriptorSetLayout dsl=VK_NULL_HANDLE; VkPipelineLayout layout=VK_NULL_HANDLE; VkPipeline pipe=VK_NULL_HANDLE; VkDescriptorPool pool=VK_NULL_HANDLE; VkDescriptorSet set=VK_NULL_HANDLE; };
+bool fgcore_create(VDev& d,VkImageView prev_v,VkImageView cur_v,VkImageView mv_v,VkImageView sad_v,VkImageView out_v,VkImageView mvb_v,VkImageView dis_v,VkImageView disb_v,VkImageView per_v,VkBuffer mass_buf,VkImageView c2_v,VkImageView field_v,VkImageView mvt_v,VkImageView prev_out_v,VkBuffer lp_buf,VkDeviceSize lp_bytes,const VkSpecializationInfo* spec,uint32_t push_bytes,const std::vector<uint32_t>& spv,FgPipe& p);
+void fgcore_destroy(VDev& d,FgPipe& p);
+// R3 — the --fg-core-ab byte-diff pass (shaders/fg_ab_diff.comp): 0 = the legacy output, 1 = the fg_core output
+// (both rgba8 STORAGE, GENERAL), 2 = the stats SSBO {ticks, diff_px, max_delta, sum_delta, list_count, list[4*256]}
+// = kAbStatsBytes (the evidence list: the first 256 differing pixels as {x|y<<16, a, b, tick}). No push.
+constexpr uint32_t kAbStatsBytes = 4u * 5u + 4u * 4u * 256u;
+struct AbPipe { VkDescriptorSetLayout dsl=VK_NULL_HANDLE; VkPipelineLayout layout=VK_NULL_HANDLE; VkPipeline pipe=VK_NULL_HANDLE; VkDescriptorPool pool=VK_NULL_HANDLE; VkDescriptorSet set=VK_NULL_HANDLE; };
+bool abdiff_create(VDev& d,VkImageView a_v,VkImageView b_v,VkBuffer stats_buf,const std::vector<uint32_t>& spv,AbPipe& p);
+void abdiff_destroy(VDev& d,AbPipe& p);

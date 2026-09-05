@@ -311,6 +311,14 @@ struct FgContext {
     Img& wapOutA;
     Img& wapPERA;
     WapPipe& wapPipeA;
+    FgPipe& fgPipeA;      // R3
+    AbPipe& abPipeA;      // R3 (--fg-core-ab)
+    Img& fgOutA;          // R3 (--fg-core-ab)
+    HBuf& hLP_a;          // R3: the LayerParams UBO
+    void*& hostLP;
+    HBuf& devAb;          // R3 (--fg-core-ab): the stats SSBO + its host copy
+    HBuf& hAb_a;
+    void*& hostAb;
     Img& wapPrevA;
     Img& wapPrevOutA;
     Img& wapSADA;

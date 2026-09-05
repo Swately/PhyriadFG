@@ -154,3 +154,87 @@ bool wap_create(VDev& d,VkImageView prev_v,VkImageView cur_v,VkImageView mv_v,Vk
     vkUpdateDescriptorSets(d.dev,14,wds,0,nullptr); return p.pipe!=VK_NULL_HANDLE;
 }
 void wap_destroy(VDev& d,WapPipe& p){ if(p.pool)vkDestroyDescriptorPool(d.dev,p.pool,nullptr); if(p.pipe)vkDestroyPipeline(d.dev,p.pipe,nullptr); if(p.layout)vkDestroyPipelineLayout(d.dev,p.layout,nullptr); if(p.dsl)vkDestroyDescriptorSetLayout(d.dev,p.dsl,nullptr); if(p.samp)vkDestroySampler(d.dev,p.samp,nullptr); p=WapPipe{}; }
+
+// ── R3: the fg_core.comp pipeline ─────────────────────────────────────────────────────────────────
+// The wap_create body with three differences: a 15th binding (the LayerParams UBO), a VkSpecializationInfo on the
+// stage (the registry's on[] folded at pipeline creation — a disabled row's body is dead code, no runtime branch)
+// and a push range of push_bytes. Bindings 0..13 are declared identically so the same fourteen views are written.
+bool fgcore_create(VDev& d,VkImageView prev_v,VkImageView cur_v,VkImageView mv_v,VkImageView sad_v,VkImageView out_v,VkImageView mvb_v,VkImageView dis_v,VkImageView disb_v,VkImageView per_v,VkBuffer mass_buf,VkImageView c2_v,VkImageView field_v,VkImageView mvt_v,VkImageView prev_out_v,VkBuffer lp_buf,VkDeviceSize lp_bytes,const VkSpecializationInfo* spec,uint32_t push_bytes,const std::vector<uint32_t>& spv,FgPipe& p){
+    VkSamplerCreateInfo s{}; s.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO; s.magFilter=VK_FILTER_LINEAR; s.minFilter=VK_FILTER_LINEAR; s.addressModeU=s.addressModeV=s.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE; if(vkCreateSampler(d.dev,&s,nullptr,&p.samp)!=VK_SUCCESS) return false;
+    const VkDescriptorSetLayoutBinding bd[15]={
+        {0,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {2,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {3,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {4,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr},
+        {5,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {6,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {7,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {8,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {9,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr},
+        {10,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {11,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr},
+        {12,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {13,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_COMPUTE_BIT,&p.samp},
+        {15,VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr}};   // the LayerParams UBO
+    VkDescriptorSetLayoutCreateInfo dl{}; dl.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; dl.bindingCount=15; dl.pBindings=bd; if(vkCreateDescriptorSetLayout(d.dev,&dl,nullptr,&p.dsl)!=VK_SUCCESS) return false;
+    VkPushConstantRange pcr{}; pcr.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset=0; pcr.size=push_bytes;
+    VkPipelineLayoutCreateInfo pl{}; pl.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO; pl.setLayoutCount=1; pl.pSetLayouts=&p.dsl; pl.pushConstantRangeCount=1; pl.pPushConstantRanges=&pcr; if(vkCreatePipelineLayout(d.dev,&pl,nullptr,&p.layout)!=VK_SUCCESS) return false;
+    VkShaderModuleCreateInfo mci{}; mci.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO; mci.codeSize=spv.size()*sizeof(uint32_t); mci.pCode=spv.data(); VkShaderModule mod=VK_NULL_HANDLE; if(vkCreateShaderModule(d.dev,&mci,nullptr,&mod)!=VK_SUCCESS) return false;
+    VkPipelineShaderStageCreateInfo stg{}; stg.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO; stg.stage=VK_SHADER_STAGE_COMPUTE_BIT; stg.module=mod; stg.pName="main"; stg.pSpecializationInfo=spec;
+    VkComputePipelineCreateInfo cp{}; cp.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO; cp.stage=stg; cp.layout=p.layout; const VkResult pr=vkCreateComputePipelines(d.dev,VK_NULL_HANDLE,1,&cp,nullptr,&p.pipe); vkDestroyShaderModule(d.dev,mod,nullptr); if(pr!=VK_SUCCESS) return false;
+    const VkDescriptorPoolSize psz[4]={{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,11},{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,2},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1},{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,1}};
+    VkDescriptorPoolCreateInfo pi{}; pi.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO; pi.maxSets=1; pi.poolSizeCount=4; pi.pPoolSizes=psz; if(vkCreateDescriptorPool(d.dev,&pi,nullptr,&p.pool)!=VK_SUCCESS) return false;
+    VkDescriptorSetAllocateInfo dai{}; dai.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO; dai.descriptorPool=p.pool; dai.descriptorSetCount=1; dai.pSetLayouts=&p.dsl; if(vkAllocateDescriptorSets(d.dev,&dai,&p.set)!=VK_SUCCESS) return false;
+    auto samp=[&](VkImageView v){ VkDescriptorImageInfo i{}; i.sampler=p.samp; i.imageView=v; i.imageLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; return i; };
+    const VkDescriptorImageInfo iprev=samp(prev_v),icur=samp(cur_v),imv=samp(mv_v),isad=samp(sad_v),imvb=samp(mvb_v),idis=samp(dis_v),idisb=samp(disb_v),iper=samp(per_v),ic2=samp(c2_v),imvt=samp(mvt_v),ipout=samp(prev_out_v);
+    VkDescriptorImageInfo iout{};  iout.imageView=out_v;   iout.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+    VkDescriptorImageInfo ifld{};  ifld.imageView=field_v; ifld.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+    VkDescriptorBufferInfo imass{}; imass.buffer=mass_buf; imass.offset=0; imass.range=VK_WHOLE_SIZE;
+    VkDescriptorBufferInfo ilp{};   ilp.buffer=lp_buf;     ilp.offset=0; ilp.range=lp_bytes;
+    const VkWriteDescriptorSet wds[15]={
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,0,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&iprev,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,1,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&icur,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,2,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&imv,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,3,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&isad,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,4,0,1,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,&iout,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,5,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&imvb,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,6,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&idis,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,7,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&idisb,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,8,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&iper,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,9,0,1,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,nullptr,&imass,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,10,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&ic2,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,11,0,1,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,&ifld,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,12,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&imvt,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,13,0,1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,&ipout,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,15,0,1,VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,nullptr,&ilp,nullptr}};
+    vkUpdateDescriptorSets(d.dev,15,wds,0,nullptr); return p.pipe!=VK_NULL_HANDLE;
+}
+void fgcore_destroy(VDev& d,FgPipe& p){ if(p.pool)vkDestroyDescriptorPool(d.dev,p.pool,nullptr); if(p.pipe)vkDestroyPipeline(d.dev,p.pipe,nullptr); if(p.layout)vkDestroyPipelineLayout(d.dev,p.layout,nullptr); if(p.dsl)vkDestroyDescriptorSetLayout(d.dev,p.dsl,nullptr); if(p.samp)vkDestroySampler(d.dev,p.samp,nullptr); p=FgPipe{}; }
+
+// ── R3: the --fg-core-ab byte-diff pass ───────────────────────────────────────────────────────────
+bool abdiff_create(VDev& d,VkImageView a_v,VkImageView b_v,VkBuffer stats_buf,const std::vector<uint32_t>& spv,AbPipe& p){
+    const VkDescriptorSetLayoutBinding bd[3]={
+        {0,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr},
+        {1,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr},
+        {2,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1,VK_SHADER_STAGE_COMPUTE_BIT,nullptr}};
+    VkDescriptorSetLayoutCreateInfo dl{}; dl.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; dl.bindingCount=3; dl.pBindings=bd; if(vkCreateDescriptorSetLayout(d.dev,&dl,nullptr,&p.dsl)!=VK_SUCCESS) return false;
+    VkPipelineLayoutCreateInfo pl{}; pl.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO; pl.setLayoutCount=1; pl.pSetLayouts=&p.dsl; if(vkCreatePipelineLayout(d.dev,&pl,nullptr,&p.layout)!=VK_SUCCESS) return false;
+    VkShaderModuleCreateInfo mci{}; mci.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO; mci.codeSize=spv.size()*sizeof(uint32_t); mci.pCode=spv.data(); VkShaderModule mod=VK_NULL_HANDLE; if(vkCreateShaderModule(d.dev,&mci,nullptr,&mod)!=VK_SUCCESS) return false;
+    VkPipelineShaderStageCreateInfo stg{}; stg.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO; stg.stage=VK_SHADER_STAGE_COMPUTE_BIT; stg.module=mod; stg.pName="main";
+    VkComputePipelineCreateInfo cp{}; cp.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO; cp.stage=stg; cp.layout=p.layout; const VkResult pr=vkCreateComputePipelines(d.dev,VK_NULL_HANDLE,1,&cp,nullptr,&p.pipe); vkDestroyShaderModule(d.dev,mod,nullptr); if(pr!=VK_SUCCESS) return false;
+    const VkDescriptorPoolSize psz[2]={{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,2},{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1}};
+    VkDescriptorPoolCreateInfo pi{}; pi.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO; pi.maxSets=1; pi.poolSizeCount=2; pi.pPoolSizes=psz; if(vkCreateDescriptorPool(d.dev,&pi,nullptr,&p.pool)!=VK_SUCCESS) return false;
+    VkDescriptorSetAllocateInfo dai{}; dai.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO; dai.descriptorPool=p.pool; dai.descriptorSetCount=1; dai.pSetLayouts=&p.dsl; if(vkAllocateDescriptorSets(d.dev,&dai,&p.set)!=VK_SUCCESS) return false;
+    VkDescriptorImageInfo ia{}; ia.imageView=a_v; ia.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+    VkDescriptorImageInfo ib{}; ib.imageView=b_v; ib.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+    VkDescriptorBufferInfo ist{}; ist.buffer=stats_buf; ist.offset=0; ist.range=VK_WHOLE_SIZE;
+    const VkWriteDescriptorSet wds[3]={
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,0,0,1,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,&ia,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,1,0,1,VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,&ib,nullptr,nullptr},
+        {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,p.set,2,0,1,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,nullptr,&ist,nullptr}};
+    vkUpdateDescriptorSets(d.dev,3,wds,0,nullptr); return p.pipe!=VK_NULL_HANDLE;
+}
+void abdiff_destroy(VDev& d,AbPipe& p){ if(p.pool)vkDestroyDescriptorPool(d.dev,p.pool,nullptr); if(p.pipe)vkDestroyPipeline(d.dev,p.pipe,nullptr); if(p.layout)vkDestroyPipelineLayout(d.dev,p.layout,nullptr); if(p.dsl)vkDestroyDescriptorSetLayout(d.dev,p.dsl,nullptr); p=AbPipe{}; }
+
+// Made with my soul - Swately <3

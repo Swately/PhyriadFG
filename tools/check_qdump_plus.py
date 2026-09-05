@@ -163,7 +163,8 @@ def main():
         if push0 is None and len(raw) >= 4 * len(PUSH_NAMES):
             push0 = dict(zip(PUSH_NAMES, struct.unpack_from('<%df' % len(PUSH_NAMES), raw, 0)))
         extra = '+'.join(sorted(present - {'mv', 'sad', 'push'})) or '(base only)'
-        print(f'  {rid}: gen={r["gen"]}->tgen={r.get("tgen","?")} mv {mvw}x{mvh} {line_mv}'
+        prov = f"core={r.get('core', 'wap_warp(pre-R3)')} contract={r.get('contract', '-')} ab={r.get('ab', '-')}"   # R3: which kernel produced `live`
+        print(f'  {rid}: gen={r["gen"]}->tgen={r.get("tgen","?")} mv {mvw}x{mvh} {line_mv}{prov} '
               f'| push {len(raw)} B rc={rc:g} improv={ci:g} agree={ag:g} t={tp:.4f} '
               f'(manifest {tm:.4f}) {"OK" if t_ok else "MISMATCH"} | planes {extra}')
     if len(pushsz_seen) != 1:

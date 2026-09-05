@@ -1,0 +1,59 @@
+// shaders/fg_ab_diff.comp — the R3 M4 INSTRUMENT: a same-tick, same-input byte-diff of two rgba8 outputs.
+//
+// --fg-core-ab dispatches BOTH kernels every tick from the SAME descriptor inputs (wap_warp.comp → wapOutA,
+// the product; fg_core.comp → fgOutA), then this pass counts the pixels whose 8-bit values differ and
+// keeps the largest per-channel delta. Totals accumulate in a device-local SSBO that is copied to the
+// host every tick and printed each second + at exit: "0 differing pixels over N ticks" is the
+// byte-identity claim, measured, not argued. imageLoad of an rgba8 unorm returns v/255 exactly, so
+// round(v*255) recovers the byte.
+//
+// Made with my soul - Swately <3
+#version 450
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(set = 0, binding = 0, rgba8) uniform readonly image2D u_a;   // the legacy warp output (wapOutA)
+layout(set = 0, binding = 1, rgba8) uniform readonly image2D u_b;   // the fg_core output (fgOutA)
+layout(set = 0, binding = 2) buffer AbStats {
+    uint ticks;       // dispatches compared (workgroup (0,0) adds one)
+    uint diff_px;     // pixels with any channel differing
+    uint max_delta;   // largest |a - b| over channels, 8-bit units
+    uint sum_delta;   // sum of the per-pixel max-channel delta
+    // the EVIDENCE list: the first 256 differing pixels ever seen, {x | y << 16, a.rgba packed, b.rgba packed,
+    // the tick index} — so each difference can be placed (rim? background?) and valued (which channel, which
+    // level) and, with a --qdump+ record of a nearby tick, replayed through the CPU oracle.
+    uint list_count;
+    uint list[4 * 256];
+} u_stats;
+
+uint pack8(ivec4 v) { return uint(v.r) | (uint(v.g) << 8u) | (uint(v.b) << 16u) | (uint(v.a) << 24u); }
+
+shared uint s_diff;
+shared uint s_max;
+shared uint s_sum;
+
+void main() {
+    if (gl_LocalInvocationIndex == 0u) { s_diff = 0u; s_max = 0u; s_sum = 0u; }
+    barrier();
+    const ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 sz    = imageSize(u_a);
+    if (coord.x < sz.x && coord.y < sz.y) {
+        const ivec4 a = ivec4(round(imageLoad(u_a, coord) * 255.0));
+        const ivec4 b = ivec4(round(imageLoad(u_b, coord) * 255.0));
+        const ivec4 d = abs(a - b);
+        const uint  m = uint(max(max(d.r, d.g), max(d.b, d.a)));
+        if (m > 0u) {
+            atomicAdd(s_diff, 1u); atomicMax(s_max, m); atomicAdd(s_sum, m);
+            const uint slot = atomicAdd(u_stats.list_count, 1u);
+            if (slot < 256u) {
+                u_stats.list[slot * 4u + 0u] = uint(coord.x) | (uint(coord.y) << 16u);
+                u_stats.list[slot * 4u + 1u] = pack8(a);
+                u_stats.list[slot * 4u + 2u] = pack8(b);
+                u_stats.list[slot * 4u + 3u] = u_stats.ticks;   // the running tick index at the time (a label, not a sync)
+            }
+        }
+    }
+    barrier();
+    if (gl_LocalInvocationIndex == 0u) {
+        if (gl_WorkGroupID.x == 0u && gl_WorkGroupID.y == 0u) atomicAdd(u_stats.ticks, 1u);
+        if (s_diff > 0u) { atomicAdd(u_stats.diff_px, s_diff); atomicMax(u_stats.max_delta, s_max); atomicAdd(u_stats.sum_delta, s_sum); }
+    }
+}

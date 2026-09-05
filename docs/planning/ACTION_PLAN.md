@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → operator decision on the consensus-pass default (M1 finding) → S4.R3 on an APERIODIC corpus carrying mv1 + mvb1 · next`**
+**`P → S4.R4 (stage 6 PRESENT extracted; builds --tdr-test) · next — R3 done 2026-09-05 (records/R3_GATE.md); the consensus-pass default is R5's row and the operator's word; A0/M1 is R7's`**
 > **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
 > background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
 > a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.
@@ -230,7 +230,13 @@ exactos que simulen de forma correcta el movimiento".)
     unchanged. Flipping the default is a separate decision (a longer soak + the operator's eye).
   - **S4.R3** Stage 5: `fg_core.comp` + the 8 fused rows replace `wap_warp.comp` for the default set =
     **M-R3**; M4 by S2.T6 on the `--qdump+` replay (packed value first, XR1); bg-reclaim bug-for-bug (XR7) ·
-    `blocked (S2.T6's RESIDUAL, much smaller since 2026-09-04: the deadzone was the periodic test
+    **`done`** (2026-09-05, `records/R3_GATE.md`, gate PASSED (residual attributed)) — `shaders/fg_core.comp` + twelve row bodies + the
+    core in `fg_core_math.glsl` (sample half → WEIGHT → blend half), the generator with the WEIGHT stage,
+    `CH_BLEND`, the declared-`needs` rule and the overrides/`c_in` check (all three seen RED on negative tests),
+    the depfile (XR13), `--fg-core` opt-in, and the M4 INSTRUMENT `--fg-core-ab` (both kernels every tick on
+    the same inputs, a byte-diff pass with an evidence list). byte-identical to the legacy kernel on every compared tick once FMA contraction is forbidden in both modules; with the driver's contraction allowed, ~7×10⁻⁹ of the pixels differ by one level — attributed by experiment, `records/R3_GATE.md` §4. Declared deviations: the 44-B push
+    (CorePush + the gme gen-scalars), three dead `shadows` not reproduced, the `single_track ON` envelope,
+    `warp_light` unreproducible, no `cam_lead`/`extrap` row. Former block text kept: (S2.T6's RESIDUAL, much smaller since 2026-09-04: the deadzone was the periodic test
     content and is closed — on aperiodic content the oracle reaches k = 0.956 / corr 0.987 where motion
     is real. What remains is a 5–13 % over-displacement on moving content against the 1.000 the gate
     asks. The fear that the shipping default was insensitive to sub-pixel motion is NOT confirmed.

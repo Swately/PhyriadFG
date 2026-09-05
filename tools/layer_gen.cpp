@@ -5,21 +5,34 @@
 // from Candidate C §1.1 (`tools/gen_layer_glsl.cmake`), recorded in the R0 stage record: C itself
 // offered a stdlib-Python alternative; a C++ generator from the expanded tables is stronger.
 //
-// Usage: layer_gen <out_dir>   → writes into <out_dir>:
+// Usage: layer_gen <out_dir> [<shaders_dir>]   → writes into <out_dir>:
 //   layer_specconst.glsl   layout(constant_id = <id>) const bool L_<NAME> = false;   per real row
 //   layer_params.glsl      std140 uniform LayerParams { ... } lp;  + per-row #define aliases
 //   layer_includes.glsl    #include "layers/<name>.glsl"  per fused row, rank-ordered
-//   chain_mvcond.glsl / chain_sample.glsl / chain_compose.glsl   the ranked call chains
+//   chain_mvcond.glsl / chain_sample.glsl / chain_weight.glsl / chain_compose.glsl   the ranked call chains
 //   layer_offsets.hpp      PFG_OFF_<LAYER>_<PARAM> byte offsets (std140 scalars: 4 * index) + the size
-//   layer_manifest.txt     a human listing (rows, ranks, params) — also the DEPENDS witness
-// Stage R0: these files are GENERATED but nothing includes them yet (shaders/fg_core.comp is R3).
+//   layer_manifest.txt     a human listing (rows, ranks, params, the body checks) — also the DEPENDS witness
+//
+// R3 (stage 5): when <shaders_dir> is given the generator also CHECKS every fused row's body
+// (<shaders_dir>/layers/<name>.glsl) and refuses to generate (exit 3) when a body:
+//   * is missing, or does not define its stage's entry point (pfg_<stage>_<name>);
+//   * reads the UBO directly (`lp.`) instead of through its generated alias;
+//   * reads another row's parameter alias (<OTHER>_<param>) without that row in its `needs` mask —
+//     the declared-`needs` rule for cross-row parameter reads (COLUMN_CLOSURE_EXPERIMENT.md §2.3);
+//   * is a COMPOSE row that never references `c_in` while `overrides` is false (Candidate C §3.5 item 4);
+//   * lacks the authorship signature.
+// These are grep-level checks on the source text: crude, and exactly what catches the accident that
+// produced the legacy shader's six unrelated `result =` sites.
 #include "layers/layer_table.hpp"
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <fstream>
+#include <sstream>
 
 using namespace pfg::layers;
 
@@ -33,14 +46,82 @@ static FILE* open_out(const std::string& dir, const char* name) {
     return f;
 }
 
+static bool read_file(const std::string& p, std::string& out) {
+    std::ifstream f(p, std::ios::binary);
+    if (!f) return false;
+    std::stringstream ss; ss << f.rdbuf(); out = ss.str();
+    return true;
+}
+
+// whole-token search: `tok` bounded by non-identifier characters on both sides
+static bool has_token(const std::string& body, const std::string& tok) {
+    auto idch = [](char c) { return std::isalnum((unsigned char)c) || c == '_'; };
+    size_t pos = 0;
+    while ((pos = body.find(tok, pos)) != std::string::npos) {
+        const bool lb = (pos == 0) || !idch(body[pos - 1]);
+        const size_t e = pos + tok.size();
+        const bool rb = (e >= body.size()) || !idch(body[e]);
+        if (lb && rb) return true;
+        pos = e;
+    }
+    return false;
+}
+
+static const char* entry_prefix(Stage s) {
+    switch (s) { case Stage::MVCOND: return "pfg_mvcond_"; case Stage::SAMPLE: return "pfg_sample_";
+                 case Stage::WEIGHT: return "pfg_weight_"; case Stage::COMPOSE: return "pfg_compose_";
+                 case Stage::FLOW: return "pfg_flow_"; case Stage::HOST: return "pfg_host_"; }
+    return "pfg_";
+}
+
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr, "usage: layer_gen <out_dir>\n"); return 1; }
+    if (argc < 2) { std::fprintf(stderr, "usage: layer_gen <out_dir> [<shaders_dir>]\n"); return 1; }
     const std::string dir = argv[1];
+    const std::string shaders = (argc > 2) ? argv[2] : "";
     std::vector<uint16_t> order(kLayerCount);
     for (uint16_t i = 0; i < kLayerCount; ++i) order[i] = i;
     std::sort(order.begin(), order.end(), [](uint16_t a, uint16_t b) {
         if (kLayers[a].stage != kLayers[b].stage) return (uint8_t)kLayers[a].stage < (uint8_t)kLayers[b].stage;
         return kLayers[a].rank < kLayers[b].rank; });
+
+    // 0. the body checks (R3) — refuse to generate on any violation
+    int errors = 0, checked = 0;
+    if (!shaders.empty()) {
+        for (uint16_t k : order) {
+            const LayerDesc& L = kLayers[k];
+            if (L.kind != Kind::F) continue;
+            const std::string path = shaders + "/layers/" + L.name + ".glsl";
+            std::string body;
+            if (!read_file(path, body)) { std::fprintf(stderr, "layer_gen: row %s: body %s is MISSING\n", L.name, path.c_str()); ++errors; continue; }
+            ++checked;
+            const std::string fn = std::string(entry_prefix(L.stage)) + L.name;
+            if (!has_token(body, fn)) { std::fprintf(stderr, "layer_gen: row %s: body does not define its entry point %s\n", L.name, fn.c_str()); ++errors; }
+            if (body.find("lp.") != std::string::npos) { std::fprintf(stderr, "layer_gen: row %s: body reads the UBO directly (`lp.`) — use the generated alias <ROW>_<param>\n", L.name); ++errors; }
+            for (uint16_t j = 0; j < kLayerCount; ++j) {
+                if (j == k) continue;
+                const LayerDesc& O = kLayers[j];
+                for (size_t p = O.param_first; p < (size_t)O.param_first + O.param_count; ++p) {
+                    const std::string alias = upper(O.name) + "_" + kParams[p].name;
+                    if (has_token(body, alias) && !(L.needs & (1u << j))) {
+                        std::fprintf(stderr, "layer_gen: row %s: reads %s (row %s's parameter) without declaring row %s in its `needs` mask — cross-row reads must be DECLARED\n", L.name, alias.c_str(), O.name, O.name); ++errors; }
+                }
+            }
+            if (L.stage == Stage::COMPOSE) {
+                // Does the FUNCTION BODY use c_in? The signature `vec4 pfg_compose_<n>(vec4 c_in, ...)` always names it and
+                // comments may mention it, so the search starts after the entry point's opening brace and skips `//` comments —
+                // a check that could not fail was found red on its own negative test (2026-09-05) and fixed here.
+                std::string code;
+                { const size_t fp = body.find(fn); const size_t br = (fp == std::string::npos) ? std::string::npos : body.find('{', fp);
+                  const std::string tail = (br == std::string::npos) ? body : body.substr(br + 1);
+                  std::istringstream ss(tail); std::string ln;
+                  while (std::getline(ss, ln)) { const size_t c = ln.find("//"); code += (c == std::string::npos) ? ln : ln.substr(0, c); code += '\n'; } }
+                const bool uses_c_in = has_token(code, "c_in");
+                if (!uses_c_in && !L.overrides) { std::fprintf(stderr, "layer_gen: row %s: a COMPOSE body that never references c_in must declare overrides = true\n", L.name); ++errors; }
+            }
+            if (body.find("Made with my soul") == std::string::npos) { std::fprintf(stderr, "layer_gen: row %s: body lacks the authorship signature\n", L.name); ++errors; }
+        }
+        if (errors) { std::fprintf(stderr, "layer_gen: %d body check(s) FAILED — nothing generated\n", errors); return 3; }
+    }
 
     // 1. specialization constants
     { FILE* f = open_out(dir, "layer_specconst.glsl");
@@ -92,6 +173,11 @@ int main(int argc, char** argv) {
       for (uint16_t k : order) { const LayerDesc& L = kLayers[k]; if (L.stage != Stage::SAMPLE || L.kind != Kind::F) continue;
           std::fprintf(f, "    if (%s) mv_s = pfg_sample_%s(mv_s, ctx);   /* rank %u */\n", arm_expr(L).c_str(), L.name, (unsigned)L.rank); }
       std::fclose(f); }
+    { FILE* f = open_out(dir, "chain_weight.glsl");
+      std::fprintf(f, "    float wa = 1.0 - ctx.t;   /* the WEIGHT stage identity (wap_warp.comp:637); rows re-weight between the samples and the blend */\n");
+      for (uint16_t k : order) { const LayerDesc& L = kLayers[k]; if (L.stage != Stage::WEIGHT || L.kind != Kind::F) continue;
+          std::fprintf(f, "    if (%s) wa = pfg_weight_%s(wa, ctx);   /* rank %u */\n", arm_expr(L).c_str(), L.name, (unsigned)L.rank); }
+      std::fclose(f); }
     { FILE* f = open_out(dir, "chain_compose.glsl");
       std::fprintf(f, "    vec4 c_out = core.color;   /* the ONLY store source (G1): every COMPOSE row is vec4 f(c_in, ctx) */\n");
       for (uint16_t k : order) { const LayerDesc& L = kLayers[k]; if (L.stage != Stage::COMPOSE || L.kind != Kind::F) continue;
@@ -108,11 +194,11 @@ int main(int argc, char** argv) {
 
     // 6. manifest
     { FILE* f = open_out(dir, "layer_manifest.txt");
-      std::fprintf(f, "rows=%u params=%zu\n", (unsigned)kLayerCount, (size_t)kParamCount);
+      std::fprintf(f, "rows=%u params=%zu bodies_checked=%d\n", (unsigned)kLayerCount, (size_t)kParamCount, checked);
       for (uint16_t k : order) { const LayerDesc& L = kLayers[k];
           std::fprintf(f, "%-8s %4u %-18s %c default=%d overrides=%d arm=%s params=%u\n", stage_name(L.stage), (unsigned)L.rank, L.name, kind_char(L.kind), (int)L.default_on, (int)L.overrides, arm_name(L.arm), (unsigned)L.param_count); }
       std::fclose(f); }
-    std::printf("layer_gen: %u rows, %zu params -> %s\n", (unsigned)kLayerCount, (size_t)kParamCount, dir.c_str());
+    std::printf("layer_gen: %u rows, %zu params, %d bodies checked -> %s\n", (unsigned)kLayerCount, (size_t)kParamCount, checked, dir.c_str());
     return 0;
 }
 

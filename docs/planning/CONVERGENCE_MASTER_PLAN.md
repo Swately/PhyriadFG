@@ -8,7 +8,7 @@
 > [`CONVERGENCE_IMPLEMENTATION_STRATEGIES.md`](CONVERGENCE_IMPLEMENTATION_STRATEGIES.md) ·
 > [`CONVERGENCE_RISK_REGISTER.md`](CONVERGENCE_RISK_REGISTER.md).
 > **Status:** `in execution` (v2, 2026-09-03) — **R0 and R1 built and gated (M-R0 `records/R0_GATE.md`,
-> M-R1 `records/R1_GATE.md`, M-R2 `records/R2_GATE.md`); R3+ not built**; every "exists / line N /
+> M-R1 `records/R1_GATE.md`, M-R2 `records/R2_GATE.md`, **M-R3 `records/R3_GATE.md` (2026-09-05, gate PASSED (residual attributed))**); R4+ not built**; every "exists / line N /
 > measured" claim was read or computed first-hand in the authoring session; every forward number is
 > labelled `estimated` or `unmeasured`. MUST / SHOULD / MAY are BCP-14.
 > **v2 re-aim (2026-09-03, operator: "hagamos tu recomendación" → "Sí adelante"):** v1 (same day, ATF-

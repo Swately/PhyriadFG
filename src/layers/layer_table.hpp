@@ -126,7 +126,8 @@ constexpr bool stage_writes_legal() {
         if (L.kind == Kind::X) continue;
         if (L.stage == Stage::MVCOND  && (L.writes_ch & ~CH_MV)) return false;
         if (L.stage == Stage::SAMPLE  && (L.writes_ch & ~CH_MV_SAMPLE)) return false;
-        if (L.stage == Stage::COMPOSE && L.writes_ch != CH_NONE) return false;   // its return value only
+        if (L.stage == Stage::WEIGHT  && L.writes_ch != CH_NONE) return false;   // its return value (wa) only
+        if (L.stage == Stage::COMPOSE && (L.writes_ch & ~CH_BLEND)) return false;   // its return value, plus CH_BLEND (COLUMN_CLOSURE §2.2)
     }
     return true;
 }
@@ -140,11 +141,11 @@ static_assert(ids_dense(), "LayerId must be dense and in .def order");
 static_assert(ranks_unique_per_stage(), "two rows share a rank inside one stage — the declared order is ambiguous");
 static_assert(targets_exist(), "a requires/excludes mask names a layer that does not exist");
 static_assert(params_sane(), "a param default is outside [lo,hi] (or lo > hi)");
-static_assert(stage_writes_legal(), "a row writes a channel its stage may not write (MVCOND->CH_MV only; SAMPLE->CH_MV_SAMPLE only; COMPOSE returns)");
+static_assert(stage_writes_legal(), "a row writes a channel its stage may not write (MVCOND->CH_MV only; SAMPLE->CH_MV_SAMPLE only; WEIGHT returns; COMPOSE returns + CH_BLEND)");
 static_assert(pseudo_rows_clean(), "a pseudo-row carries params or flags");
 
 constexpr const char* stage_name(Stage s) {
-    switch (s) { case Stage::MVCOND: return "MVCOND"; case Stage::SAMPLE: return "SAMPLE";
+    switch (s) { case Stage::MVCOND: return "MVCOND"; case Stage::SAMPLE: return "SAMPLE"; case Stage::WEIGHT: return "WEIGHT";
                  case Stage::COMPOSE: return "COMPOSE"; case Stage::FLOW: return "FLOW"; case Stage::HOST: return "HOST"; }
     return "?";
 }

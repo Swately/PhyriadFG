@@ -10,7 +10,10 @@
 //   PFG_PSEUDO(ID, name, stage, rank, text)      — a Kind::X row (ordering fact, no body)
 //
 // Stage R0: the rows exist for the registry (parser shadow, help, UI model, dump, hash, GLSL
-// generation); wap_warp.comp is unchanged. Bodies (shaders/layers/<name>.glsl) arrive at R3.
+// generation). Stage R3: every fused row has its body in shaders/layers/<name>.glsl and
+// shaders/fg_core.comp runs the generated chains (opt-in --fg-core; wap_warp.comp stays the default).
+// tools/layer_gen.cpp checks each body against its row (entry point, alias-only UBO reads, the
+// declared-`needs` rule for cross-row parameter reads, the overrides/c_in rule, the signature).
 // R0 also does NOT resolve `requires`/`excludes` — resolve_config()'s cascades still own that
 // (parity is measured PRE-cascade, see layer_config_parity()).
 
@@ -83,7 +86,7 @@ PFG_LAYER(PHASE_ANCHOR, "phase_anchor", MVCOND, 40, F, true, false, 0u, false, 0
 PFG_LAYER_END(PHASE_ANCHOR)
 
 // rank 45 — the sad tap (412–414) + the stasis predicate evaluation (publishes CH_STASIS).
-PFG_PSEUDO(SAMPLE_SAD_STASIS, ":sample sad ; :eval stasis", MVCOND, 45, "ctx.sad = texture(u_sad_field, ctx.uv).xy; ctx.stasis_block = (L_STASIS && (ctx.sad.y <= lp.stasis_thresh));   /* wap_warp.comp:412-414, :1191 predicate */")
+PFG_PSEUDO(SAMPLE_SAD_STASIS, ":sample sad ; :eval stasis", MVCOND, 45, "ctx.sad = texture(u_sad_field, ctx.uv).xy; ctx.stasis_block = (L_STASIS && (ctx.sad.y <= STASIS_thresh));   /* wap_warp.comp:412-414, :1191 predicate */")
 
 // rank 50 — --ambig (426–444). DEFAULT ON. requires gme; arm = GME.
 PFG_LAYER(AMBIG, "ambig", MVCOND, 50, F, true, false, 0u, false, 0u,
@@ -113,7 +116,28 @@ PFG_LAYER(VBLEND, "vblend", SAMPLE, 110, F, true, false, 0u, false, 0u,
             "frame of latency). Default = PREDICT (2*mv - mv_prev).")
 PFG_LAYER_END(VBLEND)
 
+// ── WEIGHT ─────────────────────────────────────────────────────────────────────────────────────
+// (R3, COLUMN_CLOSURE_EXPERIMENT.md §2.1) rows that re-weight the A/B contribution BETWEEN the core's
+// samples and its blend: `float f(float wa, ctx)`, identity wa = 1 − t (wap_warp.comp:637).
+// rank 190 — single_track's re-weight (wap_warp.comp:678 `wa_eff = single_track ? 0 : wa`). requires
+// single_track (ALL). This was the first of single_track's four `shadows` (SH_WA_EFF_ZERO); as a WEIGHT
+// row the wart dissolves into the schema. Not user-toggleable: it follows single_track.
+PFG_LAYER(SINGLE_TRACK_WA, "single_track_wa", WEIGHT, 190, F, true, false, PFG_BIT(SINGLE_TRACK), false, 0u,
+          CH_NONE, CH_NONE, SH_NONE, ALWAYS, "Composition",
+          nullptr, nullptr, nullptr,
+          "single_track's WEIGHT half: the core blend collapses to the B-track (wa = 0). Follows single_track.")
+PFG_LAYER_END(SINGLE_TRACK_WA)
 // ── COMPOSE ────────────────────────────────────────────────────────────────────────────────────
+// rank 260 — the warp-vs-blend SELECT (wap_warp.comp:1177-1184, the hard binary path): warp_ok ? c_in :
+// ctx.blend. DEFAULT ON, not user-toggleable — it is the core's own selection, expressed as a row so the
+// second accumulator is a declared channel (CH_BLEND) and the select an attributable rank
+// (COLUMN_CLOSURE_EXPERIMENT.md §2.2). Under the shipping default its output is discarded by rank 290.
+PFG_LAYER(SELECT, "select", COMPOSE, 260, F, true, false, 0u, false, 0u,
+          CH_WARP_OK | CH_BLEND, CH_NONE, SH_NONE, ALWAYS, "Composition",
+          nullptr, nullptr, nullptr,
+          "The warp-vs-blend select (hard path): the core's blend where both gates pass, the un-warped "
+          "crossfade elsewhere. The soft-gate / commit-default / multicand variants are not rows in R3.")
+PFG_LAYER_END(SELECT)
 // rank 280 — --stasis (the pre-store bypass, wap_warp.comp:1191). DEFAULT ON. OVERRIDE.
 PFG_LAYER(STASIS, "stasis", COMPOSE, 280, F, true, true, 0u, false, 0u,
           CH_STASIS | CH_CUR, CH_NONE, SH_NONE, ALWAYS, "Composition",
@@ -127,10 +151,13 @@ PFG_LAYER(STASIS, "stasis", COMPOSE, 280, F, true, true, 0u, false, 0u,
 PFG_LAYER_END(STASIS)
 
 // rank 290 — --single-track (1321–1329). DEFAULT ON (v3.2). OVERRIDE (c_in deliberately discarded).
-// shadows = the four upstream reaches into the core (Candidate C §4.7 — the declared, printed wart).
+// shadows = the legacy's four upstream reaches into the core (Candidate C §4.7). R3: SH_WA_EFF_ZERO became the
+// WEIGHT row single_track_wa; the other three (blend base = cur :692, forced warp select :1089, commit/ts-smooth
+// inert :810/:1267) write accumulators the :1321 override discards — DEAD under the override, verified 2026-09-05,
+// so fg_core.comp does not reproduce them and no output byte depends on them. Kept declared and printed.
 PFG_LAYER(SINGLE_TRACK, "single_track", COMPOSE, 290, F, true, true, 0u, false, 0u,
           CH_B_SAMP | CH_CUR | CH_PREV | CH_D_PIXEL | CH_STASIS, CH_NONE,
-          SH_WA_EFF_ZERO | SH_BLEND_BASE | SH_FORCE_WARP | SH_COMMIT_INERT, ALWAYS, "Composition",
+          SH_BLEND_BASE | SH_FORCE_WARP | SH_COMMIT_INERT, ALWAYS, "Composition",
           "--single-track", "--no-single-track",
           "declared OVERRIDE: the composite base becomes the B-track (cur warped back to phase) plus the "
           "per-pixel screen-static evidence mix; the A/B blend world is discarded by design (operator-eye PASS 2026-07-03).",

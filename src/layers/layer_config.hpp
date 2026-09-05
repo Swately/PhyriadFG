@@ -48,6 +48,18 @@ void     layer_dump(const Config& c);
 void     dump_config(const Config& c);           // --dump-config: the round-trip corpus record
 uint64_t layer_contract_hash(const Config& c);
 
+// R3 (stage 5): the host-side halves of the shaders/fg_core.comp contract.
+//   layer_params_bytes/fill — the LayerParams UBO bytes (kParams order, 4 B each; I32/BOOL as integers) from the
+//                             resolved LayerConfig. clean_sim=false reproduces the legacy's PACKED mv_guided band
+//                             ((1 + sim) - 1, wap_warp.comp:325) so M4 byte-identity is provable first (XR1); the
+//                             mv_edge_snap "0 = use --mv-sim" cascade is resolved here (no cross-row shader read).
+//   layer_arm_mask          — the per-generation row validity (bit = layer id) from the contract's ArmInputs
+//                             (STAGE_CONTRACT §1); switches over every ArmId, so a future arm=COMMIT row is armed by
+//                             its input, never silently disarmed.
+size_t   layer_params_bytes();
+void     layer_params_fill(const Config& c, void* out, bool clean_sim);
+uint32_t layer_arm_mask(const ArmInputs& in);
+
 // Execution order: (stage, rank) ascending; fills out[0..kLayerCount).
 void layer_exec_order(uint16_t out[kLayerCount]);
 

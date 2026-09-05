@@ -994,6 +994,11 @@ struct Config {
                                     // hex-float, the replay oracle of the PhaseClock extraction (XR14).
                                     // Default off (empty) -> no FILE opened, no write, byte-identical.
     bool  layer_dump=false;         // --layer-dump: print the resolved layer chain + contract hash, exit
+    // R3 (stage 5): shaders/fg_core.comp, the LAYERTAB kernel — OPT-IN until its M4 gate passes.
+    bool  fg_core=false;            // --fg-core: route the PRODUCT through fg_core.comp (wap_warp.comp stays the default)
+    bool  fg_core_ab=false;         // --fg-core-ab: run BOTH kernels every tick from the same inputs and count differing pixels (M4 instrument); product stays legacy
+    bool  fg_core_clean_sim=false;  // --fg-core-clean-sim: mv_guided.sim = the exact --mv-sim in the UBO (default: the legacy's packed (1+sim)-1, XR1)
+    bool  legacy_warp=false;        // --legacy-warp: R7's name for the old path; today the default IS the legacy path (accepted so scripts can pin it; forces --fg-core off)
     bool  layer_model_json=false;   // --layer-model-json: emit the UI model (JSON), exit
     bool  dump_config_flag=false;   // --dump-config: print the parsed record (the round-trip instrument), exit
     // ── DERIVED / RESOLVED STATE (computed by resolve_config, NOT parsed) ──────

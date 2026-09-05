@@ -30,14 +30,36 @@ set(_rv  "${_fw}/render/vulkan")
 set(_spv2hdr "${_rv}/cmake/spv_to_header.cmake")
 set(_gen "${CMAKE_CURRENT_BINARY_DIR}/gen")
 
+# PFG_NOCONTRACT (EXPERIMENT, default OFF, never shipped): after glslc, tools/spv_nocontract.py decorates every
+# float result in the module NoContraction, so the driver compiler may not fuse a*b+c into FMA. Used by R3 to
+# attribute the 1-level --fg-core-ab residual: with BOTH kernels contraction-free the residual is either gone
+# (= contraction) or not (= something else). It runs INSIDE the glslc rules so Ninja's depfile log cannot
+# silently recompile one module without it (that happened on the first attempt, 2026-09-05).
+option(PFG_NOCONTRACT "EXPERIMENT: NoContraction on every float op of every .spv (R3 M4 attribution); never ship" OFF)
+find_program(PFG_PYTHON NAMES python python3)
+set(_nocontract "${CMAKE_CURRENT_SOURCE_DIR}/tools/spv_nocontract.py")
+if(PFG_NOCONTRACT)
+    message(STATUS "phyriad_fg: PFG_NOCONTRACT=ON -- EXPERIMENT build, every .spv decorated NoContraction; do not ship")
+endif()
+
 # .comp -> .spv -> constexpr-array header.
 function(pfg_spv _src _hdr _var)
     get_filename_component(_stem "${_src}" NAME_WE)
     set(_spv "${_gen}/${_stem}.spv")
+    if(PFG_NOCONTRACT)
+        set(_nc_cmd COMMAND "${PFG_PYTHON}" "${_nocontract}" "${_spv}" "${_spv}")
+        set(_nc_dep "${_nocontract}")
+        set(_nc_tag " +NoContraction")
+    else()
+        set(_nc_cmd)
+        set(_nc_dep)
+        set(_nc_tag "")
+    endif()
     add_custom_command(OUTPUT "${_spv}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${_gen}"
         COMMAND "${PFG_GLSLC}" --target-env=vulkan1.2 -O "${_src}" -o "${_spv}"
-        DEPENDS "${_src}" COMMENT "glslc ${_stem}" VERBATIM)
+        ${_nc_cmd}
+        DEPENDS "${_src}" ${_nc_dep} COMMENT "glslc ${_stem}${_nc_tag}" VERBATIM)
     add_custom_command(OUTPUT "${_hdr}"
         COMMAND ${CMAKE_COMMAND} -D "INPUT=${_spv}" -D "OUTPUT=${_hdr}"
                 -D "VARNAME=${_var}" -P "${_spv2hdr}"
@@ -124,21 +146,54 @@ add_executable(pfg_clock_test tests/clock/test_phase_clock.cpp src/clock/phase_c
 target_compile_features(pfg_clock_test PRIVATE cxx_std_23)
 target_include_directories(pfg_clock_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
+# R3: the row bodies are inputs of the generator (it checks them) and of fg_core.spv (it includes them).
+file(GLOB _layer_bodies CONFIGURE_DEPENDS "${_sh}/layers/*.glsl")
 add_executable(pfg_layer_gen tools/layer_gen.cpp)
 target_compile_features(pfg_layer_gen PRIVATE cxx_std_23)
 target_include_directories(pfg_layer_gen PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(_layer_gen_out
     "${_gen}/shaders/layer_specconst.glsl" "${_gen}/shaders/layer_params.glsl" "${_gen}/shaders/layer_includes.glsl"
-    "${_gen}/shaders/chain_mvcond.glsl" "${_gen}/shaders/chain_sample.glsl" "${_gen}/shaders/chain_compose.glsl"
+    "${_gen}/shaders/chain_mvcond.glsl" "${_gen}/shaders/chain_sample.glsl" "${_gen}/shaders/chain_weight.glsl" "${_gen}/shaders/chain_compose.glsl"
     "${_gen}/shaders/layer_offsets.hpp" "${_gen}/shaders/layer_manifest.txt")
 add_custom_command(OUTPUT ${_layer_gen_out}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${_gen}/shaders"
-    COMMAND pfg_layer_gen "${_gen}/shaders"
-    DEPENDS pfg_layer_gen "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.def"
+    COMMAND pfg_layer_gen "${_gen}/shaders" "${_sh}"
+    DEPENDS pfg_layer_gen "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.def" ${_layer_bodies}
             "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_abi.hpp"
     COMMENT "layer_gen: registry -> generated GLSL/offsets" VERBATIM)
 add_custom_target(pfg_layer_glsl DEPENDS ${_layer_gen_out})
 add_dependencies(phyriad_fg pfg_layer_glsl)
+
+# ── R3: shaders/fg_core.comp (the LAYERTAB kernel, stage 5) + shaders/fg_ab_diff.comp (the M4 byte-diff
+#    instrument). fg_core #includes the generated GLSL and the row bodies, so its .spv carries a DEPFILE
+#    (glslc -MD): a body or .def edit rebuilds the kernel — risk XR13's discipline, now on the shader side.
+#    -I order: the generated dir first, then shaders/ (fg_core_math / fg_helpers / layers/<name>).
+set(_fgc_src "${_sh}/fg_core.comp")
+set(_fgc_spv "${_gen}/fg_core.spv")
+if(PFG_NOCONTRACT)
+    set(_fgc_nc_cmd COMMAND "${PFG_PYTHON}" "${_nocontract}" "${_fgc_spv}" "${_fgc_spv}")
+    set(_fgc_nc_dep "${_nocontract}")
+    set(_fgc_nc_tag " +NoContraction")
+else()
+    set(_fgc_nc_cmd)
+    set(_fgc_nc_dep)
+    set(_fgc_nc_tag "")
+endif()
+add_custom_command(OUTPUT "${_fgc_spv}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_gen}"
+    COMMAND "${PFG_GLSLC}" --target-env=vulkan1.2 -O -I "${_gen}/shaders" -I "${_sh}"
+            -MD -MF "${_fgc_spv}.d" -MT "${_fgc_spv}" "${_fgc_src}" -o "${_fgc_spv}"
+    ${_fgc_nc_cmd}
+    DEPENDS "${_fgc_src}" ${_layer_gen_out} "${_sh}/fg_core_math.glsl" "${_sh}/fg_helpers.glsl" ${_layer_bodies} ${_fgc_nc_dep}
+    DEPFILE "${_fgc_spv}.d"
+    COMMENT "glslc fg_core (+depfile)${_fgc_nc_tag}" VERBATIM)
+add_custom_command(OUTPUT "${_gen}/fg_core_spv.hpp"
+    COMMAND ${CMAKE_COMMAND} -D "INPUT=${_fgc_spv}" -D "OUTPUT=${_gen}/fg_core_spv.hpp"
+            -D "VARNAME=kFgCoreSpv" -P "${_spv2hdr}"
+    DEPENDS "${_fgc_spv}" "${_spv2hdr}" COMMENT "spv->hdr: kFgCoreSpv" VERBATIM)
+pfg_spv("${_sh}/fg_ab_diff.comp" "${_gen}/fg_ab_diff_spv.hpp" "kFgAbDiffSpv")
+add_custom_target(pfg_shaders_r3 DEPENDS "${_gen}/fg_core_spv.hpp" "${_gen}/fg_ab_diff_spv.hpp")
+add_dependencies(phyriad_fg pfg_shaders_r3)
 
 target_compile_features(phyriad_fg PRIVATE cxx_std_23)
 target_include_directories(phyriad_fg PRIVATE

@@ -476,6 +476,9 @@ int main(int argc, char** argv) {
     auto& xfer_U=o_wap.xfer_U; auto& xfer_W=o_wap.xfer_W;
     auto& xfer_on=o_wap.xfer_on; auto& xfer_fams=o_wap.xfer_fams;
     auto& wapPipeA=o_wap.wapPipeA;
+    auto& fgPipeA=o_wap.fgPipeA; auto& abPipeA=o_wap.abPipeA; auto& fgOutA=o_wap.fgOutA;   // R3
+    auto& hostLP=o_wap.hostLP; auto& hLP_a=o_wap.hLP_a;
+    auto& devAb=o_wap.devAb; auto& hostAb=o_wap.hostAb; auto& hAb_a=o_wap.hAb_a;
     auto& fillPipeA=o_wap.fillPipeA;
     auto& wapPrevA=o_wap.wapPrevA; auto& wapCurA=o_wap.wapCurA; auto& wapMVA=o_wap.wapMVA;
     auto& wapSADA=o_wap.wapSADA; auto& wapOutA=o_wap.wapOutA;
@@ -1007,6 +1010,14 @@ int main(int argc, char** argv) {
             .wapOutA = wapOutA,
             .wapPERA = wapPERA,
             .wapPipeA = wapPipeA,
+            .fgPipeA = fgPipeA,
+            .abPipeA = abPipeA,
+            .fgOutA = fgOutA,
+            .hLP_a = hLP_a,
+            .hostLP = hostLP,
+            .devAb = devAb,
+            .hAb_a = hAb_a,
+            .hostAb = hostAb,
             .wapPrevA = wapPrevA,
             .wapPrevOutA = wapPrevOutA,
             .wapSADA = wapSADA,
@@ -1119,6 +1130,13 @@ done:
     if(use_upscale) up_destroy(G,upPipe);
     // Warp-at-presenter pipeline + presenter-local images on A (the bridge owner).
     if(use_wap){ wap_destroy(A,wapPipeA);
+        // R3: the --fg-core-ab totals (read from the host copy AFTER the last submit completed), then the objects.
+        if(cfg.fg_core_ab && hostAb){ const uint32_t* s=(const uint32_t*)hostAb;
+            std::printf("[fg-core-ab] TOTAL compared=%u diff_px=%u max_delta=%u sum_delta=%u  (%s)\n",s[0],s[1],s[2],s[3],
+                        s[1]==0u?"BYTE-IDENTICAL on every compared tick":"NOT identical"); }
+        fgcore_destroy(A,fgPipeA); abdiff_destroy(A,abPipeA); img_destroy(A,fgOutA);
+        hbuf_destroy(A,hLP_a);  if(hostLP) _aligned_free(hostLP);
+        hbuf_destroy(A,devAb);  hbuf_destroy(A,hAb_a); if(hostAb) _aligned_free(hostAb);
         fillpipe_destroy(A,fillPipeA);   // the field VISUALIZER pipeline (created only with --afill; null-safe)
         img_destroy(A,wapFIELDA);        // A-side iGPU contour field image (created with --afill OR --bg-snap; null-safe)
         img_destroy(A,wapFIELDph);       // the 1×1 r32ui binding-11 placeholder (created when neither owns wapFIELDA; null-safe)

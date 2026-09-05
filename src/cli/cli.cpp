@@ -295,6 +295,10 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--layer-dump")){ c.layer_dump=true; return 0; }
             if(!std::strcmp(arg,"--layer-model-json")){ c.layer_model_json=true; return 0; }
             if(!std::strcmp(arg,"--dump-config")){ c.dump_config_flag=true; return 0; }
+            if(!std::strcmp(arg,"--fg-core")){ c.fg_core=true; return 0; }                       // R3: route the product through fg_core.comp
+            if(!std::strcmp(arg,"--fg-core-ab")){ c.fg_core_ab=true; return 0; }                 // R3: both kernels, count differing pixels
+            if(!std::strcmp(arg,"--fg-core-clean-sim")){ c.fg_core_clean_sim=true; return 0; }   // XR1: the exact --mv-sim instead of the packed reproduction
+            if(!std::strcmp(arg,"--legacy-warp")){ c.legacy_warp=true; return 0; }               // R7's name for the old path (today's default)
             // ── OFF-switches del set DEFAULT-ON (flip 2026-07: el stack validado por el operador).
             // Cada --no-X restaura el comportamiento pre-flip. --no-rfp limpia también rfp_fresh
             // (fresh es inalcanzable sin rfp); el resto son independientes.

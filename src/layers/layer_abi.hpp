@@ -7,9 +7,10 @@
 // LayerConfig fields, the parser, the help, the UI model, the GLSL chains, the UBO layout, the
 // contract hash) derives from it. An unknown column is a compile error, not a convention.
 //
-// Stage R0 of CONVERGENCE_MASTER_PLAN.md: this schema + the registry exist; shaders/wap_warp.comp
-// is UNCHANGED and the push block is still assembled from Config. The registry runs as a SHADOW
-// of the hand-written parser and layer_config_parity() proves the two agree (risk XR2).
+// Stage R0 of CONVERGENCE_MASTER_PLAN.md: this schema + the registry exist as a SHADOW of the
+// hand-written parser (layer_config_parity() proves the two agree, risk XR2). Stage R3: the rows
+// have bodies (shaders/layers/<name>.glsl) and shaders/fg_core.comp runs them as the generated chain
+// behind --fg-core (opt-in until M4 passes); shaders/wap_warp.comp stays the default product path.
 //
 // Column families (kept apart on purpose — the column-closure experiment counts them separately):
 //   LAYER columns   : what a layer IS (stage, rank, kind, channels, arm, requires/excludes, shadows).
@@ -20,13 +21,18 @@
 
 namespace pfg::layers {
 
-enum class Stage : uint8_t { MVCOND, SAMPLE, COMPOSE, FLOW, HOST };
+// WEIGHT (R3, COLUMN_CLOSURE_EXPERIMENT.md §2.1): between the core's samples and its blend —
+// `float pfg_weight_<n>(float wa, in LayerCtx ctx)`, ranks 100–199; identity wa = 1 − t.
+enum class Stage : uint8_t { MVCOND, SAMPLE, WEIGHT, COMPOSE, FLOW, HOST };
 // F = fused into the stage kernel (spec-constant gated); P = own SG pass; X = pseudo-row (no body,
 // no enable, no params — pins an ordering fact: ":snapshot mv_raw_fwd" at rank 25, etc.).
 enum class Kind  : uint8_t { F, P, X };
 // Per-GENERATION validity (the arm_mask bit derived from FlowSet[gen] fields — STAGE_CONTRACT §1
 // ArmInputs). ALWAYS = the spec constant alone decides.
 enum class ArmId : uint8_t { ALWAYS, GME, BWD, GME_AND_BWD, COMMIT };
+// The per-generation validity inputs (STAGE_CONTRACT §1 ArmInputs) the host derives arm_mask from — one
+// struct, so every ArmId has its input and layer_arm_mask() switches over all of them (R3).
+struct ArmInputs { bool gme_ok, bwd_ok, matte_ok, appear_ok, commit_ok; };
 
 enum class ParamType : uint8_t { F32, I32, BOOL };
 enum class UiKind    : uint8_t { NUMBER, SWITCH, HIDDEN };
@@ -59,12 +65,14 @@ enum : uint32_t {
     CH_DISSIDENCE = 1u << 14,  // u_dissidence / u_dissidence_bwd
     CH_MV_TARGET  = 1u << 15,  // u_mv_target (prev-pair MV / real next-pair MV)
     CH_GME        = 1u << 16,  // the affine model
+    CH_BLEND      = 1u << 17,  // the core's SECOND accumulator (the un-warped (1-t)/t crossfade, wap_warp.comp:694-695):
+                               // produced by the core, read by the select row; a COMPOSE row MAY write it (COLUMN_CLOSURE §2.2)
 };
 
 // The single_track backward reach into the core (Candidate C §4.7 — the declared, printed wart).
 enum : uint32_t {
     SH_NONE        = 0,
-    SH_WA_EFF_ZERO = 1u << 0,  // wap_warp.comp:678  wa_eff collapse
+    SH_WA_EFF_ZERO = 1u << 0,  // wap_warp.comp:678  wa_eff collapse — R3: dissolved into the WEIGHT row single_track_wa (rank 190); no longer declared
     SH_BLEND_BASE  = 1u << 1,  // :692–695 blend_result base = cur
     SH_FORCE_WARP  = 1u << 2,  // the forced warp selection
     SH_COMMIT_INERT= 1u << 3,  // commit/ts-smooth inertness
@@ -105,8 +113,8 @@ struct LayerDesc {
     uint16_t    param_first, param_count;
 };
 
-// The core push block (STAGE_CONTRACT stage 5; Candidate C §2). R0: declared, NOT yet used by the
-// present path (the 58-float push stays until R3).
+// The core push block (STAGE_CONTRACT stage 5; Candidate C §2): the six contract parameters + t + the
+// per-generation arm mask. R3: pushed to shaders/fg_core.comp as the head of FgPush below.
 struct CorePush {
     float    residual_ceil;
     float    improvement_frac;
@@ -115,6 +123,16 @@ struct CorePush {
     uint32_t arm_mask;
 };
 static_assert(sizeof(CorePush) == 20, "CorePush is the 20-byte core contract (A0 M2c)");
+
+// The per-generation SCALAR block of FlowSet[gen] that rides with the core push: the gme affine model
+// (mv(gx,gy) = (a + b·gx + c·gy, d + e·gx + f·gy), gx,gy = mv-grid coords), read by the bg_reclaim /
+// ambig rows through gme_model_mv(). It is FlowSet data — like t and arm_mask, which also ride in the
+// push — not a layer parameter, which is why it is not in the config-time LayerParams UBO. A declared
+// deviation from Candidate C §2's "20 B of fields" (push constants are race-free under the async
+// present; a host-written per-gen UBO would need a ring). Recorded in R3's stage record.
+struct GenScalars { float gme_a, gme_b, gme_c, gme_d, gme_e, gme_f; };
+struct FgPush { CorePush core; GenScalars gen; };
+static_assert(sizeof(FgPush) == 44, "FgPush = CorePush (20) + the gme gen-scalars (24); shaders/fg_core.comp declares the same block");
 
 }  // namespace pfg::layers
 

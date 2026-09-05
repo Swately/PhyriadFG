@@ -224,23 +224,52 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    ida pre-pase, el campo hacia atrás pre-pase. **Regla final del corpus de M4: aperiódico, con `mv1` +
    `mvb1`, puntuado desde 1 px.** Residuo restante: sólo t≈0.87, ≤ 0.06 % del cuadro, registrado.
 
-5. **NEXT** — (a) **decisión del operador:** el pase de consenso del MV (`mv_median.comp`, armado por
-   defecto vía `mv_guided`) explica el 1.7 px a fase baja entero; apagarlo deja 0.27 px plano. Su
-   propósito propio (sellos/huecos de borde en contenido plano) NO se midió aquí — antes de tocar
-   el default hay que medir ambas cosas, y el instrumento ya puede. (b) R3 sobre corpus aperiódico
-   ≥ 2 px que lleve `mv1`. (c) revisar A0: M1 congelado como COMPARATIVO contra un default que es el
-   outlier penaliza el arreglo. (d) R3 puede empezar: su oráculo M4 pasa su propia compuerta. Arriba de 4 px la referencia ya
-   acierta (k = 0.955); abajo de 0.5 px el shader no mueve nada y la referencia sí. M4 no debe correr
-   sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4 existe
-   para detectar. La pista: el patrón de periodo 3 (−0.5, +0.1666, 0) sobre bloques cuyo `sad_best`
-   es 0. (b) **Cobertura alternativa, desbloqueada hoy:** construir **S2.T2** (el zoo de marcadores NO
-   periódico) — es la única cosa del repo que puede responder la pregunta que el propio registro de T6
-   deja abierta: si la zona muerta existe fuera de la retícula que produce el patrón. Está además en la
-   ruta crítica de M1 de todos modos. (c) El inventario completo de lo que falta está en
-   `planning/records/BACKLOG_AUDIT.md` (auditoría 2026-09-04). (b) Cambiar el default a `--sg-barriers` es una decisión aparte: pide un
-   soak largo y el ojo del operador sobre un juego real, no solo `ball_zoo`. (c) R3 lleva las dos
-   restricciones del experimento de columnas: etapa `WEIGHT` con el núcleo partido en
-   `fg_sample`/`fg_blend`, y el canal `CH_BLEND` con `select` como fila.
+4q. **R3 CERRADO (2026-09-05, `records/R3_GATE.md`, gate PASSED (residual attributed))** — construido y medido el mismo día; lo que sigue describe lo construido: — el núcleo puro existe como código: `shaders/fg_core_math.glsl`
+   (`fg_sample` / WEIGHT / `fg_blend`, matemática literal de `wap_warp.comp:497-522, 637, 679, 694`), doce cuerpos
+   de fila en `shaders/layers/` (los ocho del default + `select` 260, `single_track_wa` 190, `fetch_mv` 0,
+   `mv_edge_snap` 5), el kernel `shaders/fg_core.comp` (mismos 14 bindings que `wap_warp` + UBO en 15; push
+   44 B = CorePush 20 + gme 24, desviación declarada de C §2), el instrumento `shaders/fg_ab_diff.comp`
+   (`--fg-core-ab`: ambos kernels por tick sobre las MISMAS entradas, cuenta píxeles distintos), el generador con
+   etapa WEIGHT + canal CH_BLEND + regla `needs` declarada + chequeo `overrides`/`c_in`, y el parche del host
+   (`r3_patch.py` en el scratchpad: ABI, tabla, .def, CMake con depfile XR13, factorías, propiedad, init,
+   present, CLI, registro, auditor, docs). Decisiones tomadas por la sesión bajo la delegación del operador
+   ("investígalos cuando los necesites"): el default del pase de consenso NO está en la ruta de R3 (vive en la
+   etapa 3; R5 lo hace fila) → diferido a R5, sigue siendo suyo; A0/M1 no compuerta R3 (compuerta R7) → diferido;
+   R3 reproduce el default bug-por-bug (XR7) y su envolvente de identidad es el set default con
+   `single_track` ON (bajo `--no-single-track` `select` reproduce solo la ruta dura; soft_gate/commit_default/
+   multicand no son filas). Tres de las cuatro `shadows` de single_track están MUERTAS bajo el override
+   (:692/:1089/:810/:1267 escriben acumuladores que :1321 descarta — verificado leyendo el shader) y no se
+   reproducen; la cuarta es la fila WEIGHT. `warp_light` (governor) apaga vblend por tick en el legado y no puede
+   apagar una constante de especialización: los ticks light no se comparan (desviación declarada).
+   **Medido (2026-09-05):** con la contracción FMA permitida (la build de producto) los dos kernels difieren en
+   ~7×10⁻⁹ de los píxeles, todos de exactamente 1 nivel y todos dentro de la banda de la pelota; con
+   `NoContraction` en AMBOS módulos (`PFG_NOCONTRACT=ON`, dentro de las reglas glslc) son **byte-idénticos en cada
+   uno de 2,382 ticks comparados** — el residuo ES la contracción del compilador del driver, atribuido por
+   experimento (§4 del registro). La build de producto se restauró y se verificó idéntica por md5. Un revisor
+   Sonnet (14 agentes) no halló desviación que toque la salida por defecto; sí una trampa latente en
+   `layer_arm_mask` (sin rama `COMMIT`), corregida. El arnés completo (grid/noise/pan ×2, control ROJO
+   `--no-single-track`, sim limpia, M3 2/lado) y el corpus del oráculo (`--fg-core --qdump`, noise 720p ×2) están
+   en §5–§7 del registro.
+5. **NEXT** — (a) aplicar `r3_patch.py`, construir (`build-release.bat`), iterar los errores de glslc/MSVC;
+   (b) `--layer-dump` ×2 (determinismo, el hash nuevo), las pruebas NEGATIVAS del generador (un cuerpo que lee
+   el alias de otra fila sin `needs` → exit 3; un COMPOSE sin `c_in` y sin `overrides` → exit 3);
+   (c) el instrumento: `--fg-core-ab` sobre el ball zoo (estático + pan + noise) 60 s × 2 corridas → `diff_px`
+   total 0 sobre ≥ 14,000 ticks con la sim EMPAQUETADA (XR1), luego `--fg-core-clean-sim` y contar; la
+   compuerta de validez de EMPIRICAL_TEST §3.3 exige VER EL ROJO: una fila desarmada a propósito (p.ej.
+   `--fg-core-ab --no-stasis` contra el legado con stasis) debe dar diff > 0 antes de creer el 0;
+   (d) `--fg-core --qdump+` ≥ 200 triples aperiódicos → `ref_warp.py` con mv1+mvb1 (mismo k/exacto% que T6 §9);
+   (e) M3 presents/s legado vs fg_core, 2 corridas/lado; M2b `unmeasured` con razón; (f) el registro
+   `records/R3_GATE.md`, la espina (S4.R3 → done/gate), la secuencia del escritorio, la memoria; commit.
+   No re-derivar: el diseño de R3 (esta foto 4q), las decisiones diferidas (1c.4 → R5, 1c.6 → R7), ni el
+   veredicto de T6 (§9: byte-exacto con mv1+mvb1). El default del producto no se toca sin la palabra del operador.
+
+**Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
+`fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con
+`--fg-core-ab`). Releer primero CONDUCT y esta foto (4q + NEXT); luego `git status` en el proyecto: si el
+árbol tiene solo los 15 archivos nuevos de shaders, el parche NO se aplicó → correr `r3_patch.py` del
+scratchpad y construir; si ya hay más archivos modificados, el parche corrió → seguir por el punto de NEXT
+que falte. No pedir decisiones al operador que ya delegó; reportarle con números y la línea de evidencia.
+
 6. **CONSTRAINTS in play** — child projects relocated by the operator only; never delete invested work
    (the donor stays behind `--legacy-*`); byte-identical-off on every new path; M4 is a veto with T6 as
    the oracle; M1 gates are blocked until MOTION_TRUTH T4–T5 pass — no proxy closes them; commit/push/PR

@@ -2,6 +2,7 @@
 // Bodies of the present-side upscale factory declared in present/present.hpp; they have
 // external linkage here (main calls them).
 #include "present/present.hpp"
+#include "layers/layer_config.hpp"   // R3: FgPush, layer_arm_mask, the contract hash
 #include "clock/phase_clock.hpp"   // STAGE 4: the content clock (R1/X14)
 #include "seam/seam_graph.hpp"     // STAGE 5 output barriers, derived (R2b/X15)
 #include "core/compat_reason.hpp"    // ra::compat::emit / ReasonCode (named-reason present-init bail)
@@ -222,6 +223,11 @@ void run_present(FgContext& ctx){
     auto& wapOutA = ctx.wapOutA;
     auto& wapPERA = ctx.wapPERA;
     auto& wapPipeA = ctx.wapPipeA;
+    auto& fgPipeA = ctx.fgPipeA;   // R3: the fg_core.comp pipeline
+    auto& abPipeA = ctx.abPipeA;   // R3: the --fg-core-ab byte-diff pass
+    auto& devAb = ctx.devAb;       // R3: its stats (VRAM) + host copy
+    auto& hAb_a = ctx.hAb_a;
+    auto& hostAb = ctx.hostAb;
     auto& wapPrevA = ctx.wapPrevA;
     auto& wapPrevOutA = ctx.wapPrevOutA;
     auto& wapSADA = ctx.wapSADA;
@@ -1008,8 +1014,14 @@ void run_present(FgContext& ctx){
                   bb.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; bb.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
                   bb.buffer=devMass.buf; bb.offset=0; bb.size=VK_WHOLE_SIZE;
                   vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,nullptr,1,&bb,0,nullptr); }
+                // R3: under --fg-core the fg_core.comp kernel IS the product dispatch (below, after the push block is assembled
+                // for the --qdump+ record); the legacy bind / push / dispatch are skipped. fg_on also covers --fg-core-ab.
+                const bool fg_on=(cfg.fg_core||cfg.fg_core_ab) && fgPipeA.pipe!=VK_NULL_HANDLE;
+                const bool fg_product=cfg.fg_core && fgPipeA.pipe!=VK_NULL_HANDLE;
+                if(!fg_product){
                 vkCmdBindPipeline(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,wapPipeA.pipe);
                 vkCmdBindDescriptorSets(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,wapPipeA.layout,0,1,&wapPipeA.set,0,nullptr);
+                }
                 // occl_thresh = the bidir gate. 0 when bidir is off → the shader's whole
                 // classification block is skipped (byte-identical to off), even though the
                 // MV_bwd binding is bound. Only nonzero when use_bidir (which requires --bidir + WAP).
@@ -1214,10 +1226,54 @@ void run_present(FgContext& ctx){
                       mes_push,   // --mv-edge-snap: cross-bilateral (edge-aware sub-block) primary MV fetch, packed variant+sim (offset 220). 0 → the primary MV keeps its guided/LINEAR fetch → byte-identical.
                       sto_push,   // --single-track: the composite base becomes the B-track (offset 224). 0 → wa_eff==wa → byte-identical. Quality layers stay active on the base; A re-admitted only where the occlusion machinery owns it.
                       bgr_push};  // --bg-reclaim: tile-level gravity fix — damp gme-nonconform bg-fringe MV toward the model (offset 228). Carries strength (>0.001=ON). 0 → mv untouched → byte-identical.
-                vkCmdPushConstants(cmdBridge,wapPipeA.layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcw),&pcw);
+                if(!fg_product) vkCmdPushConstants(cmdBridge,wapPipeA.layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcw),&pcw);
                 if(cfg.qdump_n>0){ static_assert(sizeof(pcw)<=sizeof(qd_push),"qd_push too small for the warp push block");
                     qd_push_sz=sizeof(pcw); std::memcpy(qd_push,&pcw,qd_push_sz); }   // --qdump+ record
-                vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);   // dispatch the warp over the SCALED wapOutA extent (one 8×8 workgroup per scaled output tile; the shader's imageSize(u_output) valid-test bounds it). warp_div==1 ⇒ == (WW+7)/8,(WH+7)/8 (byte-identical).
+                if(!fg_product) vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);   // dispatch the warp over the SCALED wapOutA extent (one 8×8 workgroup per scaled output tile; the shader's imageSize(u_output) valid-test bounds it). warp_div==1 ⇒ == (WW+7)/8,(WH+7)/8 (byte-identical).
+                // ── R3: the fg_core.comp kernel. --fg-core: the product dispatch (wapOutA is its output; the legacy
+                // bind/push/dispatch above were skipped). --fg-core-ab: it runs BESIDE the legacy warp into fgOutA from the
+                // SAME descriptor inputs, then fg_ab_diff counts the differing pixels (the M4 instrument; running totals).
+                // The push = CorePush (the six contract params + t + arm_mask) + the gme gen-scalars. arm_mask is derived
+                // HERE, once per tick, from the same per-generation validity the legacy gates use (XR5): gme_push = the
+                // model is valid this generation; bwd_push = the bwd field is valid this generation.
+                if(fg_on){
+                    static uint64_t ab_light_skips=0; static uint32_t ab_ticks=0;
+                    const pfg::layers::FgPush fgp{ { cfg.res_ceil, cfg.conf_improv, cfg.agreement, t, pfg::layers::layer_arm_mask(pfg::layers::ArmInputs{ gme_push, bwd_push, matte_push, appear_push, cfg.commit_thresh > 0.f }) },
+                                                   { gme_push?gme6[0]:0.f, gme_push?gme6[1]:0.f, gme_push?gme6[2]:0.f, gme_push?gme6[3]:0.f, gme_push?gme6[4]:0.f, gme_push?gme6[5]:0.f } };
+                    vkCmdBindPipeline(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,fgPipeA.pipe);
+                    vkCmdBindDescriptorSets(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,fgPipeA.layout,0,1,&fgPipeA.set,0,nullptr);
+                    vkCmdPushConstants(cmdBridge,fgPipeA.layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(fgp),&fgp);
+                    vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);
+                    if(cfg.fg_core_ab && abPipeA.pipe!=VK_NULL_HANDLE){
+                        if(warp_light){ ++ab_light_skips; }   // the governor shed vblend/band-xfade in the legacy push this tick; fg_core cannot shed a spec constant -> not compared (declared deviation)
+                        else {
+                            // both outputs written (SHADER_WRITE, GENERAL) -> the diff pass reads them (imageLoad).
+                            VkMemoryBarrier mba{}; mba.sType=VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+                            mba.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; mba.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT;
+                            vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,1,&mba,0,nullptr,0,nullptr);
+                            vkCmdBindPipeline(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,abPipeA.pipe);
+                            vkCmdBindDescriptorSets(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,abPipeA.layout,0,1,&abPipeA.set,0,nullptr);
+                            vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);
+                            // the running totals -> the host copy (the devMass -> hMass_a pattern).
+                            VkBufferMemoryBarrier bb{}; bb.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                            bb.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; bb.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+                            bb.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; bb.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+                            bb.buffer=devAb.buf; bb.offset=0; bb.size=VK_WHOLE_SIZE;
+                            vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&bb,0,nullptr);
+                            VkBufferCopy bc{}; bc.srcOffset=0; bc.dstOffset=0; bc.size=kAbStatsBytes; vkCmdCopyBuffer(cmdBridge,devAb.buf,hAb_a.buf,1,&bc);
+                            bb.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; bb.dstAccessMask=VK_ACCESS_HOST_READ_BIT; bb.buffer=hAb_a.buf;
+                            vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&bb,0,nullptr);
+                        }
+                        if(hostAb && (++ab_ticks % 240u)==0u){ const uint32_t* s=(const uint32_t*)hostAb;   // ~1 Hz at 240 ticks/s; totals lag <= one tick
+                            std::printf("[fg-core-ab] compared=%u diff_px=%u max_delta=%u sum_delta=%u light_skips=%llu\n",s[0],s[1],s[2],s[3],(unsigned long long)ab_light_skips);
+                            // the evidence list: print the entries that appeared since the last print (position, both rgba, tick)
+                            static uint32_t ab_printed=0; const uint32_t n=s[4]<256u?s[4]:256u;
+                            for(uint32_t i=ab_printed;i<n;++i){ const uint32_t* e=s+5+i*4;
+                                std::printf("[fg-core-ab]   px(%u,%u) legacy=%02X%02X%02X%02X fg_core=%02X%02X%02X%02X tick=%u\n",e[0]&0xFFFFu,e[0]>>16,
+                                            e[1]&0xFFu,(e[1]>>8)&0xFFu,(e[1]>>16)&0xFFu,e[1]>>24,e[2]&0xFFu,(e[2]>>8)&0xFFu,(e[2]>>16)&0xFFu,e[2]>>24,e[3]); }
+                            ab_printed=n; }
+                    }
+                }
                 // the field VISUALIZER pass — A reads the iGPU contour field (wapFIELDA,
                 // GENERAL, uploaded this pair in wap_upload) and tints the boundary band onto wapOutA IN-PLACE
                 // (per-pixel, race-free — no warp-neighbour read). Lives in THIS cmdBridge / A.q submit, AFTER
@@ -1511,7 +1567,8 @@ void run_present(FgContext& ctx){
                         if(qd_push_sz){ if(FILE* f=std::fopen(qp,"wb")){ qd_pushsz=qd_push_sz; std::fwrite(qd_push,1,qd_pushsz,f); std::fclose(f); } }
                         // A written plane is named by its file; an absent one is named '-'. Six small buffers so every name
                         // is alive for the single fprintf below (snprintf into qp would be overwritten by the next call).
-                        char qb0[48],qb1[48],qb2[48],qb3[48],qb4[48],qb5[48],qb6[48],qb7[48],qb8[48],qb9[48];
+                        char qb0[48],qb1[48],qb2[48],qb3[48],qb4[48],qb5[48],qb6[48],qb7[48],qb8[48],qb9[48],qbab[64];
+                        if(cfg.fg_core_ab&&hostAb){ const uint32_t* s=(const uint32_t*)hostAb; std::snprintf(qbab,sizeof(qbab),"%u/%u/%u",s[0],s[1],s[2]); } else std::snprintf(qbab,sizeof(qbab),"-");   // compared/diff_px/max_delta
                         auto qd_nm=[&](bool have,char* buf,const char* suffix)->const char*{
                             if(!have){ buf[0]='-'; buf[1]='\0'; return buf; }
                             std::snprintf(buf,48,"q%06d_%s",qdump_idx,suffix); return buf; };
@@ -1537,7 +1594,7 @@ void run_present(FgContext& ctx){
                             std::fprintf(mf,"triple q%06d prev=q%06d_prev.rgba next=q%06d_next.rgba live=q%06d_live.rgba t=%.4f"
                                             " gen=%d mvw=%u mvh=%u mv=q%06d_mv.rg16f sad=q%06d_sad.rg16f push=q%06d_push.bin pushsz=%zu"
                                             " gme_valid=%d gme=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g"
-                                            " tgen=%d mvb=%s c2=%s dis=%s disb=%s per=%s mvt=%s mv0=%s mvt0=%s mv1=%s mvb1=%s\n",
+                                            " tgen=%d mvb=%s c2=%s dis=%s disb=%s per=%s mvt=%s mv0=%s mvt0=%s mv1=%s mvb1=%s core=%s contract=0x%016llX ab=%s\n",
                                 qdump_idx,qdump_idx,qdump_idx,qdump_idx,t,
                                 qd_gen,qd_mvw,qd_mvh,qdump_idx,qdump_idx,qdump_idx,qd_pushsz,
                                 qd_gv,
@@ -1550,7 +1607,9 @@ void run_present(FgContext& ctx){
                                 qd_nm(qd_has_mv0,qb6,"mv0.rg16f"),
                                 qd_nm(qd_has_mvt0,qb7,"mvt0.rg16f"),
                                 qd_nm(qd_has_mv1,qb8,"mv1.rg16f"),
-                                qd_nm(qd_has_mvb1,qb9,"mvb1.rg16f"));
+                                qd_nm(qd_has_mvb1,qb9,"mvb1.rg16f"),
+                                // R3: which kernel produced `live`, the layer contract hash, and the --fg-core-ab totals so far
+                                (cfg.fg_core&&fgPipeA.pipe!=VK_NULL_HANDLE)?"fg_core":"wap_warp",(unsigned long long)pfg::layers::layer_contract_hash(cfg),qbab);
                             std::fclose(mf);
                         }
                         ++qd_bin_hits[qd_b]; ++qd_gen_hits[qd_g];   // this bin/slot is now covered - ineligible until the rest catch up
