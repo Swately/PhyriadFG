@@ -117,6 +117,7 @@ add_executable(phyriad_fg
     src/warp_blend/warp_blend_init.cpp         # E1: the WAP init section, verbatim from main.cpp
     src/present/present.cpp                     # the present-side UpPipe upscale (bilinear/lanczos) factory
     src/present/present_init.cpp               # E1: the present-side init sections (bridge slots), verbatim from main.cpp
+    src/present/present_stage.cpp              # R4: STAGE 6 -- the present stage (surface, slots, submit, present, FlipStats, --tdr-test)
     src/instrument/instrument.cpp              # the dump_bmp/dump_rgba diagnostic frame-dump helpers
     src/core/ra_simd.cpp                       # F16C batch — /arch:AVX2 below; main.cpp stays portable
     src/core/core_init.cpp                     # E1: core-side init sections (cmd buffers + fences), verbatim from main.cpp
@@ -192,7 +193,8 @@ add_custom_command(OUTPUT "${_gen}/fg_core_spv.hpp"
             -D "VARNAME=kFgCoreSpv" -P "${_spv2hdr}"
     DEPENDS "${_fgc_spv}" "${_spv2hdr}" COMMENT "spv->hdr: kFgCoreSpv" VERBATIM)
 pfg_spv("${_sh}/fg_ab_diff.comp" "${_gen}/fg_ab_diff_spv.hpp" "kFgAbDiffSpv")
-add_custom_target(pfg_shaders_r3 DEPENDS "${_gen}/fg_core_spv.hpp" "${_gen}/fg_ab_diff_spv.hpp")
+pfg_spv("${_sh}/tdr_hang.comp"   "${_gen}/tdr_hang_spv.hpp"   "kTdrHangSpv")     # R4: --tdr-test (G-R4)
+add_custom_target(pfg_shaders_r3 DEPENDS "${_gen}/fg_core_spv.hpp" "${_gen}/fg_ab_diff_spv.hpp" "${_gen}/tdr_hang_spv.hpp")
 add_dependencies(phyriad_fg pfg_shaders_r3)
 
 target_compile_features(phyriad_fg PRIVATE cxx_std_23)

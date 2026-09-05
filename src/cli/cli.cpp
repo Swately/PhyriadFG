@@ -288,6 +288,7 @@ bool parse_args(int argc, char** argv, Config& c) {
             // R0 diagnostics (CONTROL plane): act in main() right after parse; no device is created.
             if(!std::strcmp(arg,"--arrival-log")){ if(auto v=next(arg)){ std::snprintf(c.arrival_log,sizeof(c.arrival_log),"%s",v);
                 std::printf("[ra] --arrival-log %s: R1 instrument — one line per WAP tick with the clock inputs+outputs in exact hex-float (the PhaseClock replay oracle). Measurement runs only.\n",v); return 0; } return 1; }
+            if(!std::strcmp(arg,"--tdr-test")){ if(auto v=next(arg)){ c.tdr_test_s=std::atoi(v); if(c.tdr_test_s<0) c.tdr_test_s=0; return 0; } return 1; }   // R4/G-R4: the forced TDR after N s (L3 -- operator's word)
             if(!std::strcmp(arg,"--validation")){ c.validation=true; std::printf("[ra] --validation: VK_LAYER_KHRONOS_validation + debug-utils messenger ON (a DIAGNOSTIC run: the layer costs real time; never a measurement run).\n"); return 0; }
             if(!std::strcmp(arg,"--sg-barriers")){ c.sg_barriers=true; std::printf("[ra] --sg-barriers: the stage-5 output barriers are DERIVED by the seam graph (src/seam) instead of hand-written. Needs synchronization2; falls back automatically if unavailable.\n"); return 0; }
             if(!std::strcmp(arg,"--sg-dump")){ c.sg_dump=true; std::printf("[ra] --sg-dump: printing the compiled stage-5 seam graph once at first record.\n"); return 0; }

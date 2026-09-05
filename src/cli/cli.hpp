@@ -978,6 +978,10 @@ struct Config {
     //    those fields taken by parse_args() so layer_config_parity() can compare the two stores.
     pfg::layers::LayerConfig    layers;
     pfg::layers::LayerOldShadow layers_old;
+    int   tdr_test_s=0;             // --tdr-test N (R4/G-R4): after N s, record a never-terminating compute dispatch into the
+                                    // present-stage command buffer to force a GPU timeout (TDR) and prove the device-loss exit
+                                    // path (VK_ERROR_DEVICE_LOST -> vk_live -> g_quit -> clean teardown). 0 = off (default;
+                                    // byte-identical). L3 per SAFETY_PROTOCOL: the interactive GPU is reset -- operator's word only.
     bool  validation=false;         // --validation: enable VK_LAYER_KHRONOS_validation + a debug-utils
                                     // messenger that PRINTS every message (R2: the "sync-validation clean"
                                     // gate needs a repeatable instrument). Default off -> no layer, no

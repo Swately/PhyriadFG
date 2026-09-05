@@ -4,6 +4,8 @@
 #include "present/present.hpp"
 #include "layers/layer_config.hpp"   // R3: FgPush, layer_arm_mask, the contract hash
 #include "clock/phase_clock.hpp"   // STAGE 4: the content clock (R1/X14)
+#include "present/present_stage.hpp"   // STAGE 6: the present stage (R4/X12)
+#include "tdr_hang_spv.hpp"           // kTdrHangSpv (--tdr-test, G-R4)
 #include "seam/seam_graph.hpp"     // STAGE 5 output barriers, derived (R2b/X15)
 #include "core/compat_reason.hpp"    // ra::compat::emit / ReasonCode (named-reason present-init bail)
 #include "flow/flow.hpp"             // MedianPipe (the P-thread medPipe member access)
@@ -398,75 +400,29 @@ void run_present(FgContext& ctx){
             // window message queue belongs to the creating thread; the ghosting-pump inside submit()
             // drains nothing from any other thread). So the surface is a P-local, created here in P's
             // setup. Defaults = DcompCt + ExcludeFromCapture + Immediate (the measured trilemma fix).
-            pp::PresentSurface ra_surface;
-            bool surface_ready=false;
-            uint64_t ps_ok=0,ps_timeout=0,ps_err=0,last_ps_ok=0;  // submit ok/timeout/err counters
-            uint64_t rdrop_ticks=0,last_rdrop=0;   // async re-present drops (warp in-flight → stale front re-shown; uniq es CIEGO a estos) — declarado ANTES del lambda wap_warp_present que lo incrementa
+            // ── STAGE 6 (PRESENT) — R4/X12: the stage object, created ON THIS THREAD (the surface's threading contract).
+            //    The legacy locals below are ALIASES to its fields, so every read site (stats, CSV, --rfp-fresh,
+            //    --motion-fallback) stays byte-identical; the bodies moved to src/present/present_stage.cpp.
+            pfg::present::PresentStage pres(A,cfg,bridge_w,bridge_h,bridge_use_km,bridge_nt,hostMassPtr,total_frames,g_quit_threads);
+            pp::PresentSurface& ra_surface=pres.surface;
+            bool& surface_ready=pres.surface_ready;
+            uint64_t& ps_ok=pres.ps_ok; uint64_t& ps_timeout=pres.ps_timeout; uint64_t& ps_err=pres.ps_err; uint64_t last_ps_ok=0;  // submit ok/timeout/err counters (stage-owned; the stats window the deltas)
+            uint64_t& rdrop_ticks=pres.rdrop_ticks; uint64_t last_rdrop=0;   // async re-present drops (stage-owned; counted by PresentStage::begin)
             // (--load-governor, self-keyed floor) the FG's OWN-slice distress latch: TRUE when freshage or
             // the warp fence says WE are starved (not merely "the GPU is busy"). Declared BEFORE the warp
             // lambda so warp_light reads the SAME latched decision the F-thread floor uses (one decision,
             // two arms). Updated once/util-refresh in the publish block below; false unless load_governor.
             bool gov_self_distress=false;   // debounced FG-own-slice distress (freshage OR warp inflation)
-            {
-                pp::PresentSurfaceDesc psd{};
-                psd.monitor_index=cfg.pres_mon; psd.width=0; psd.height=0;  // full present-monitor extent
-                psd.waitable=cfg.present_waitable; psd.sync_interval=(uint8_t)cfg.present_sync;  // B (default-off byte-identical)
-                psd.present_colorspace=(uint8_t)cfg.present_colorspace;  // (default-off byte-identical)
-                psd.present_format=(uint8_t)cfg.present_format;           // (default-off byte-identical) request the FP16 scRGB swapchain (the bridge above was built FP16 iff cfg.present_format==1)
-                if(cfg.present_own_window){
-                    // the opaque own-window displayed flip plane (Style::OwnWindow) + the
-                    // captured game's HWND as the foreground-yield reference. Default-off
-                    // → psd.style stays DcompCt + game_hwnd stays null → byte-identical to the overlay.
-                    psd.style=pp::Style::OwnWindow;
-                    psd.game_hwnd=(void*)wgc_target_hwnd;   // null in monitor-capture mode → yield keys off our window only
-                }
-                auto cr=pp::PresentSurface::create(psd);
-                if(!cr){
-                    // fault containment: there is no in-thread fallback path — degrade by
-                    // signalling a clean quit with the precise failing reason (never a crash).
-                    std::printf("[ra] present-surface: PresentSurface::create FAILED (ErrorCode=%u) — no fallback path; quitting cleanly\n",
-                        (unsigned)cr.error().code);
-                    ra::compat::emit(ra::compat::ReasonCode::PRESENT_INIT_FAILED);   // named reason on the present-init bail
-                    g_quit_threads.store(true); g_quit=true; return;
-                }
-                ra_surface=std::move(*cr); surface_ready=true;
-                // Print the REAL style (the old line said "dcomp-ct+WDA" hardcoded — under
-                // --present-own-window it misreported the own flip plane as the overlay).
-                std::printf("[ra] present: PresentSurface %s — click_through=%s capture_excluded=%s\n",
-                    cfg.present_own_window?"OWN-WINDOW flip plane (displayed only while the game/our window is FOREGROUND — watch the yield lines)":"dcomp-ct+WDA",
-                    ra_surface.is_click_through()?"yes":"no", ra_surface.capture_excluded()?"yes":"no");
-                // The producer bridge texture is FP16 iff cfg.present_format==1 (above), and the swapchain
-                // was requested FP16 with the SAME flag. If the surface's soft fallback dropped to BGRA8 on
-                // this rig (FP16 composition refused) while the bridge is FP16, the formats DISAGREE → the
-                // CopyResource(BGRA8 backbuffer, FP16 bridge) would be a format mismatch → corrupt/black
-                // present. The bridge cannot be rebuilt on this thread (it is created before the device/
-                // threads split), so degrade by a NAMED clean quit rather than present garbage. Inert unless
-                // --present-fp16/--hdr is set AND the rig refuses FP16.
-                if(cfg.present_format==1 && !ra_surface.present_is_fp16()){
-                    std::printf("[ra] present-surface: FP16 swapchain REFUSED on this rig (fell back to BGRA8) but the bridge is FP16 — format disagreement; no in-thread rebuild path. Quitting cleanly. Run without --present-fp16/--hdr for the 8-bit present.\n");
-                    ra::compat::emit(ra::compat::ReasonCode::PRESENT_INIT_FAILED);
-                    g_quit_threads.store(true); g_quit=true; return;
-                }
-                if(ra_surface.present_is_fp16())
-                    std::printf("[ra] present-surface: FP16 scRGB present ACTIVE (R16G16B16A16_FLOAT + G10_NONE_P709). HDR is inert without an HDR display + HDR content (coverage, not a default-path win).\n");
-            }
+            if(!pres.init((void*)wgc_target_hwnd)) return;   // R4 (stage 6): the PresentSurface block, moved verbatim to PresentStage::init (the two bails return false)
+            if(cfg.tdr_test_s>0){ const std::vector<uint32_t> spvt(kTdrHangSpv.begin(),kTdrHangSpv.end());
+                if(!pres.tdr_arm(spvt,cfg.tdr_test_s)) std::printf("[ra] --tdr-test: arming FAILED (pipeline/buffer) -- the run proceeds without it\n"); }
             // device-loss bridge: the OwnWindow present site now OWNS the displayed
             // DXGI present, so a terminal device loss (DEVICE_REMOVED/RESET) surfaces from submit() as
             // ErrorCode::ShuttingDown (the pillar's dxgi_live twin of vk_live). Map it to the SAME terminal
             // exit the Vulkan-side device loss drives — g_device_lost + g_quit → the proven Ctrl-C unwind →
             // teardown (guarded `&& !g_device_lost`) → exit. Exit IS passthrough (the game keeps rendering
             // behind us). Centralized so all three present sites share one accounting + one exit path.
-            auto ps_account=[&](const std::expected<void,phyriad::Error>& r){
-                if(r){ ++ps_ok; total_frames.fetch_add(1); return; }
-                const auto code=r.error().code;
-                if(code==phyriad::ErrorCode::Timeout){ ++ps_timeout; return; }
-                if(code==phyriad::ErrorCode::ShuttingDown){
-                    if(!g_device_lost.exchange(true))
-                        std::printf("[ra] present-surface device loss (DXGI) -- graceful exit (the game keeps running; PhyriadFG is an external overlay)\n");
-                    g_quit=true; ++ps_err; return;
-                }
-                ++ps_err;
-            };
+            auto ps_account=[&](const std::expected<void,phyriad::Error>& r){ pres.account(r); };   // R4 (stage 6): the body moved to PresentStage::account
             // --pace-hard: the HARD present-target pacer state, hoisted HERE so the
             // bridge_present() lambda (the present chokepoint, just below) captures it by reference. ph_tgt = the current
             // tick's grid target (set at the tick boundary when --pace-hard, consumed + zeroed by the pin in
@@ -475,55 +431,14 @@ void run_present(FgContext& ctx){
             // grid → present-MASD→0 when W<=budget). ph_held / ph_overshoot = real-pin / degrade counters (DIAG ph).
             // ALL inert with the flag off: ph_tgt is never set → the pin branch in bridge_present is never entered →
             // byte-identical. Thread-P-local (both lambdas + the tick loop run on thread P only).
-            double   ph_tgt=0.0, ph_w_ema=0.0;
-            uint64_t ph_held=0, last_ph_held=0, ph_overshoot=0, last_ph_overshoot=0;
+            double&   ph_tgt=pres.ph_tgt;   // R4: the --pace-hard pin state is stage-owned (the loop sets ph_tgt per tick; ph_w_ema lives in the stage)
+            uint64_t& ph_held=pres.ph_held; uint64_t last_ph_held=0; uint64_t& ph_overshoot=pres.ph_overshoot; uint64_t last_ph_overshoot=0;
             // hand the freshly-blitted/warped bridge image to the pillar. The keyed-mutex
             // path passes the key (the pillar AcquireSync→CopyResource→ReleaseSync); the no-KM path
             // relies on the inline fBridge wait already done by the caller (CPU-fence ordering, same
             // thread). submit() drains the window pump + CopyResource + Present(0). Timeout = a
             // skipped present (counted), never a block.
-            auto bridge_present=[&](){
-                if(!surface_ready) return;
-                // --pace-hard: the HARD present-target pin. This is the single
-                // chokepoint right before Present, reached AFTER all the variable per-tick work W (upscale +
-                // copy + blit + the warp fence wait) — so the present here naturally lands at ph_tgt + W with W
-                // jittering (the ~4.28ms present-MASD). The pin holds the present back to a FIXED phase
-                // ph_tgt + budget so successive presents are tick_period_ms apart (MASD→0) when W<=budget.
-                // Reached only when --pace-hard + own-window AND ph_tgt was set this tick → flag-off it is dead
-                // (ph_tgt stays 0.0) → byte-identical.
-                if(cfg.pace_hard && cfg.present_own_window && ph_tgt>0.0){
-                    const double W = now_ms() - ph_tgt;                  // the variable work this tick took past the grid target
-                    if(W>0.0 && W<100.0) ph_w_ema = ph_w_ema>0.0 ? 0.9*ph_w_ema + 0.1*W : W;   // EMA(W), skip hitches (scene cut / device stall)
-                    const double ph_period_ms = 1000.0/(double)cfg.refresh_hz;   // one vblank period (tick_period_ms is out of scope here; cfg.refresh_hz is the same source)
-                    double budget = ph_w_ema + cfg.ph_spin_ms;          // EMA(work) + margin (reuse ph_spin_ms as the present-target margin)
-                    const double bud_cap = ph_period_ms - 0.001;        // FREEZE-FLOOR: never target more than ~1 vblank of latency
-                    if(budget > bud_cap) budget = bud_cap;
-                    const double present_target = ph_tgt + budget;
-                    const double rem = present_target - now_ms();
-                    // FREEZE-FLOOR: a target already past (rem<=0 → work overran the budget) or absurd
-                    // (rem>one period → bad clock/target) → present NOW, NEVER block; count the degrade. Else a
-                    // bounded sleep-then-spin (the paced_wait_P shape) coarse sleep to present_target−ph_spin_ms,
-                    // then the TSC spin-finish. The total wait is hard-capped <1 vblank by the budget clamp +
-                    // this rem>period guard, so the present thread can never be held past a vblank while displayed.
-                    if(rem<=0.0 || rem>ph_period_ms){
-                        ++ph_overshoot;
-                    } else {
-                        if(rem > cfg.ph_spin_ms + 0.5){
-                            std::this_thread::sleep_until(std::chrono::steady_clock::now()
-                                + std::chrono::duration<double,std::milli>(rem - cfg.ph_spin_ms));
-                        }
-                        const double spin_ms = present_target - now_ms();
-                        if(spin_ms>0.0){
-                            double sm=spin_ms; if(sm>cfg.ph_spin_ms) sm=cfg.ph_spin_ms;   // bound the busy-wait (efficiency mandate)
-                            phyriad::hal::cpu_wait_for_ns((uint64_t)(sm*1e6));
-                        }
-                        ++ph_held;
-                    }
-                    ph_tgt = 0.0;   // consume this tick's target (a second bridge_present in the same tick won't re-pin)
-                }
-                pp::SharedFrameHandle h{ bridge_nt, /*key*/0, bridge_w, bridge_h };
-                ps_account(ra_surface.submit(h));
-            };
+            auto bridge_present=[&](){ pres.present_front(); };   // R4 (stage 6): the --pace-hard pin + the slot-0 submit moved to PresentStage::present_front
 
             // precision pacing: a bare sleep_until carries Windows' scheduler quantum
             // (1.4-15.6ms) into every present, which shows up as slip. Instead, coarse-sleep
@@ -707,8 +622,8 @@ void run_present(FgContext& ctx){
                 VkWin32KeyedMutexAcquireReleaseInfoKHR km{}; km.sType=VK_STRUCTURE_TYPE_WIN32_KEYED_MUTEX_ACQUIRE_RELEASE_INFO_KHR;
                 if(bridge_use_km){ km.acquireCount=1; km.pAcquireSyncs=&bridge_mem; km.pAcquireKeys=&key0; km.pAcquireTimeouts=&kt;
                                    km.releaseCount=1; km.pReleaseSyncs=&bridge_mem; km.pReleaseKeys=&key0; si.pNext=&km; }
-                vkQueueSubmit(A.q,1,&si,fBridge); vk_live(vkWaitForFences(A.dev,1,&fBridge,VK_TRUE,UINT64_MAX));   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
-                bridge_present();   // pillar: AcquireSync(0) → CopyResource → ReleaseSync(0) → Present(0)
+                pres.submit_sync(fBridge,si);   // R4 (stage 6): the shared cmd/fence submit + the TDR-catching wait
+                pres.present_front();   // pillar: AcquireSync(0) → CopyResource → ReleaseSync(0) → Present(0)
             };
 
             // the present path — A blits src_work → the bridge image → surface.submit().
@@ -919,8 +834,8 @@ void run_present(FgContext& ctx){
             // is the second slot, valid only when cfg.async_present (else it ALIASES slot 0, so any
             // accidental slot-1 reference on the off path is harmless). The off path uses ONLY cmdBridge/fBridge/
             // bridge_img.img/bridge_mem directly — byte-identical when off.
-            struct BridgeSlot { ID3D11Texture2D* tex; HANDLE nt; IDXGIKeyedMutex* km; VkImage img; VkDeviceMemory mem; VkCommandBuffer cmd; VkFence fence; };
-            BridgeSlot bslot[2];
+            using BridgeSlot = pfg::present::BridgeSlot;   // R4: the slot type lives in the stage; the objects below are BOUND into it
+            BridgeSlot (&bslot)[2] = pres.bslot;
             // FIX: when async is on, slot 0's WARP uses the DEDICATED cmdBridgeA0/fBridgeA0 (not the
             // shared cmdBridge/fBridge that wap_upload resets per-pair). It still presents through the shared
             // bridge texture (bridge_img/nt/mem). When async is off, bslot[0] aliases cmdBridge/fBridge so the
@@ -929,9 +844,9 @@ void run_present(FgContext& ctx){
                                    cfg.async_present ? cmdBridgeA0 : cmdBridge,
                                    cfg.async_present ? fBridgeA0   : fBridge };
             bslot[1] = cfg.async_present ? BridgeSlot{ bridge_tex1, bridge_nt1, bridge_km_d3d1, bridge_img1.img, bridge_mem1, cmdBridge1, fBridge1 } : bslot[0];
-            int async_front=-1;     // slot holding the last COMPLETED warp (presentable); -1 = none yet
-            int async_inflight=-1;  // slot with a submitted-but-not-yet-complete warp; -1 = none
-            uint64_t sq_hits=0, sq_misses=0, last_sqh_p=0, last_sqm_p=0;   // --shallow-queue: early-promote hit/miss windowed counters (sq:H/M in the stats) — the depth-collapse + count-regression measure. P-thread-local, lock-free.
+            int& async_front=pres.async_front;     // R4: stage-owned — the slot holding the last COMPLETED warp (presentable); -1 = none yet
+            // (async_inflight — the slot with a warp in flight — is stage-owned and no longer read here; see PresentStage)
+            uint64_t& sq_hits=pres.sq_hits; uint64_t& sq_misses=pres.sq_misses; uint64_t last_sqh_p=0, last_sqm_p=0;   // R4: the --shallow-queue counters are stage-owned; the stats window their deltas here
             // ── STAGE 5 (the seam): the output path's barriers, DERIVED (R2b). Declared lazily on the
             // first recording tick (wapOutA / bridge_img exist by then) and re-executed every tick;
             // execute() patches handles and allocates nothing (graft G5). --sg-barriers off -> never
@@ -976,30 +891,16 @@ void run_present(FgContext& ctx){
                                         && (cfg.gov_util_floor ? true : gov_self_distress);
                 // Poll the warp submitted on a PRIOR tick. If complete, it is now the freshest presentable frame,
                 // and the mass read (the matte feedback) moves HERE (post-completion) — the data is ready.
-                if(ap && async_inflight>=0){
-                    const VkResult fs=vkGetFenceStatus(A.dev, bslot[async_inflight].fence); vk_live(fs);   // DEVICE_LOST -> g_quit (else !=VK_SUCCESS is read as "not ready" -> spins forever, never exits)
-                    if(fs==VK_SUCCESS){
-                        if(presented_out) *presented_out = hostMassPtr ? *(uint32_t*)hostMassPtr : 0u;
-                        async_front = async_inflight; async_inflight = -1;
-                    }
-                }
-                // Choose the record slot: NOT the slot still in flight. With ≤1 in flight, the free slot is the
-                // non-front slot. If a warp is STILL running (async_inflight>=0) we DROP this tick's interpolated
-                // frame (record nothing) and just re-present the completed front.
-                int back = 0;
-                if(ap) back = (async_front==0) ? 1 : 0;
-                const bool record_this_tick = (!ap || (async_inflight<0)) && do_warp;   // --fdrop: do_warp=false on an exact-dup drop → skip the warp record/submit (zero 4090 cost); the async fence-poll above STILL promotes async_front, and the present tail re-shows the completed front → state machine stays consistent
-                // (observabilidad) rdrop = ticks async donde el warp SIGUE en vuelo → este tick re-presenta
-                // el front VIEJO. uniq es CIEGO a esto (cuenta la SELECCIÓN pair/phase, no lo entregado):
-                // un rdrop crónico entrega la mitad de las posiciones calculadas y la telemetría se ve sana.
-                if(ap && do_warp && async_inflight>=0) ++rdrop_ticks;
-                // Slot shadows: on the off path these alias slot-0 = the today-resources (byte-identical); on the
-                // async path they point at the chosen back slot. (Shadowing the captured names keeps the large
-                // record body below textually unchanged — &cmdBridge etc. resolve to these locals.)
-                VkCommandBuffer cmdBridge  = ap ? bslot[back].cmd  : bslot[0].cmd;
-                VkFence         fBridge    = ap ? bslot[back].fence: bslot[0].fence;
-                Img             bridge_img = ap ? Img{ bslot[back].img, VK_NULL_HANDLE, VK_NULL_HANDLE } : Img{ bslot[0].img, VK_NULL_HANDLE, VK_NULL_HANDLE };
-                VkDeviceMemory  bridge_mem = ap ? bslot[back].mem  : bslot[0].mem;
+                // ── STAGE 6 (R4/X12): the async preamble + the slot decision, stage-owned. The DECISION is an input:
+                // Warp, or Dup on an exact-duplicate --fdrop tick (do_warp=false → the completed front is re-shown);
+                // the stage returns Drop when a warp is still in flight (the async re-present drop, rdrop_ticks).
+                pres.poll_inflight(presented_out);
+                const pfg::present::Tick tk = pres.begin(do_warp ? pfg::present::Decision::Warp : pfg::present::Decision::Dup, /*count_drop=*/true);
+                const bool record_this_tick = tk.record;
+                VkCommandBuffer cmdBridge  = tk.cmd;
+                VkFence         fBridge    = tk.fence;
+                Img             bridge_img = Img{ tk.img, VK_NULL_HANDLE, VK_NULL_HANDLE };
+                VkDeviceMemory  bridge_mem = tk.mem;
                 if(record_this_tick){
                 vkResetCommandBuffer(cmdBridge,0);
                 VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdBridge,&bi);
@@ -1392,6 +1293,7 @@ void run_present(FgContext& ctx){
                     img_barrier(cmdBridge,wapPrevOutA.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                     img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_WRITE_BIT);
                 }
+                pres.tdr_maybe(cmdBridge);   // --tdr-test (R4/G-R4): the forced GPU hang, recorded once when armed and due; a no-op otherwise
                 vkEndCommandBuffer(cmdBridge); vkResetFences(A.dev,1,&fBridge);
                 // rec = the CPU cmd-record window just closed (reset→…→end). gpu starts at submit.
                 wsub_gpu0 = cfg.wsub ? now_ms() : 0.0;
@@ -1419,13 +1321,7 @@ void run_present(FgContext& ctx){
                     si.waitSemaphoreCount=1; si.pWaitSemaphores=&A.semUpTL; si.pWaitDstStageMask=&warpWaitStage;
                     si.signalSemaphoreCount=1; si.pSignalSemaphores=&A.semWarpTL;
                 }
-                if(!ap){
-                    vkQueueSubmit(A.q,1,&si,fBridge); vk_live(vkWaitForFences(A.dev,1,&fBridge,VK_TRUE,UINT64_MAX));   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
-                } else {
-                    // submit non-blocking; mark this slot in flight. The present thread polls it on a
-                    // LATER tick (the preamble above). No vkWaitForFences here — that wait IS the latency we shed.
-                    vkQueueSubmit(A.q,1,&si,fBridge); async_inflight=back;
-                }
+                pres.submit(tk,si);   // R4 (stage 6): sync = submit + TDR-catching wait; async = submit + mark the slot in flight
                 } // end if(record_this_tick)
                 // gpu = submit + the BLOCKING fence wait (the warp dispatch + blit ran on A.q in
                 // this segment — if (c) dominates, the shader stack is the cost; bisect with --no-*).
@@ -1632,31 +1528,8 @@ void run_present(FgContext& ctx){
                 // and clearing async_inflight=-1 forbids the preamble re-promoting it next tick (no double-present).
                 // The content-order key (last_pres_*) is maintained by the SAME post-lambda bookkeeping for hit and
                 // miss alike — the warp CONTENT is identical, only its present TIMING moves — so no extra key write.
-                if(ap && cfg.shallow_queue && cfg.sq_budget_us>0 && record_this_tick && async_inflight==back && back>=0){
-                    const double sq_cap_ms=(double)cfg.sq_budget_us/1000.0;
-                    const double sq_t0=now_ms();
-                    bool sq_done=false;
-                    do {
-                        const VkResult fs=vkGetFenceStatus(A.dev, bslot[back].fence);                       // non-blocking poll
-                        if(!vk_live(fs)) break;                                                              // DEVICE_LOST -> g_quit -> exit the spin
-                        if(fs==VK_SUCCESS){ sq_done=true; break; }
-                        phyriad::hal::spin_hint();
-                    } while((now_ms()-sq_t0) < sq_cap_ms);
-                    if(sq_done){
-                        if(presented_out) *presented_out = hostMassPtr ? *(uint32_t*)hostMassPtr : 0u;   // mirror the preamble mass-read
-                        async_front = back; async_inflight = -1; ++sq_hits;
-                    } else { ++sq_misses; }
-                }
-                if(!ap){
-                    bridge_present();   // presents slot-0 (bridge_nt)
-                } else if(async_front>=0){
-                    // present the freshest COMPLETED slot (mirrors the bridge_present lambda body,
-                    // but with the front slot's NT handle). On startup (nothing completed yet) present nothing.
-                    if(surface_ready){
-                        pp::SharedFrameHandle h{ bslot[async_front].nt, /*key*/0, bridge_w, bridge_h };
-                        ps_account(ra_surface.submit(h));   // ShuttingDown → device-loss exit
-                    }
-                }
+                pres.shallow_queue(tk,presented_out);   // R4 (stage 6): --shallow-queue early promote, stage-owned
+                pres.present_tick(tk);   // R4 (stage 6): sync -> present_front (slot 0); async -> the completed front slot
                 // prs = the present pillar (bridge_present / dcomp) + the sub-µs host mass-read +
                 // the (off unless --outdump) instrument. If (e)/prs dominates, the suspect is the present
                 // path, not the shader. Measured from the fence wait's end to here.
@@ -1677,24 +1550,20 @@ void run_present(FgContext& ctx){
             // the last REAL warp). Lock-free: only the existing A.q submit + a non-blocking fence, no CPU mutex.
             auto rfp_present=[&](int s){
                 if(!surface_ready) return;
-                const bool ap = cfg.async_present;   // always true when --rfp armed (co-arm guard)
                 // Promote a completed in-flight slot exactly as the warp preamble does (the matte mass-read is
                 // irrelevant to a real present → skip it).
-                if(ap && async_inflight>=0){
-                    const VkResult fs=vkGetFenceStatus(A.dev, bslot[async_inflight].fence); vk_live(fs);   // DEVICE_LOST -> g_quit
-                    if(fs==VK_SUCCESS){ async_front=async_inflight; async_inflight=-1; }
-                }
+                pres.poll_inflight(nullptr);   // R4 (stage 6): the async preamble, stage-owned (no mass read on the real path)
                 // Record the real blit ONLY when a slot is free (no warp/real still in flight). If one is still
                 // running we DROP this real's record (NEVER reset an in-flight buffer —) and just re-present
                 // the completed front — the state machine stays consistent (mirrors the warp's record_this_tick
                 // guard). With ≤1 in flight the free slot is the non-front slot.
-                int back = ap ? ((async_front==0)?1:0) : 0;
-                const bool record_this = (!ap || async_inflight<0);
+                const pfg::present::Tick tk = pres.begin(pfg::present::Decision::Warp, /*count_drop=*/false);   // R4 (stage 6): the slot decision; a real-frame present never counts as a warp drop
+                const bool record_this = tk.record;
                 if(record_this){
-                    VkCommandBuffer rcmd  = ap ? bslot[back].cmd  : bslot[0].cmd;
-                    VkFence         rfen  = ap ? bslot[back].fence : bslot[0].fence;
-                    VkImage         rimg  = ap ? bslot[back].img   : bslot[0].img;
-                    VkDeviceMemory  rmem  = ap ? bslot[back].mem   : bslot[0].mem;
+                    VkCommandBuffer rcmd  = tk.cmd;
+                    VkFence         rfen  = tk.fence;
+                    VkImage         rimg  = tk.img;
+                    VkDeviceMemory  rmem  = tk.mem;
                     vkResetCommandBuffer(rcmd,0);
                     VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(rcmd,&bi);
                     img_barrier(rcmd,Apresent.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
@@ -1708,15 +1577,10 @@ void run_present(FgContext& ctx){
                     VkWin32KeyedMutexAcquireReleaseInfoKHR km{}; km.sType=VK_STRUCTURE_TYPE_WIN32_KEYED_MUTEX_ACQUIRE_RELEASE_INFO_KHR;
                     if(bridge_use_km){ km.acquireCount=1; km.pAcquireSyncs=&rmem; km.pAcquireKeys=&key0; km.pAcquireTimeouts=&kt;
                                        km.releaseCount=1; km.pReleaseSyncs=&rmem; km.pReleaseKeys=&key0; si.pNext=&km; }
-                    if(!ap){ vkQueueSubmit(A.q,1,&si,rfen); vk_live(vkWaitForFences(A.dev,1,&rfen,VK_TRUE,UINT64_MAX)); }   // hygiene (dead when rfp armed: rfp implies async)
-                    else   { vkQueueSubmit(A.q,1,&si,rfen); async_inflight=back; }   // non-blocking; polled on a later tick
+                    pres.submit(tk,si);   // R4 (stage 6): sync = submit + wait (dead when rfp armed: rfp implies async); async = submit + in flight
                 }
                 // Present the freshest COMPLETED slot (the present tail — increments total_frames; no manual bump).
-                if(!ap){ bridge_present(); }
-                else if(async_front>=0){
-                    pp::SharedFrameHandle h{ bslot[async_front].nt, /*key*/0, bridge_w, bridge_h };
-                    ps_account(ra_surface.submit(h));   // ShuttingDown → device-loss exit
-                }
+                pres.present_tick(tk);   // R4 (stage 6): async -> the completed front slot (sync would be present_front; dead: rfp implies async)
             };
 
             // ── Thread P: paced present loop ─────────────────────────────────
@@ -2248,6 +2112,8 @@ void run_present(FgContext& ctx){
                     // (that set is still on the panel). tick_k is the same counter the pacer grid uses,
                     // so a grid re-seat (tick_k=0) re-aligns the pattern harmlessly. dec_every==1 →
                     // never taken → byte-identical.
+                    // STAGE 6 decision = Decimated (STAGE_CONTRACT Phase.decision, R4): this vblank slot gets NO present call —
+                    // the gate is the declaration; Warp / Dup / Drop are handed to PresentStage::begin below.
                     if(dec_every>1 && (tick_k % (uint64_t)dec_every)!=0) continue;
                     // ── STAGE 4 (CLOCK): t_display + the published-set selection + the phase within its window
                     // (incl. the sync-clock phase override and the ASW overshoot). Moved VERBATIM (R1/X14).
@@ -2359,10 +2225,10 @@ void run_present(FgContext& ctx){
                                 // fallback) fast-path tick so a mixed rfp+csv run still scores pacing on display-flip
                                 // time. nullopt/soft-fail → field stays NA → scorer falls back to MsBetweenPresents.
                                 // Entirely inside if(tcsv.active()) → byte-identical-off; GetFrameStatistics is read-only.
-                                if(auto fst=ra_surface.last_flip_qpc()){
-                                    if(csv_have_flip && fst->present_count!=csv_prev_flip_count && csv_flip_qfreq>0.0)
-                                        row.ms_between_display_change = ((double)fst->sync_qpc - (double)csv_prev_flip_qpc) / csv_flip_qfreq * 1000.0;
-                                    csv_prev_flip_qpc=fst->sync_qpc; csv_prev_flip_count=fst->present_count; csv_have_flip=true;
+                                if(const pfg::present::FlipStats fst=pres.flip_stats(); fst.have_flip){   // R4: the stage-6 -> stage-4 feedback edge, consumed here
+                                    if(csv_have_flip && fst.present_count!=csv_prev_flip_count && csv_flip_qfreq>0.0)
+                                        row.ms_between_display_change = ((double)fst.sync_qpc - (double)csv_prev_flip_qpc) / csv_flip_qfreq * 1000.0;
+                                    csv_prev_flip_qpc=fst.sync_qpc; csv_prev_flip_count=fst.present_count; csv_have_flip=true;
                                 }
                                 row.route_device=0; tcsv.push(row);
                             }
@@ -2685,10 +2551,10 @@ void run_present(FgContext& ctx){
                                 // its <0 sentinel (NA) → the scorer falls back to the MsBetweenPresents proxy (flagged).
                                 // This entire read is INSIDE if(tcsv.active()) (the --csv gate) → never runs without --csv
                                 // → byte-identical-off; GetFrameStatistics is read-only (no present-path change).
-                                if(auto fst=ra_surface.last_flip_qpc()){
-                                    if(csv_have_flip && fst->present_count!=csv_prev_flip_count && csv_flip_qfreq>0.0)
-                                        row.ms_between_display_change = ((double)fst->sync_qpc - (double)csv_prev_flip_qpc) / csv_flip_qfreq * 1000.0;
-                                    csv_prev_flip_qpc=fst->sync_qpc; csv_prev_flip_count=fst->present_count; csv_have_flip=true;
+                                if(const pfg::present::FlipStats fst=pres.flip_stats(); fst.have_flip){   // R4: the stage-6 -> stage-4 feedback edge, consumed here
+                                    if(csv_have_flip && fst.present_count!=csv_prev_flip_count && csv_flip_qfreq>0.0)
+                                        row.ms_between_display_change = ((double)fst.sync_qpc - (double)csv_prev_flip_qpc) / csv_flip_qfreq * 1000.0;
+                                    csv_prev_flip_qpc=fst.sync_qpc; csv_prev_flip_count=fst.present_count; csv_have_flip=true;
                                 }
                                 tcsv.push(row);
                             }

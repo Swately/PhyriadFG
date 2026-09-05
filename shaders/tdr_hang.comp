@@ -1,0 +1,22 @@
+// shaders/tdr_hang.comp — the --tdr-test instrument (R4, G-R4): ONE workgroup that never finishes.
+//
+// Purpose: force a GPU timeout (Windows TDR, ~2 s) on purpose, on the operator's word only, to prove the
+// present stage's device-loss path end to end: the hang → VK_ERROR_DEVICE_LOST on the next fence wait or
+// poll → vk_live() → g_quit → the clean teardown. The loop bound is a PUSH value the compiler cannot fold:
+// starting from an odd seed, (i*3+1)|1 is always odd, so `i != 0` never becomes false. The SSBO write keeps
+// the loop observable (a loop with no side effect may be deleted by the driver compiler).
+//
+// NEVER dispatched unless --tdr-test N is on the command line (an L3 operation per SAFETY_PROTOCOL §5:
+// the GPU carrying the interactive display is reset).
+// Made with my soul - Swately <3
+#version 450
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(set = 0, binding = 0) buffer Sink { uint v; } u_sink;
+layout(push_constant) uniform Pc { uint seed; } pc;
+void main() {
+    uint i = pc.seed | 1u;
+    while (i != 0u) {
+        i = (i * 3u + 1u) | 1u;
+        if ((i & 0xFFFFu) == 0x1234u) u_sink.v = i;   // a data-dependent side effect the compiler must keep
+    }
+}

@@ -250,18 +250,22 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    `layer_arm_mask` (sin rama `COMMIT`), corregida. El arnés completo (grid/noise/pan ×2, control ROJO
    `--no-single-track`, sim limpia, M3 2/lado) y el corpus del oráculo (`--fg-core --qdump`, noise 720p ×2) están
    en §5–§7 del registro.
-5. **NEXT** — (a) aplicar `r3_patch.py`, construir (`build-release.bat`), iterar los errores de glslc/MSVC;
-   (b) `--layer-dump` ×2 (determinismo, el hash nuevo), las pruebas NEGATIVAS del generador (un cuerpo que lee
-   el alias de otra fila sin `needs` → exit 3; un COMPOSE sin `c_in` y sin `overrides` → exit 3);
-   (c) el instrumento: `--fg-core-ab` sobre el ball zoo (estático + pan + noise) 60 s × 2 corridas → `diff_px`
-   total 0 sobre ≥ 14,000 ticks con la sim EMPAQUETADA (XR1), luego `--fg-core-clean-sim` y contar; la
-   compuerta de validez de EMPIRICAL_TEST §3.3 exige VER EL ROJO: una fila desarmada a propósito (p.ej.
-   `--fg-core-ab --no-stasis` contra el legado con stasis) debe dar diff > 0 antes de creer el 0;
-   (d) `--fg-core --qdump+` ≥ 200 triples aperiódicos → `ref_warp.py` con mv1+mvb1 (mismo k/exacto% que T6 §9);
-   (e) M3 presents/s legado vs fg_core, 2 corridas/lado; M2b `unmeasured` con razón; (f) el registro
-   `records/R3_GATE.md`, la espina (S4.R3 → done/gate), la secuencia del escritorio, la memoria; commit.
-   No re-derivar: el diseño de R3 (esta foto 4q), las decisiones diferidas (1c.4 → R5, 1c.6 → R7), ni el
-   veredicto de T6 (§9: byte-exacto con mv1+mvb1). El default del producto no se toca sin la palabra del operador.
+4r. **R4 CERRADO (2026-09-05, `records/R4_GATE.md`, gate PASSED except the forced-TDR item (built, awaiting the operator's word))** — la etapa 6 PRESENT es
+   `src/present/present_stage.{hpp,cpp}`: la superficie (creada en el hilo P), la contabilidad de submits, las dos
+   ranuras del puente, el preámbulo asíncrono (UN cuerpo para las dos copias que había), `begin(decision)` con la
+   decisión `{Warp, Dup, Drop}` como ENTRADA (Drop devuelto cuando hay warp en vuelo; Decimated = la ausencia de
+   llamada, dicha en la compuerta), `submit`, `--shallow-queue`, `present_tick`, y `FlipStats` consumido por la
+   fila CSV (el borde 6→4 existe como llamada). Cuerpos EXTRAÍDOS por ancla del archivo real, no transcritos:
+   83.95 % byte-idéntico, las 13 diferencias son los renombres declarados. El lazo conserva sus nombres como
+   alias a los campos de la etapa. `--tdr-test N` CONSTRUIDO y no ejecutado: es L3 sobre su GPU interactiva
+   (SAFETY §5) — requiere su palabra. Residuo declarado: las estadísticas por segundo siguen en el lazo; el drop
+   de banda de guarda (S8) no se añadió (no existe equivalente legado; es una decisión medida, no una extracción).
+5. **NEXT** — (a) si el operador da la palabra: correr `--tdr-test 20` una vez sobre el ball zoo y anexar la
+   salida a `R4_GATE.md` §5 (la GPU interactiva se reinicia ~2 s); (b) R5 — `FlowSet` + `FlowRing` declarados,
+   los holones de `flow.cpp` como filas `kind = P` apagadas, el pase de consenso del MV → fila de la etapa 3
+   (donde el default del pase se convierte en el interruptor declarado del operador), `wap_upload` condicional;
+   antes, 4.2 (la mitad de papel: mapear la familia de holones sobre el esquema LAYERTAB — XR3); (c) el segundo
+   paso de R4, `stats_second()`, cuando se vinculen sus ~30 contadores. No re-derivar: R3 (4q) ni R4 (4r).
 
 **Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
 `fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con

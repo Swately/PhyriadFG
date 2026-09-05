@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S4.R4 (stage 6 PRESENT extracted; builds --tdr-test) · next — R3 done 2026-09-05 (records/R3_GATE.md); the consensus-pass default is R5's row and the operator's word; A0/M1 is R7's`**
+**`P → S4.R5 (FlowSet + FlowRing; the holons as rows; the MV median → a stage-3 row — where the consensus-pass default becomes the operator's declared switch) · next — R4 done 2026-09-05 (records/R4_GATE.md); A0/M1 is R7's`**
 > **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
 > background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
 > a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.
@@ -242,7 +242,9 @@ exactos que simulen de forma correcta el movimiento".)
     asks. The fear that the shipping default was insensitive to sub-pixel motion is NOT confirmed.
     M4's corpus must be APERIODIC. Corpus machinery ready: S2.T1b coverage + S2.T1c completeness)`
   - **S4.R4** Stage 6 PRESENT extracted (`PresentStage`, `Phase.decision`, `FlipStats`) = M-R4 ·
-    **`startable`** (corrected 2026-09-04 — the old `blocked (R1)` was stale: R1 is `done`). What
+    **`done`** (2026-09-05, `records/R4_GATE.md`, gate PASSED except the forced-TDR item (built, awaiting the operator's word)) — the present stage is `src/present/present_stage.{hpp,cpp}` — the surface, the accounting, the two bridge slots, the async preamble (one body for the two former copies), the slot decision with `{Warp, Dup, Drop}` as its INPUT, the submit, `--shallow-queue`, the present tail, `FlipStats` consumed by the CSV row — 83.95 % of the moved body byte-identical, the 13 differences all declared renames; the loop keeps its names as aliases; A/B against the pre-R4 binary in `records/R4_GATE.md` §4. Declared residual: the per-second stats
+    (`stats_second()`) stayed in the loop (~30 counters to bind); the S8 guard-band drop NOT added (no
+    legacy equivalent; a measured decision, not an extraction). Former status text: `startable` (corrected 2026-09-04 — the old `blocked (R1)` was stale: R1 is `done`). What
     actually constrains it: the STAGE_CONTRACT Order table puts it after R3 (a sequencing
     preference, not a dependency); the register forbids COMMITTING it while MR-1/MR-2/MR-7/CR1 are
     `open`; and G-R4 needs `--tdr-test`, which does not exist and must be built inside R4.
