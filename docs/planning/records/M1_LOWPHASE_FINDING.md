@@ -69,7 +69,16 @@ the matcher and blind to the pass. That is a hole in the replay record, now know
 audit checks that every plane the shader reads is present, not that the plane's *content* is what the
 shader read. A `mv1` post-consensus readback is the fix and is not taken here.
 
-### 2.1 · Reliability of the comparison (DI-3)
+### 2.1 · The pass, seen directly (added the same day)
+
+The hole named in §2 is closed: `--qdump+` now reads `wapMVA` back **after** the pass (`mv1=`). On two
+default captures of the same zoo, the pass touches **97.5 % of MV texels** (median change 0.048 px — a
+light smoothing everywhere) and **at the marker tiles doubles the endpoint error, 0.829 → 1.642 px**,
+leaving **63 % (mean) / 83 % (median)** of a moving marker's motion; the largest per-tile change is
+9.5 px. Fed `mv1` instead of `mv`, the T6 oracle goes from k 0.73 to **1.000 at ≥ 4 px** (§8 of its
+record) — the same mechanism, seen from the other side.
+
+### 2.2 · Reliability of the comparison (DI-3)
 
 Per-condition run-to-run `r` on `(marker, phase-bin)` means: DEFAULT **0.86** (n 40), stasis-off
 **0.78** (44), median-only **0.85** (43), consensus-off **0.36** (45). The last is low because with

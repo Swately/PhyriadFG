@@ -197,13 +197,21 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    posicional para FG; perceptualmente 2.5–3 arcmin media, 21–97 % del movimiento por cuadro, rango que
    la literatura de judder trata como visible. **El default NO se tocó.**
 
+4n. **`mv1` Y EL RESIDUO DE T6 EXPLICADO (2026-09-04 — `S2_T6_GATE.md` §8, `S2_T1C_GATE.md` §6)** —
+   `--qdump+` lee `wapMVA` DESPUÉS del pase de consenso (`mv1=`); `mv=` era el campo de ANTES. Alimentado
+   con `mv1`, el oráculo pasa de k 0.730/0.735 a **0.891/0.867** por cuadro, y por banda: **1.000 en
+   4–8 px, 0.957 en 2–4**, sobre el default de producción. El pase toca el 97.5 % de los téxeles y
+   DUPLICA el EPE en las tiles de marcador (0.83 → 1.64 px), dejando 63 % del movimiento. **El criterio
+   propio de T6 se cumple en ≥ 4 px.** El auditor exige `mv1` a cualquier push con el pase armado; los
+   registros default anteriores auditan NOT REPLAYABLE, correctamente.
+
 5. **NEXT** — (a) **decisión del operador:** el pase de consenso del MV (`mv_median.comp`, armado por
    defecto vía `mv_guided`) explica el 1.7 px a fase baja entero; apagarlo deja 0.27 px plano. Su
    propósito propio (sellos/huecos de borde en contenido plano) NO se midió aquí — antes de tocar
-   el default hay que medir ambas cosas, y el instrumento ya puede. (b) un readback post-consenso
-   `mv1` en `--qdump+` (el plano `mv=` es PRE-pase; T6 nunca vio el pase). (c) R3 sobre corpus
-   aperiódico ≥ 2 px. (d) revisar A0: M1 congelado como COMPARATIVO contra un default que es el
-   outlier penaliza el arreglo. Arriba de 4 px la referencia ya
+   el default hay que medir ambas cosas, y el instrumento ya puede. (b) R3 sobre corpus aperiódico
+   ≥ 2 px que lleve `mv1`. (c) revisar A0: M1 congelado como COMPARATIVO contra un default que es el
+   outlier penaliza el arreglo. (d) medir el propósito propio del pase (sellos/huecos de borde en
+   contenido plano) con una escena que lo tenga. Arriba de 4 px la referencia ya
    acierta (k = 0.955); abajo de 0.5 px el shader no mueve nada y la referencia sí. M4 no debe correr
    sobre este oráculo antes, porque un oráculo con ese error lavaría justo el defecto que M4 existe
    para detectar. La pista: el patrón de periodo 3 (−0.5, +0.1666, 0) sobre bloques cuyo `sad_best`

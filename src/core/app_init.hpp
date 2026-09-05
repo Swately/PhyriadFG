@@ -407,6 +407,10 @@ struct WapInit {
     // --outdump OR --qdump is set). All gated on qdump_n>0 → zero cost (no alloc) when OFF.
     void* hostPrevD=nullptr; HBuf hPrevD_a{};
     void* hostCurD =nullptr; HBuf hCurD_a{};
+    // --qdump+ (2026-09-04): the POST-consensus MV readback. The 3x3 vector-median pass rewrites
+    // wapMVA on the GPU after the host field was uploaded, so hostMV is the field BEFORE it; this
+    // is the field the warp actually sampled. mvw*mvh*4 (RG16F), allocated only under --qdump.
+    void* hostMV1 =nullptr; HBuf hMV1_a{};
 };
 // ── The init functions (E1) — each moved verbatim from main.cpp's init-seq into its module;
 //    each returns false where its section did `goto done` (main() converts back to the jump).

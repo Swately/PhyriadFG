@@ -6,7 +6,10 @@
 > pixels to 67, and the oracle reaches k = 0.956 (corr 0.987) where motion is real. What remains is a
 > 5–13 % over-displacement on moving content — a precision question, not a pathology. §7 then
 > characterises that residual: it is driven by DISPLACEMENT MAGNITUDE, not by phase (measured and
-> refuted), and the oracle reaches **k = 0.989 at 4–8 px over 2,241 pixels**.**
+> refuted), and the oracle reaches **k = 0.989 at 4–8 px over 2,241 pixels**. §8 (2026-09-04) then
+> EXPLAINS the residual: the oracle had been fed the MV field BEFORE the consensus pass rewrote it on
+> the GPU. Fed the field the shader actually sampled (`mv1`), **k = 1.000 at 4–8 px and 0.957 at 2–4**
+> on the shipping default. The gate's own criterion is met at ≥ 4 px.**
 >
 > *(Original verdict, kept:)* **BUILT, PARTIAL — the gate does NOT pass.**
 > The reference reproduces 99.88% of the shipping default's stored pixels exactly. A controlled
@@ -312,3 +315,48 @@ must be written into the M4 record, along with the fact that no oracle exists be
 - The roll-off itself is **unexplained**. Seven causes are refuted; none is confirmed. What is
   established is its shape, its driver, and the displacement above which the oracle can be trusted.
 
+---
+
+## 8 · The residual, EXPLAINED (2026-09-04): the oracle was fed a field the shader never saw
+
+`M1_LOWPHASE_FINDING.md` found, by ablation, that the 3×3 vector-median consensus pass
+(`shaders/mv_median.comp`, default-armed via `mv_guided`) rewrites `wapMVA` **on the GPU after
+`wap_upload` copied the host field into it**. `--qdump+`'s `mv=` plane is `hostMV[gen]` — the field
+*before* the pass. Every fit in §3–§7 therefore modelled a warp reading a field the warp never read.
+
+A post-consensus readback was added (`mv1=`: `wapMVA` → buffer inside the dump's oneshot, the anchors'
+own barrier pair; `hostMV1`/`hMV1_a`, allocated only under `--qdump`). Two default captures on the
+static aperiodic zoo, the oracle fed each plane in turn (`ref_warp.py --mv-plane`):
+
+| run | fed `mv` (pre-pass) | fed `mv1` (post-pass) |
+|---|---|---|
+| A | k 0.730 · corr 0.832 · exact 99.29 % | **k 0.891 · corr 0.939 · exact 99.72 %** |
+| B | k 0.735 · corr 0.846 | **k 0.867 · corr 0.933** |
+
+By displacement band, run A:
+
+| displacement | k, fed `mv` | k, fed `mv1` |
+|---|---|---|
+| 0.5 – 1 px | 0.714 (n 9,119) | 0.840 (n 10,011) |
+| 1 – 2 px | 0.578 (10,690) | 0.881 (11,582) |
+| 2 – 4 px | 0.718 (22,268) | **0.957** (18,043) |
+| 4 – 8 px | 0.815 (16,977) | **1.000** (9,582) |
+| over 8 px | 0.854 (417) | **1.001** (265) |
+
+**The gate's own criterion — `k → 1.000` — is met at ≥ 4 px on the shipping default, and 0.957 at
+2–4 px.** What §7 called a monotone roll-off with the displacement was the consensus pass acting more
+on some tiles than others, seen through an oracle that did not know the pass existed.
+
+The pass itself, measured with the same two planes: it touches **97.5 %** of MV texels (median change
+0.048 px — a light smoothing everywhere), and **at the marker tiles it doubles the endpoint error,
+0.829 → 1.642 px, leaving 63 % (mean) / 83 % (median) of a moving marker's motion**, with per-tile
+changes up to 9.5 px. That is the whole low-phase finding, now seen in the field rather than inferred.
+
+**What this changes for M4.** The corpus rule stands (aperiodic, ≥ 2 px) and gains a clause: **the
+record must carry `mv1`**, because the oracle must be fed what the shader read. `check_qdump_plus.py`
+now requires `mv1` whenever the push arms the pass, and reports the older default records as NOT
+REPLAYABLE for its absence — which they are. Records taken with the pass off are unaffected.
+
+**Honesty.** Two runs; run-to-run spread of the post-pass k is 0.024 against a pre/post effect of
++0.15. The 0.5–2 px bands stay at 0.84–0.88 and are not explained here. One scene class. The `mv1`
+readback stalls the dump tick like the other three planes and was not timed.

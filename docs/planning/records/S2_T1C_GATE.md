@@ -122,3 +122,14 @@ against the backward field, and the vblend tilt toward `mvt`. That is a much sma
   arms it is still replayable (it reads no new binding), but it exercises code this corpus does not.
 
 *Made with my soul - Swately <3*
+
+---
+
+## 6 · A content hole, found and closed (2026-09-04)
+
+This record proved every plane the shader *binds* is present. It did not prove every plane's
+*content* is what the shader read — and one was not: the consensus pass (`mv_median.comp`) rewrites
+`wapMVA` on the GPU after the host field is uploaded, so `mv=` was the field BEFORE the pass. Found
+by `M1_LOWPHASE_FINDING.md`; closed by a post-pass readback, `mv1=`, and by a new audit rule: a push
+with the pass armed (`mv_guided > 0.5`) is NOT REPLAYABLE without `mv1`. The default records taken
+before this date now audit as such, correctly.

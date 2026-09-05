@@ -328,6 +328,11 @@ def main():
     ap.add_argument('--triples', type=int, default=0, help='limit to the first N triples (0 = all)')
     ap.add_argument('--json', help='write the per-triple results to this JSON file')
     ap.add_argument('--save-worst', help='directory for the |diff| map of the worst triple (raw u8)')
+    ap.add_argument('--mv-plane', default='mv',
+                    help='manifest token of the MV plane to feed the reference: mv (the host field, BEFORE '
+                         'the consensus pass -- what the matcher produced) or mv1 (read back from wapMVA '
+                         'AFTER the pass -- what the shader actually sampled). The difference between the '
+                         'two fits IS the consensus pass, measured through the oracle.')
     ap.add_argument('--fit', action='store_true',
                     help='also report the least-squares scale k and correlation between the change the '
                          'reference makes to cur[uv] and the change the GPU made. k=1 means the '
@@ -375,7 +380,7 @@ def main():
                 prev=rgba(os.path.join(a.dir, r['prev']), W, H),
                 next=rgba(os.path.join(a.dir, r['next']), W, H),
                 live=rgba(os.path.join(a.dir, r['live']), W, H),
-                mv=planef16(os.path.join(a.dir, r['mv']), gw, gh, 2),
+                mv=planef16(os.path.join(a.dir, r[a.mv_plane]), gw, gh, 2),   # --mv-plane: which MV the oracle is fed
                 sad=planef16(os.path.join(a.dir, r['sad']), gw, gh, 2),
             )
             for key, loader in (('mvb', lambda p: planef16(p, gw, gh, 2)),

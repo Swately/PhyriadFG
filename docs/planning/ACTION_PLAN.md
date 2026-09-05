@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → operator decision on the consensus-pass default (M1 finding) → S4.R3 on an APERIODIC, ≥ 2 px corpus · next`**
+**`P → operator decision on the consensus-pass default (M1 finding) → S4.R3 on an APERIODIC, ≥ 2 px, mv1-carrying corpus · next`**
 > **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
 > background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
 > a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.
@@ -96,7 +96,7 @@ exactos que simulen de forma correcta el movimiento".)
     ordinary site is gated on `matte_on`, which is 0 — my first pass wrongly gated them on `gme_on` and
     the correction is recorded in the gate). `check_qdump_plus.py` now AUDITS replayability per record —
     the pre-T1c record reads NOT REPLAYABLE with the four gaps named, the T1c record reads REPLAYABLE.
-  - **S2.T6** the CPU reference warp · **`built, gate NOT passed`** (2026-09-03, `records/S2_T6_GATE.md`)
+  - **S2.T6** the CPU reference warp · **`built; gate MET at ≥ 4 px with the post-pass MV (§8, 2026-09-04)`** (2026-09-03, `records/S2_T6_GATE.md`)
     — `tools/ref_warp.py` replays a `--qdump+` triple and rebuilds the store. The surface is small
     because `single_track = 1.0` makes the store `mix(B_samp, cur[uv], w_s)` and shadows the whole
     commit/matte/onepos/blend cascade, so only shader lines 279–522 plus the stasis bool decide the
@@ -170,6 +170,13 @@ exactos que simulen de forma correcta el movimiento".)
     positional-error bar; perceptually the mean is 2.5–3 arcmin and 21–97 % of a frame's motion,
     in the range cinema judder literature treats as visible. **The default is untouched; the switch
     is the operator's.** The pass's own purpose (flat-content rim stamps) was NOT tested here.
+  - **S2.F2** the pass seen directly, and T6's residual explained · **`done`** (2026-09-04, `S2_T6_GATE.md`
+    §8, `S2_T1C_GATE.md` §6) — `--qdump+` gains `mv1=`, `wapMVA` read back AFTER the consensus pass; the
+    `mv=` plane was the field BEFORE it, so T6's oracle had modelled a warp reading a field the warp
+    never read. Fed `mv1`: **k = 1.000 at 4–8 px, 0.957 at 2–4** on the shipping default (two runs:
+    0.891 / 0.867 whole-frame, from 0.730 / 0.735). The pass touches 97.5 % of texels and doubles the
+    marker-tile EPE (0.83 → 1.64 px). **T6's own criterion is met at ≥ 4 px.** The audit now requires
+    `mv1` for any push with the pass armed.
   - **S2.T6** CPU reference warp (E7) · **`superseded`** by the dated row above (`built, gate NOT
     passed`, 2026-09-03). Left in place per the never-delete rule; do not read this line as a state.
 - **S3 — LAYER CONTRACT (the AAP search)** · **`done`** (2026-09-03) · `docs/planning/aap/`
