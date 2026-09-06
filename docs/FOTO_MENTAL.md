@@ -250,7 +250,7 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    `layer_arm_mask` (sin rama `COMMIT`), corregida. El arnés completo (grid/noise/pan ×2, control ROJO
    `--no-single-track`, sim limpia, M3 2/lado) y el corpus del oráculo (`--fg-core --qdump`, noise 720p ×2) están
    en §5–§7 del registro.
-4r. **R4 CERRADO (2026-09-05, `records/R4_GATE.md`, gate PASSED except the forced-TDR item (built, awaiting the operator's word))** — la etapa 6 PRESENT es
+4r. **R4 CERRADO (2026-09-05, `records/R4_GATE.md`, gate PASSED; el punto TDR cerrado por las tres corridas del operador el 2026-09-06 — R4c)** — la etapa 6 PRESENT es
    `src/present/present_stage.{hpp,cpp}`: la superficie (creada en el hilo P), la contabilidad de submits, las dos
    ranuras del puente, el preámbulo asíncrono (UN cuerpo para las dos copias que había), `begin(decision)` con la
    decisión `{Warp, Dup, Drop}` como ENTRADA (Drop devuelto cuando hay warp en vuelo; Decimated = la ausencia de
@@ -284,8 +284,9 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    driver/DXGI desde el tick del hang (F: "P pinned on gen 902") y la ventana propia quedó en pantalla con el
    último cuadro — el watchdog del pilar no puede ocultar la ventana de un hilo atorado (ShowWindow desde otro
    hilo espera su bucle de mensajes) → los joins llevan plazo de 3 s bajo pérdida, nombran al sobreviviente y
-   `TerminateProcess`; caminos sanos re-verificados tras cada arreglo; falta SU tercera corrida (la sesión no lo
-   ejecuta: L3 + clasificador);
+   `TerminateProcess`; caminos sanos re-verificados tras cada arreglo; SU TERCERA corrida (2026-09-06) CERRÓ el
+   punto: `-- P(present) --` nombrado, proceso terminado, panel devuelto (el desmontaje limpio no corre en ese
+   camino: P nunca regresa; dicho en §5);
    (c) R5 — `FlowSet`/`FlowRing`, holones como filas, el pase de consenso como fila de la etapa 3, `wap_upload`
    condicional — precedido por 4.2 (la mitad de papel). No re-derivar: R3 (4q), R4 (4r), R4b (4s).
 

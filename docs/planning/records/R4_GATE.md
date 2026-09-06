@@ -274,7 +274,7 @@ history — with these numbers: (1) accept ~120 fresh/s (ships today); (2) flip 
 +0.8 ms, the P thread 94 % busy; (3) `--shallow-queue` at 4000 µs: 73–78 % fresh at LOWER latency than the
 default, but bistable on the 16 s cycle — not a product setting; (4) `--present-waitable` — an EXISTING default-off knob (the pillar's FG_PRESENT_PACING_DESIGN option B): 99.85 % fresh on the async path at +0.35 ms `MsAddedLatency`, the P thread blocked in the waitable wait; making it the default is the same product decision, with that design note as its history. The session's recommendation, for his decision: (4) over (2) — the same 240 fresh/s at 0.4 ms less added latency than sync and without the fence wait's overrun exposure — after a DI-3 pair under `gpu_load` and on real game content, neither run here.
 
-## 5 · `--tdr-test` — run by the operator: the detection PASSED, the teardown HUNG, the hang fixed, re-run pending
+## 5 · `--tdr-test` — run three times by the operator: the detection PASSED, the teardown hung twice, bounded twice, CLOSED
 
 The forced GPU hang resets the device that carries the operator's interactive display: an **L3** operation under
 `SAFETY_PROTOCOL.md` §5, so the operator ran it himself (2026-09-05 evening, `build-release\phyriad_fg.exe --window
@@ -339,15 +339,27 @@ On a normal quit the joins are the unbounded ones they were (the `while` only fi
 healthy paths re-verified 3 / 3 on this binary (async / sync / grid, 10 s: `rc=0 done=1 clean=1 abandon=0`).
 Build: 0 errors; only `main.cpp` recompiled, its 8 warnings the pre-existing C4189 set.
 
-**Status of G-R4's TDR item:** the detection half is PROVEN by the operator's two runs; the teardown is now
-bounded twice (the waits, then the joins) and **awaits his third run** of the same command line — expected: the
-DEVICE_LOST line, then within ~3 s the survivor line naming `P(present)`, the process gone and the panel back.
-If P does return on its own this time, `[ra] done (…)` prints instead. Either output closes the item; the record
-will carry it. Side
+**His third run (2026-09-06 00:xx, the deadline-join binary, same command line) — quoted, the tail:**
+`[ra] --tdr-test: dispatching the GPU hang NOW (expect VK_ERROR_DEVICE_LOST within the TDR window, then the clean
+g_quit exit)` → `[ra] F lap-escape: P pinned on gen (p_presenting=904, fs=906) 64ms — proceeding` → `[ra] gov-floor
+ENGAGE tier:5 (warp distress; util 100% band:5)` (the governor reading the hung engine as saturation — incidental)
+→ `[ra] VK_ERROR_DEVICE_LOST -- graceful exit (the game keeps running; PhyriadFG is an external overlay)` →
+`[ra] device lost: worker(s) still alive 3 s after the quit -- P(present) -- a driver/DXGI call never returned;
+terminating the process so the panel is released (no CSV finalize on this path)` → the PowerShell prompt returned
+("ahora sí cerró"). **The survivor is P alone** — C and F exited on the bounded waits, as the first fix intended;
+P is wedged exactly where the second run's evidence placed it.
+
+**Status of G-R4's TDR item: CLOSED.** The device-loss exit path is proven end to end on the operator's rig, three
+runs: the hang dispatched → TDR → the loss latched on another thread (`vk_live`) → the workers that can exit do
+(C, F: bounded waits) → the one that cannot (P, wedged in a runtime call) is named → the process ends → the panel
+is released. What the item did NOT deliver, named: the CLEAN teardown (`[ra] done`, the CSV finalize) does not
+run on this path — P owns it and P never returns; the operator's overlay ends hard, honestly, 3 s after the
+loss. Residual for the pillar: which call wedges P (a procdump would name it) and whether the present path can
+be made to return after a reset — a hardening the operator frames, not this record's. Side
 evidence from his run, on 1280×720 capture: the first eight stats windows show `fresh:243/s` with `slip 0.00`, then
 `fresh:121/s rdrop:121/s` as `slip` climbs 0.26 → 7.35 ms — §4.6's mechanism on a second content and session.
 
-## 6 · Verdict — **G-R4 PASSED, except the forced-TDR item (detection proven; the teardown bounded twice, his third run pending)**
+## 6 · Verdict — **G-R4 PASSED — the forced-TDR item closed by the operator's third run (detection proven; the exit bounded twice; the panel released)**
 
 - **The extraction changes nothing the instruments can see:** presents Δ +0.5 (spread 1–2), `disp_phase` mean
   Δ +0.0002 (A's spread 0.0003), `disp_src` step 0.2495 both, uniq/s Δ −0.03, `MsBetweenDisplayChange` median
@@ -365,7 +377,8 @@ evidence from his run, on 1280×720 capture: the first eight stats windows show 
   latched, the graceful-exit line printed); the TEARDOWN hung both times — first on unbounded fence waits
   (`vk_wait_live`, 14 sites), then on the P thread wedged inside a driver/DXGI call with the plane left on the
   panel (the joins now carry a 3 s deadline under loss → survivors named → `TerminateProcess`); healthy paths
-  re-verified after each; his third run is pending.
+  re-verified after each; **his third run closed it**: `… -- P(present) -- … terminating the process`, the panel
+  released, the process gone. The clean teardown does not run on that path (P never returns) — said in §5.
 - **Two findings for the operator (§4.4–4.6), neither R4's to fix:** `--exit-after` was WAP-only (fixed by R4b,
   hoisted); the async present re-shows the front on half the ticks — **49.9 % fresh, 119.3/s**, measured with
   the R4b instruments against 100 % / 239.3/s on the sync path; the batch executes in 0.1 ms and CAN complete in
