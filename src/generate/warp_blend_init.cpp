@@ -300,8 +300,10 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
                 // --fg-core routes the PRODUCT through it (its output = wOut); --fg-core-ab runs it BESIDE the legacy
                 // warp into fgOutA and the byte-diff pass counts the differing pixels (the M4 instrument). Both are
                 // created only under WAP (the legacy pipeline just succeeded, so every view above is valid).
-                if(cfg.legacy_warp && cfg.fg_core){ std::printf("[layertab] --legacy-warp: --fg-core ignored (the legacy path drives the product)\n"); cfg.fg_core=false; }
-                if(cfg.fg_core_ab && cfg.fg_core){ std::printf("[layertab] --fg-core-ab: the product stays on the legacy path; fg_core runs beside it (--fg-core ignored)\n"); cfg.fg_core=false; }
+                // R7(a) 2026-09-06: fg_core is the DEFAULT now, so both of these fire without the user typing
+                // --fg-core. They say what happened, not what was ignored.
+                if(cfg.legacy_warp && cfg.fg_core){ std::printf("[layertab] --legacy-warp: wap_warp.comp drives the product (the fg_core default is OFF for this run)\n"); cfg.fg_core=false; }
+                if(cfg.fg_core_ab && cfg.fg_core){ std::printf("[layertab] --fg-core-ab: the product runs on wap_warp.comp so the two kernels can be compared; fg_core runs beside it\n"); cfg.fg_core=false; }
                 if(cfg.fg_core || cfg.fg_core_ab){
                     bool fg_ok=true;
                     // 1. the LayerParams UBO (binding 15): config-time, written ONCE from the registry (Candidate C §3.3).
@@ -338,10 +340,12 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
                                    const std::vector<uint32_t> spva(kFgAbDiffSpv.begin(),kFgAbDiffSpv.end());
                                    fg_ok=abdiff_create(WD,wOut.view,fgOutA.view,devAb.buf,spva,abPipeA); } }
                     }
-                    if(!fg_ok){ std::printf("[layertab] R3: fg_core pipeline setup FAILED -- --fg-core/--fg-core-ab disabled, the legacy warp drives the product\n"); cfg.fg_core=false; cfg.fg_core_ab=false; }
+                    // R7a: this is the DEFAULT path now, so a setup failure is a silent downgrade of the product
+                    // unless the line says so. It names the fallback instead of naming the flags.
+                    if(!fg_ok){ std::printf("[layertab] R3: fg_core pipeline setup FAILED -- FALLING BACK to wap_warp.comp for this run (the R7a default could not be created)\n"); cfg.fg_core=false; cfg.fg_core_ab=false; }
                     else {
                         std::printf("[layertab] R3: fg_core.comp %s -- contract=0x%016llX, %u spec constants, LayerParams %zu B (mv_guided.sim %s), push %zu B = CorePush 20 + gen-scalars 24\n",
-                                    cfg.fg_core?"drives the PRODUCT (--fg-core)":"runs BESIDE the legacy warp (--fg-core-ab byte-diff)",
+                                    cfg.fg_core?"drives the PRODUCT (the R7a default; --legacy-warp reverts)":"runs BESIDE the legacy warp (--fg-core-ab byte-diff)",
                                     (unsigned long long)pfg::layers::layer_contract_hash(cfg),sn,pfg::layers::layer_params_bytes(),cfg.fg_core_clean_sim?"CLEAN":"PACKED, XR1",sizeof(pfg::layers::FgPush));
                         // the envelope: fg_core reproduces the shipping DEFAULT set; these legacy features have no row in R3.
                         if(cfg.matte||cfg.blend_solo||cfg.camera_twarp||cfg.ts_smooth>0.f||(cfg.igpu_field&&cfg.bg_snap)||cfg.band_xfade>0.f||cfg.mc_on||!cfg.single_track)

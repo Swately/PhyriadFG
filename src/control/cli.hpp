@@ -1011,11 +1011,18 @@ struct Config {
                                     // hex-float, the replay oracle of the PhaseClock extraction (XR14).
                                     // Default off (empty) -> no FILE opened, no write, byte-identical.
     bool  layer_dump=false;         // --layer-dump: print the resolved layer chain + contract hash, exit
-    // R3 (stage 5): shaders/fg_core.comp, the LAYERTAB kernel — OPT-IN until its M4 gate passes.
-    bool  fg_core=false;            // --fg-core: route the PRODUCT through fg_core.comp (wap_warp.comp stays the default)
+    // R3 (stage 5): shaders/fg_core.comp, the LAYERTAB kernel. **THE SHIPPING DEFAULT since 2026-09-06**
+    // (R7(a), operator's word "adelante con tu recomendacion"; records/R7_GATE.md §7). The evidence is the
+    // pixel byte-diff, not M1: 1.9e-8 of pixels differ on static content and 2.7e-7 on panning, essentially
+    // all by one level of 255, and ZERO over 24,227 ticks when FMA contraction is forbidden in both modules.
+    // M1 resolves no placement difference on either scene. `--legacy-warp` is the one-token revert and
+    // wap_warp.comp stays in the tree. NOT covered by that evidence, and named in the record: `warp_light`
+    // (the governor's per-tick shed) has no equivalent here, so under load the byte-diff can compare only
+    // 14 % of ticks -- §7.4 substitutes a behavioural equivalence there, which is a judgement.
+    bool  fg_core=true;             // --fg-core pins it explicitly; --legacy-warp selects wap_warp.comp
     bool  fg_core_ab=false;         // --fg-core-ab: run BOTH kernels every tick from the same inputs and count differing pixels (M4 instrument); product stays legacy
     bool  fg_core_clean_sim=false;  // --fg-core-clean-sim: mv_guided.sim = the exact --mv-sim in the UBO (default: the legacy's packed (1+sim)-1, XR1)
-    bool  legacy_warp=false;        // --legacy-warp: R7's name for the old path; today the default IS the legacy path (accepted so scripts can pin it; forces --fg-core off)
+    bool  legacy_warp=false;        // --legacy-warp: THE REVERT. Selects shaders/wap_warp.comp, which stays in the tree
     bool  layer_model_json=false;   // --layer-model-json: emit the UI model (JSON), exit
     bool  dump_config_flag=false;   // --dump-config: print the parsed record (the round-trip instrument), exit
     // ── DERIVED / RESOLVED STATE (computed by resolve_config, NOT parsed) ──────

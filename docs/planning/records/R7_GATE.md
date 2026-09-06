@@ -463,9 +463,81 @@ Tables: [`../../evidence/M1_R7_PAN_DEFAULT.md`](../../evidence/M1_R7_PAN_DEFAULT
 here and the default moving is a criterion that must be rewritten because the incumbent fails it, and one
 judgement about accepting behavioural equivalence in the one mode the pure core cannot enter.
 
-## 8 · Verdict
+## 8 · R7(a) DONE — the pure core is the shipping default
 
-**G-R7(b) PASSED (2026-09-06).** The code residuals R5 and R6 named are closed, each with its own measurement:
+**Operator's word, 2026-09-06:** *"adelante con tu recomendacion"*, on the recommendation of §7.6: restate the
+criterion first, then flip staged.
+
+### 8.1 · The criterion, restated in the plan before it was used
+
+`CONVERGENCE_MASTER_PLAN.md` §R7 now carries the amendment **with the original text quoted verbatim above it**
+and the reason it could not be used: `r ≥ 0.5` fails for the shipping default itself (§7.2). The replacement is
+*"the between-path shift is smaller than the WITHIN-side spread, the spread is reported beside it, and n ≥ 4
+runs per side at ≥ 48 triples"*, plus a direct kernel byte-diff on the same content, plus MR-8. The run count
+is in the criterion because §7.1 and §7.5 exist to record that n = 2 answered differently from n = 4 on the
+same data-generating process. **A criterion was not replaced by a looser one — it was replaced because the
+incumbent fails it, and both texts are in the plan so a reader can check that claim.**
+
+### 8.2 · What actually changed in the code
+
+**One default.** `Config::fg_core` false → true (`control/cli.hpp`). That is the whole behavioural change.
+
+| kept, deliberately | why |
+|---|---|
+| `shaders/wap_warp.comp` in the tree | the container's never-delete rule, and R7's own text |
+| `--legacy-warp` | **the one-token revert**; it already existed and already forced the legacy path |
+| `--fg-core` accepted | a script that pins the new default keeps working; the flag now only makes it explicit |
+| `--fg-core-ab` keeping the PRODUCT on the legacy path | otherwise the two kernels could not be compared |
+
+**No new CLI token entered**, so the registry's parity corpus is untouched, and the row table did not move, so
+the layer contract hash is **unchanged at `0x9517AE73A530EAFE`** — checked, not assumed.
+
+**Three printed lines were reworded because they became wrong the moment the default moved.** All three were
+written for an opt-in world and would have told a user who never typed `--fg-core` that their flag was
+"ignored", or reported a silent downgrade as a flag being disabled:
+
+- `--legacy-warp` now prints *"wap_warp.comp drives the product (the fg_core default is OFF for this run)"*.
+- `--fg-core-ab` now prints *"the product runs on wap_warp.comp so the two kernels can be compared"*.
+- a pipeline-creation failure now prints *"FALLING BACK to wap_warp.comp for this run (the R7a default could
+  not be created)"* — under an opt-in flag that was a disabled feature; under a default it is a **silent
+  product downgrade**, and the line has to say so.
+
+### 8.3 · The flip verified end to end, not inferred from the diff
+
+Two 30 s runs on `ball_zoo`, quoted:
+
+```
+=== default (args: ) rc=0 ===
+  [layertab] R3: fg_core.comp drives the PRODUCT -- contract=0x9517AE73A530EAFE, 12 spec constants, ...
+  [ra] bounded-run clean exit: total_presents=7189
+
+=== legacywarp (args: --legacy-warp) rc=0 ===
+  [layertab] --legacy-warp: wap_warp.comp drives the product (the fg_core default is OFF for this run)
+  [ra] bounded-run clean exit: total_presents=7189
+```
+
+**7,189 presents on both**, both clean. `--dump-config` is byte-identical to the pre-flip binary; `--help`
+differs on exactly the two lines edited; `--layer-dump`'s contract hash is unchanged; 47/47 ctest; the build
+adds no warning.
+
+The A/B behind this flip is §7 in full: two scenes of M1, two pixel byte-diffs, and a pressured A/B — the
+comparison was made BEFORE the default moved, which is why the flip itself needs only to prove that the switch
+does what it says.
+
+### 8.4 · What ships un-eyeballed, stated plainly
+
+**MR-8 — the operator's eye — has NOT been applied**, and the default ships ahead of it. His word covered the
+recommendation, and the recommendation staged the flip; it did not stand in for looking at the picture. The
+risk register row stays `open` and now says this. If anything looks wrong, `--legacy-warp` is one token and
+`wap_warp.comp` never left the tree.
+
+Also unchanged by this flip and still true: `warp_light` has no equivalent in the pure core, so under the load
+governor the byte-diff can compare only 14 % of ticks (§7.3) and §7.4's behavioural equivalence is what stands
+in its place — a judgement, made explicitly, not a measurement.
+
+## 9 · Verdict
+
+**G-R7(b) PASSED and R7(a) DONE (2026-09-06).** The code residuals R5 and R6 named are closed, each with its own measurement:
 
 | | closed | the number it rests on |
 |---|---|---|

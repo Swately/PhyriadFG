@@ -10,7 +10,8 @@
 // Stage R0 of CONVERGENCE_MASTER_PLAN.md: this schema + the registry exist as a SHADOW of the
 // hand-written parser (layer_config_parity() proves the two agree, risk XR2). Stage R3: the rows
 // have bodies (shaders/layers/<name>.glsl) and shaders/fg_core.comp runs them as the generated chain
-// behind --fg-core (opt-in until M4 passes); shaders/wap_warp.comp stays the default product path.
+// in shaders/fg_core.comp, WHICH IS THE DEFAULT PRODUCT PATH since 2026-09-06 (R7a); shaders/wap_warp.comp
+// stays in the tree and `--legacy-warp` selects it.
 //
 // Column families (kept apart on purpose — the column-closure experiment counts them separately):
 //   LAYER columns   : what a layer IS (stage, rank, kind, channels, arm, requires/excludes, shadows).

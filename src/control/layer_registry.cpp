@@ -344,7 +344,7 @@ void layer_dump(const Config& c) {
     uint16_t order[kLayerCount]; layer_exec_order(order);
     int enabled = 0, real = 0;
     for (uint16_t i = 0; i < kLayerCount; ++i) if (kLayers[i].kind != Kind::X) { ++real; if (c.layers.on[i]) ++enabled; }
-    std::printf("[layertab] contract=0x%016llX  (%d rows enabled of %d; %zu params; R3: fg_core.comp drives the product under --fg-core; wap_warp.comp is the default)\n",
+    std::printf("[layertab] contract=0x%016llX  (%d rows enabled of %d; %zu params; R7a 2026-09-06: fg_core.comp IS the default product path; --legacy-warp selects wap_warp.comp)\n",
                 (unsigned long long)layer_contract_hash(c), enabled, real, (size_t)kParamCount);
     bool sample_printed = false, blend_printed = false;
     for (uint16_t k = 0; k < kLayerCount; ++k) {
@@ -437,10 +437,10 @@ void print_layer_help() {
         }
     }
     std::printf("  R3 (stage 5, shaders/fg_core.comp — the rows above as ONE generated kernel; opt-in until its M4 gate passes):\n"
-                "    --fg-core            route the product through fg_core.comp (default: shaders/wap_warp.comp, the legacy path)\n"
+                "    --fg-core            pin fg_core.comp as the product path -- THE DEFAULT since 2026-09-06 (R7a); this flag now only makes it explicit\n"
                 "    --fg-core-ab         run BOTH kernels every tick from the same inputs and count differing pixels (the M4 instrument)\n"
                 "    --fg-core-clean-sim  mv_guided.sim = the exact --mv-sim (default: the legacy's packed (1+sim)-1, XR1)\n"
-                "    --legacy-warp        pin the legacy path (today's default; R7's name for it)\n");
+                "    --legacy-warp        select shaders/wap_warp.comp instead -- THE REVERT for the R7a default; the legacy shader stays in the tree\n");
 }
 
 // ── --layer-model-json (the UI renders THIS; ui/src/main.js keeps no layer literal) ─────────────

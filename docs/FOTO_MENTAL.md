@@ -363,7 +363,12 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    referencias compartidas — el doble de lo que necesitó `consume_wap`) y con el método que sí lo cerraría.
 
 5. **NEXT** — R0–R6 cerrados y aprobados; 4.2, 4.3 y la mitad de código de R7 cerrados. Lo que queda:
-   (a) **R7(a), del operador**: `--legacy-warp` fuera del default necesitaba la tabla M1 en la ruta `--fg-core`.
+   (a) **R7(a) HECHO 2026-09-06 — el núcleo puro ES el default** (`records/R7_GATE.md` §8). Primero se enmendó el
+   criterio (la cláusula `r ≥ 0.5` la reprueba el propio default; el plan guarda los dos textos), después se
+   volteó: `fg_core.comp` es el producto, `--legacy-warp` revierte en un token, `wap_warp.comp` sigue en el
+   árbol. Hash de contrato sin mover, `--dump-config` idéntico, 47/47 pruebas, las dos rutas verificadas a
+   7,189 presentes cada una. **MR-8 (su ojo) NO se aplicó y el default sale antes que él.** Histórico:
+   `--legacy-warp` fuera del default necesitaba la tabla M1 en la ruta `--fg-core`.
    El instrumento existía desde el 2026-09-04 (T2–T5 gateadas); la corrida es `records/R7_GATE.md` §7.
    `records/BACKLOG_AUDIT.md` es una foto del 2026-09-04 por la mañana y sus filas A6 / S2.T2–T5 quedaron
    obsoletas esa misma tarde — lleva banner desde el 2026-09-06.

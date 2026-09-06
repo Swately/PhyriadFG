@@ -61,7 +61,7 @@ document is written under this arc until a new measurement exists**; each R-stag
 | `src/control/cli.hpp` (1,011) + `cli.cpp` (787) + `ui/src/main.js`: 257 flags vs 173 UI entries | the four-site drift | CONTROL plane |
 | E1 result: `main()` 1,222; 13 `init_*`; G1 baseline 240 presents/s, 28,799 / 120 s | the M3 baseline | — |
 | Instruments: `--csv`, `--qdump` (needs the sync present path; `resolve_config` AUTO-DISABLES `--async-present` for the run and says so — verified 2026-09-03, an earlier note calling it "inert under the default" was wrong), `tools/ball_zoo.ps1`, `tools/gate_zoo.ps1` (operator's), `tools/gpu_load.exe`, `fg_quality_scorer` (catalog, builds) | the M3 / M4 / load fixtures | INSTRUMENT plane |
-| MOTION_TRUTH | **corrected 2026-09-04:** T0/T1/T1b/T1c `done` (gate records); T6 built, gate NOT passed; **T2–T5 unbuilt** | **M1 still not measurable** (§4.3) — the table comes from T4–T5 |
+| MOTION_TRUTH | **updated 2026-09-06:** the whole chain is BUILT AND GATED — T0/T1/T1b/T1c, and T2/T3/T4/T5 closed 2026-09-04 (`records/S2_T*_GATE.md`, tools at `tools/motion_truth/`); T6's gate PASSES since 1c.7. *(SUPERSEDED text: this row read "T2–T5 unbuilt" until 2026-09-06 — written on the morning of the day they closed, and a session later believed it; P-018.)* | **M1 MEASURED** — the shipping default 2026-09-04 (`evidence/MOTION_TRUTH_BASELINE.md`), BOTH paths on two scenes 2026-09-06 (`evidence/M1_R7_*.md`) |
 
 ### 1.2 What is taken from the base (`apps/minimal_fg`, container, no git) — and only this
 
@@ -291,10 +291,35 @@ pair. Directory names per STAGE_CONTRACT §6 decision 2 (`warp_blend/` → `gene
 
 ### R7 — Closing: the override chain retired (operator decision; = M-R7)
 
-`--legacy-warp` (and the pre-R3 binary, tagged in git as the A/B reference) is retired from the DEFAULT
-build only when: MOTION_TRUTH T4–T5 are `measured` and the M1 baseline table exists for BOTH paths
-(≤ 0.10 px mean shift, p95 within spread, `r ≥ 0.5`); MR-4's CSV byte-diff; MR-8's operator eye. The legacy
-shader stays in the tree (never deleted).
+**DONE 2026-09-06 — `records/R7_GATE.md`. The criterion was AMENDED first, and here is why.**
+
+*The original text, kept verbatim:* "`--legacy-warp` (and the pre-R3 binary, tagged in git as the A/B
+reference) is retired from the DEFAULT build only when: MOTION_TRUTH T4–T5 are `measured` and the M1
+baseline table exists for BOTH paths (≤ 0.10 px mean shift, p95 within spread, **`r ≥ 0.5`**); MR-4's CSV
+byte-diff; MR-8's operator eye. The legacy shader stays in the tree (never deleted)."
+
+**Why it could not be used as written.** Measured 2026-09-06 (`R7_GATE.md` §7.2), the `r ≥ 0.5` clause
+**fails for the SHIPPING DEFAULT itself** — per-detection `(k_prev, marker)` matching gives r = 0.16 / 0.32 /
+0.58 / 0.75 / 0.27 across the classes. The 2026-09-04 baseline's r 0.76–1.00 came from the
+`(marker, phase-bin)` MEANS fallback, which averages away exactly the run-to-run variation `r` exists to
+detect. A gate the incumbent fails cannot judge the challenger, and choosing the sampling that flatters it
+would be picking the answer.
+
+**The amended criterion** (operator's word, 2026-09-06 — *"adelante con tu recomendacion"*):
+
+> `--legacy-warp` is retired from the DEFAULT build when, for each measured scene: **the between-path shift
+> in mean placement error is smaller than the WITHIN-side spread, the spread is reported beside it, and
+> n ≥ 4 runs per side at ≥ 48 triples**; plus a direct kernel comparison (the `--fg-core-ab` pixel byte-diff)
+> on the same content; plus MR-8's operator eye. The legacy shader stays in the tree (never deleted) and
+> `--legacy-warp` remains the one-token revert.
+
+The run count is IN the criterion because two sections of `R7_GATE.md` exist only to record that n = 2 gave a
+different answer than n = 4 on the same data-generating process (`LEARNING_LOG` P-014).
+
+**What satisfied it:** §7.1 (static, 2 × 48 triples/side) and §7.5 (panning, 4 × 48/side) — every class inside
+its within-side spread on both scenes; the byte-diff at **1.9×10⁻⁸** (static) and **2.7×10⁻⁷** (panning) of
+pixels, zero with FMA contraction forbidden; and a pressured A/B showing no behavioural cost. **MR-8 has NOT
+been applied** — it is the operator's, the default ships ahead of it, and `--legacy-warp` reverts.
 
 ## 4 · Milestones, measurement, the honest ceiling
 
@@ -309,7 +334,7 @@ shader stays in the tree (never deleted).
 | M-R4 | R4 | drops/s under load; real-frames-dropped = 0; TDR clean |
 | M-R5 | R5 | default CSV byte-identical with the rows off; holon A/B (opt-in) |
 | M-R6 | R6 | startup diff = 0; ingest lines within spread |
-| M-R7 | R7 | the M1 tables on both paths; the operator's verdict |
+| M-R7 ✔ 2026-09-06 | R7 | **both M1 tables on TWO scenes, every class inside its within-side spread; byte-diff 1.9×10⁻⁸ static / 2.7×10⁻⁷ panning; no behavioural cost under the load governor.** MR-8 (the operator's eye) outstanding |
 
 ### 4.2 What measures what
 

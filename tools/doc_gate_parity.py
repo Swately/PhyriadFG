@@ -46,7 +46,11 @@ UNBUILT = re.compile(
 STALE_MARK = re.compile(r'SUPERSEDED|STALENESS', re.IGNORECASE)
 # A line that makes the claim AND retracts it is a correction. Flagging those would punish the writing
 # this check exists to produce.
-RETRACTION = re.compile(r'\bFALSE\b|\bfalso\b|corrected|CORREGIDO|SUPERSEDED|retract|no longer|ya no',
+# 'corrected' is NOT in this list, deliberately. `CONVERGENCE_MASTER_PLAN.md:64` opened with
+# "**corrected 2026-09-04:**" while asserting, in the same line, that T2-T5 were unbuilt: a correction OF
+# SOMETHING ELSE exempted the stale claim sitting beside it, and the line survived. A retraction marker has
+# to name the withdrawal, not merely appear near one.
+RETRACTION = re.compile(r'\bFALSE\b|\bfalso\b|SUPERSEDED|retract|no longer|ya no|was wrong|era falso',
                         re.IGNORECASE)
 NEAR = 90   # characters between the phase id and the "unbuilt" phrase before they stop being one claim
 
