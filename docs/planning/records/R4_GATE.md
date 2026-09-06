@@ -274,6 +274,30 @@ history — with these numbers: (1) accept ~120 fresh/s (ships today); (2) flip 
 +0.8 ms, the P thread 94 % busy; (3) `--shallow-queue` at 4000 µs: 73–78 % fresh at LOWER latency than the
 default, but bistable on the 16 s cycle — not a product setting; (4) `--present-waitable` — an EXISTING default-off knob (the pillar's FG_PRESENT_PACING_DESIGN option B): 99.85 % fresh on the async path at +0.35 ms `MsAddedLatency`, the P thread blocked in the waitable wait; making it the default is the same product decision, with that design note as its history. The session's recommendation, for his decision: (4) over (2) — the same 240 fresh/s at 0.4 ms less added latency than sync and without the fence wait's overrun exposure — after a DI-3 pair under `gpu_load` and on real game content, neither run here.
 
+#### 4.6.1 · The validation the decision was missing: the two candidates under `tools\gpu_load.exe` (2026-09-06)
+
+`r4d_load.ps1` (`tools/r4b/`): the shipping async default and `--present-waitable`, two 60 s runs each on the ball
+zoo with `gpu_load.exe` running (the R4 gate's synthetic load; it lifts the 4090 to **32–35 % utilisation only** —
+"load" here is moderate, said plainly), `--csv --warp-timing`, `r4b_parse.py`:
+
+| under `gpu_load` | runs | fresh | fresh/s | rdrop/s | presents | `iter` p50 / p99 / max (ms) | `MsAddedLatency` | real frames lost |
+|---|---|---|---|---|---|---|---|---|
+| async — the shipping default | 2 | **53.6 / 53.8 %** | 128.0 / 128.6 | 111.0 / 110.3 | 14,385 / 14,383 | 4.16 / **6.61** / 8.70 | 20.09 / 20.09 | 0 (`ringfull=0/s`, `dd_lost=0`) |
+| `--present-waitable` | 2 | **99.84 / 99.75 %** | 239.0 / 238.8 | 0 | 14,382 / 14,382 | 4.17 / **4.24** / 8.12 | 20.81 / 20.83 | 0 |
+
+Quoted (waitable run 1, last window): `[ra] 240.1 fps (present) | wap tick 240/s (arr 59) | … | uniq 240/s
+fresh:240/s | … | warp 3.77ms | iter 4.16/worst 4.22ms | lat 20.7ms | … | ps 240/s ok=14310 to=0 er=0 gpu(A:35% …)
+… gpu 0.09ms sub2fence 4.24ms`; (async run 1): `… uniq 240/s fresh:120/s rdrop:120/s | … | warp 3.00ms | iter
+4.17/worst 6.58ms | lat 21.3ms | … gpu(A:32% …) … sub2fence 8.21ms`.
+
+**Reading.** The same picture as without load, at the same cost: the waitable path delivers every tick's frame
+(+0.72 ms `MsAddedLatency`), presents the same count, loses nothing — and its tick is MORE regular than the
+default's (p99 4.24 vs 6.61 ms: the waitable wait paces the tick to the flip; the default's re-present ticks
+jitter). What this pair does NOT cover: a saturated GPU (the tool cannot saturate this rig) and a real game; both
+are named, neither measured. **The default is NOT flipped by the session**: the operator's "adelante" was given
+under the reading "a load-dependent policy", which is not the recommendation (a fixed default); the decision
+returns to him with the corrected wording — see the sequence, 3.2b.
+
 ## 5 · `--tdr-test` — run three times by the operator: the detection PASSED, the teardown hung twice, bounded twice, CLOSED
 
 The forced GPU hang resets the device that carries the operator's interactive display: an **L3** operation under
