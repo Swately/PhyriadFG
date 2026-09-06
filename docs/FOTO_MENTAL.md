@@ -287,15 +287,39 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    (CONTROL), nvofa (parámetro proveedor). Decisión por la regla A3 §4.2: PROCEDER a R5. El inventario lo hizo un
    agente Sonnet (solo lectura); catorce citas re-leídas de primera mano antes de mapear. El residuo de XR3
    queda descargado. Sin código.
-5. **NEXT** — R5 en CHECKPOINT (2026-09-06, `records/R5_GATE.md` §5): pasos 1, 2, 3a, 3b cerrados y confirmados
-   (`8a2b585`, `bcc7eb3`, `74b925a`, `29320b5`); XR15 decidido (`3bf654b`). Esperan la palabra del operador:
-   (3c) extraer `consume_wap` (el orquestador: 444 líneas, 61 capturas, 8 lambdas; estructura sin comportamiento);
-   (4) `wap_upload` condicional — premisa del plan corregida: los holones de CPU leen Y escriben las copias host de
-   los campos de flujo en el set por defecto, así que la descarga y la subida son inherentes; lo ahorrable son los
-   campos que ningún paso host escribe (SAD, candidatos), un diseño por canal con ganancia pequeña en el default;
-   para cerrar G-R5 formalmente: A/B 2 corridas/lado contra el binario pre-R5 (`3bf654b`), humo de 120 s, y una
-   corrida `--load-governor` bajo presión real (la rama de 3b que el zoo no ejercitó). Después: R6 (ingest) o 4.3
-   (cablear las pruebas). No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t), R5 (`R5_GATE.md`).
+4u. **R5 CERRADO Y G-R5 APROBADA (2026-09-06, `records/R5_GATE.md`)** — pasos 3c y 4 con su palabra. 3c:
+   `consume_wap` (el orquestador de la etapa, 444 líneas) extraído por ancla a `flow/flow_consume.{hpp,cpp}`,
+   339/339 líneas idénticas; las 61 capturas del contexto re-enlazadas con las MISMAS líneas de alias, 30
+   referencias de estado y 5 invocables tipados — los sitios de llamada del cuerpo intactos. Destapó 32 alias
+   muertos en `run_flow` (el compilador nombró cada uno): `flow.cpp` compila con CERO advertencias y pasó de 2,235
+   a 1,429 líneas. 4: el transporte 3→5 lo gobiernan las filas (cada subida por el ON efectivo de su fila
+   productora, la condición manual al lado como segundo oráculo) y el registro RESPONDE la pregunta del plan con
+   una medida: en el set por defecto la CPU es autora de `mv_raw_fwd,persist,mv_bwd,dissidence` y NO de
+   `sad,candidates,mv_target` (más `prev/cur`, que son de la etapa 2) — tres de nueve canales podrían compartirse
+   del lado del dispositivo, y eso sigue siendo un diseño de ruta de datos, ahora con número. **G-R5:** A/B de dos
+   corridas por lado contra el binario pre-R5 (`3bf654b`, reconstruido para ello) con todos los deltas por debajo
+   de su propia dispersión; y la corrida bajo presión que faltaba — con el arbitrador de `gpu_oc` saturando la 4090
+   (96–100 %, 355 W, frente al 32–35 % de `gpu_load.exe`) y la fuente a 120 fps, el gobernador enganchó `tier:4` y
+   `tier:5`, `bwd-skip:96%`, y ambos instrumentos siguieron en 0 discrepancias (34,171 + 28,146 decisiones).
+   Aprendizaje registrado: saturar la GPU NO mueve la escalera de tiers — la mueve el presupuesto por par (la tasa
+   de la fuente); el instrumento de doble oráculo sigue en el código a propósito (retirarlo es de R7).
+
+4v. **PROTOCOLO DE METACOGNICIÓN (2026-09-06, directiva del operador)** — `protocols/core/METACOGNITION_PROTOCOL.md`
+   y su `LEARNING_LEDGER.md`, cableados en el arranque, el conjunto durable, `DURABLE_CORE` y `CLAUDE.md`. CONDUCT
+   verifica una AFIRMACIÓN; este verifica lo que DIRIGE: un marco, una premisa de plan, una regla heredada. Cinco
+   disparadores obligan una entrada; un marco nunca se rechaza por su linaje (la regla del operador sobre lo
+   holónico se conserva), se le pide re-ganar el derecho a dirigir; el sustantivo colectivo sobre un marco es la
+   forma de mayor riesgo. Entradas fundacionales L-001 (lo holónico), L-002 (la captura de aprendizaje murió por un
+   acoplamiento a git), L-003 (la mudanza `G:`→`F:` barrió los documentos, no los scripts). PhyriadFG lleva su
+   propio `docs/LEARNING_LOG.md` (8 entradas).
+5. **NEXT** — la espina llega a R6/R7 con R0–R5 cerrados y aprobados. Opciones, ninguna empezada:
+   (a) **4.3 — cablear las pruebas**: hoy `enable_testing`/`add_test` = 0, así que las 148 comprobaciones de la
+   costura de R2 y el oráculo de paridad de bits de R1 se compilan y nunca corren; es la deuda más barata y la que
+   más protege lo ya construido. (b) **R6 — etapas 1–2 nombradas** (`capture/` + `ingest/`), el mismo método de
+   extracción por ancla que R4/R5. (c) **R7** — retirar `--legacy-warp` del default, que depende de las líneas base
+   M1 y es decisión suya. (d) Los dos oráculos duplicados en el código (filas vs condiciones manuales) se retiran en
+   R7 tras una segunda corrida bajo presión con 0 discrepancias. No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2
+   (4t), R5 (4u), metacognición (4v).
 
 **Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
 `fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con

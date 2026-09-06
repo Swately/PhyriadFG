@@ -1,0 +1,30 @@
+metric,value,method/note
+duration_s,39.9844,
+frame_count,9396,presented frames
+freeze_count,0,real lap-freezes (re-shows; distinct from fdrop)
+fdrop_count,21,--fdrop exact-duplicate discriminator drops (elided redundant warps; make-space density)
+fresh_count,6715,presents that carried a NEW warp (R4b; frame_count - fresh_count = re-shows of the previous image)
+dropped_rows,0,ring overflow (telemetry only; not presents)
+max_stall_ms,0.0000,watchdog: longest present-thread stall (gap>100ms = freeze/hang)
+stall_count,0,present stalls/freezes/hangs detected (gap>100ms; see # STALL_ lines in raw csv)
+total_stall_ms,0.0000,cumulative stalled wall-time
+present_fps_avg,234.9669,all presented frames
+present_fps_min,110.5070,1000/max_frametime
+present_fps_max,714285.7143,1000/min_frametime
+real_fps_avg,119.0617,mean source_fps (the honest input rate)
+fg_multiplier,1.9737,present_fps_avg / real_fps_avg
+1pct_low_fps_integral,140.3844,CapFrameX integral (recommended default)
+1pct_low_fps_average,131.7682,CapFrameX average-of-worst
+0p1pct_low_fps_integral,118.0220,sample-guarded (>=300 frames)
+0p1pct_low_fps_average,116.6642,sample-guarded (>=300 frames)
+P99_frametime_ms,6.8286,1% low FPS = 1000/this
+P95_frametime_ms,5.5841,
+P90_frametime_ms,4.8483,
+stutter_count_pct,0.0319,ft>2.5*movavg(1000ms window)
+stutter_time_pct,0.0543,time fraction in stutter frames
+adaptive_stdev_ms,0.6691,std of frametime residuals vs moving average
+present_fps_inst_avg,234.9919,mean output_fps column
+fg_slice_ms_4090_avg,2.5281,per-tick warp+present wall on the 4090 (the FG's GPU cost/frame)
+fg_slice_ms_4090_p99,5.6601,worst-case per-tick FG 4090 cost
+fg_slice_ms_4090_max,8.9076,max per-tick FG 4090 cost
+fg_4090_occupancy_pct,59.4094,present_fps*slice = % of the 4090 the FG needs; the game must leave this free (make-space)

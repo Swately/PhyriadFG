@@ -9,6 +9,18 @@
 
 ---
 
+### P-008 · GPU saturation does not move the FG's pressure ladder; the source rate does
+- **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
+- **evidence:** 45 s at `escalera_arbiter --profile heavy` (96–100 % GPU) with a 60 fps source: the FG held
+  `240.0 fps … fresh:240/s … gpu(A:86%)` and printed **no** `gov-floor ENGAGE` — tier 0 throughout. The same load
+  with a **120 fps** source: `tier:4 ×3`, `tier:5 ×6`, `bwd-skip:96%`.
+- **lesson:** The tier ladder compares `t_pair_ema` against `pair_budget_ms = src_interval_us/1000` (`flow.cpp`) —
+  it is a CPU-time-per-pair ladder. GPU load raises only the GPU legs F waits on, one term of that time. To reach
+  the shedding branches, shrink the budget (raise the source rate) or lengthen F's CPU work; "make the GPU busy" is
+  the wrong lever and will look like the ladder is dead.
+- **corrective:** `tools/r5_pressure.ps1` takes `-ZooFps` and its header says why; `records/R5_GATE.md` §5 records
+  both runs, including the one that proved the wrong lever.
+
 ### P-007 · `gpu_load.exe` is a moderate loader, not a saturator — and the strong tool already exists
 - **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** open
 - **evidence:** `records/R4_GATE.md` §4.6.1 (measured this session): under `tools/gpu_load.exe` the
@@ -22,8 +34,13 @@
   `HOLON` / `BIDIR_OK` shedding arms of R5 step 3b) will not be exercised by it.
 - **corrective:** the sibling project `projects/gpu_oc/` already contains `escalera_arbiter.exe`
   (prebuilt, D3D11, six detectors, profiles `mixed|heavy|light|chaos|sweep`, `--gpu N --secs S`,
-  a 9 GB VRAM pass and a power-virus profile) — verified present first-hand 2026-09-06. R5's
-  pressured run uses it; `SATURATION_PLAN`'s unbuilt `--graphics-load` idea is superseded by reuse.
+  a 9 GB VRAM pass and a power-virus profile) — verified present first-hand 2026-09-06. **Measured the same day
+  (`nvidia-smi` sampled at 1.2 s over a 25 s `--profile heavy` run): 96–100 % utilisation, 355–361 W, ~10.7 GB of
+  VRAM, verdict `STABLE`** — against `gpu_load.exe`'s 32–35 %. R5's pressured run uses it (`tools/r5_pressure.ps1`);
+  `SATURATION_PLAN`'s unbuilt `--graphics-load` idea is superseded by reuse. Its build script had rotted (two stale
+  paths: `G:\gpu_oc` and "Visual Studio\18") and was repaired in place — it rebuilds and the fresh binary runs
+  (container ledger L-003). **It is a stability tool used as a load: its verdict is captured per run, so a GPU fault
+  is never mistaken for an FG measurement.**
 
 ### P-006 · A wedged present thread cannot be rescued from inside the process
 - **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected

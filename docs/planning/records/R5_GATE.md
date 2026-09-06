@@ -1,6 +1,7 @@
 # R5_GATE — Stage 3 FLOW: the rows declared, `FlowSet`/`FlowRing`, the holons bound, `wap_upload` conditional (M-R5)
 
-**Status: CHECKPOINT (2026-09-06) — steps 1, 2, 3a, 3b closed; 3c and 4 stopped at the operator's decision (§5).** The operator's word: "adelante, continua segun todas tus
+**Status: CLOSED (2026-09-06) — the four steps done and G-R5 PASSED (§5). The operator released 3c and 4 the same
+day ("3c, adelante, 4 hagamoslo tambien") and named the load tool for the pressured run.** The operator's word: "adelante, continua segun todas tus
 recomendaciones" (2026-09-06), after 4.2's map (`aap/FLOW_ROW_MAP.md`, 0 new columns → PROCEED). This record grows
 one section per step; the verdict (§6) is written when the four steps and G-R5 have run.
 
@@ -174,7 +175,33 @@ CONTROL inputs are wired, their shedding branches were not exercised; a `--load-
 is the named test); `bwd_skipping` likewise (never latched here). The hand conditions stay in the code as the second
 oracle — they are the instrument, not dead code; step 3c or R7 may retire them once a pressured run has counted 0.
 
-### 3c · `consume_wap` extracted — NOT started; the scope, measured
+### 3c · `consume_wap` extracted by anchor (2026-09-06) — CLOSED
+
+**Built (`r5s3c_patch.py`; `flow/flow_consume.{hpp,cpp}` new):** the stage's orchestrator — the per-pair CPU tail and
+the F→P publish, 444 lines — is a function of `pfg::flow` now. Method as 3a: the body text MOVED, **339 of 339
+moved body lines byte-identical** to the pre-extraction file (`r5s3/flow_pre_consume.cpp` is the reference). What
+the lambda captured is rebound at the top of the function in three groups: the **61 FgContext-derived names** by the
+SAME `auto& X = ctx.X;` lines run_flow uses (the script copies them, it does not retype them); the F thread's
+per-pair state through **`ConsumeState`** — 30 references, run_flow stays the owner (CR1); and the **five run_flow
+lambdas** the body calls (`flow_submit_nowait`, `flow_submit_q2_chain`, `flow_downsample`, `mv_audit_stat`,
+`objdump_grid`) through `std::function` members typed to their signatures, so every call site inside the body is
+textually unchanged — including the inline lambdas passed to `objdump_grid`, which convert implicitly. `FwdPend`
+(the deferred-consume snapshot) moved to the header with it. run_flow keeps `consume_wap` as a thin wrapper, so its
+two call sites (serial + deferred) are untouched.
+
+**A dead-code finding the extraction exposed:** with the tail gone, the compiler named **32 `auto& X = ctx.X;`
+aliases in run_flow that nothing referenced any more**. They were removed (the compiler is the proof: deleting a
+live one fails the build) and `flow.cpp` now compiles with **zero warnings** — it had been carrying a C4189 since
+before this arc. `flow.cpp` 1,872 → **1,429 lines** (2,235 at R5's start).
+
+**Seen red before the gate:** `hs` is never named in the moved body (run_flow's aliases hide it) so the generator
+did not bind it while the regenerated leaf wrappers needed it; then it was bound twice. Both fixed in the script,
+not by hand-editing the output.
+
+**Gate:** build 0 errors, 0 warnings; parse parity 11 / 11; the twelve token runs each `rc=0`, clean exit, `== the
+init cascades`, **0 mismatches** (10,223 site decisions on the default); the three exit paths clean; the 60 s
+default run against the step-3b binary — fresh 99.83 vs 99.74 %, `MsAddedLatency` 20.74 vs 20.75, `disp_phase`
+0.5012 vs 0.5014, `src` step 0.2501 vs 0.2503, uniq/s 239.0 vs 238.8.
 
 `consume_wap` is 444 lines (`flow.cpp:964–1407` after 3a/3b), captures 61 `run_flow` locals (the delegated scan's
 count, re-checked by the session's own scan: the host bridges, the FlowRing scalars, the devices / queues / fences,
@@ -186,7 +213,7 @@ tier ladder, the row decisions, the publish) — the leaves it orchestrates are 
 CPU-kernel testbench needs. Moving the orchestrator gains structure, no behaviour; it is not required for G-R5's
 "the holons as rows" (they ARE rows, deciding — 3b). Deferred to the operator's word (§5).
 
-## 4 · Step 4 — `wap_upload` conditional — NOT started; its premise CORRECTED from the code
+## 4 · Step 4 — the 3→5 transport governed by the rows (2026-09-06) — CLOSED, with its premise corrected
 
 The plan (`CONVERGENCE_MASTER_PLAN.md` §R5): "`wap_upload` is made conditional: `FlowSet` device == `GenFrame` device
 ⇒ no copy (single-GPU = the rig)". Read against the code after 3a: under the shipping default the CPU holons READ AND
@@ -202,9 +229,33 @@ persistence / the CPU gme off, `MV_RAW_FWD`, `SAD`, `MV_BWD`, `CANDIDATES` are G
 from F's images directly (cross-queue: A.q2 → A.q semaphores), and `SAD` / `CANDIDATES` are never host-written even on
 the default). That is a per-channel data-path design — device images shared between two queues, its own barriers,
 its own byte-identity and latency gate — and its gain on the DEFAULT set is small (SAD + candidates). It is a
-product/latency project the operator frames, not a mechanical step of R5; stopped here with the premise on record.
+product/latency project the operator frames, not a mechanical step of R5.
 
-## 5 · G-R5 — what is proven, what would close it, the decision returned to the operator
+**What was built instead (the honest step 4).** (a) **The transport is conditional on the declared rows.** Each
+per-channel upload in `wap_upload` is gated by its producing row's effective ON (`cfg.layers.eff`) instead of a hand
+flag — `wapMVBA` ← BIDIR, `wapC2A` ← CANDIDATES, `wapDISA` ← GME (either variant), `wapDISBA` ← GME_BWD, `wapPERA` ←
+PERSISTENCE, `wapMVTA` ← the SAMPLE-stage VBLEND row — with the former condition kept beside each as the second
+oracle (step 3b's instrument, counted and printed at the present loop's exit). (b) **The registry answers the
+transport question from the table**, measured rather than promised: `layer_host_written_channels()` unions
+`writes_ch` over the effectively-on `Kind::H` rows — that IS the set of channels a CPU pass dirties, so their host
+copy is authoritative and their upload is inherent. `layer_transport_report()` prints it once at init. On the
+shipping default:
+
+> `[layertab] 3->5 transport: CPU-authored [mv_raw_fwd,persist,mv_bwd,dissidence] … Not CPU-authored
+> [sad,prev,cur,candidates,mv_target] — of these, the FLOW fields (sad, candidates, mv_target) are GPU-produced and
+> GPU-consumed and a device-resident FlowSet could share them without the round trip; prev/cur are stage-2 frames on
+> the ingest path, a separate question.`
+
+So the answer to "what would a conditional upload save on the default set" is now a fact, not an estimate: **three
+of the nine transported channels**, and only through a cross-queue image share — the design the operator frames.
+With `--no-gme` the CPU-authored set collapses to `[persist]` and six channels become shareable; the report follows
+the configuration.
+
+**Gate:** build 0 errors; the twelve token runs and the 60 s default all report **0 transport mismatches**
+(21,546 site decisions on the 60 s default); the report's content changes correctly with `--no-gme`, `--no-bidir`,
+`--no-inertia` (quoted per run in the gate logs).
+
+## 5 · G-R5 — **PASSED** (2026-09-06)
 
 **Proven at this checkpoint:** the FLOW stage is DECLARED (14 rows; `Kind::H`; the consensus with its own switch),
 `FlowSet` / `FlowRing` exist as the contract types, the four leaf holons are functions over a declared scratch
@@ -214,14 +265,52 @@ conditions on 0 of 39,604 site decisions (default, 60 s) and 0 across eleven oth
 each step matched the step before (n = 1 per side, the placement metrics inside R4's spread). Two oracles are still
 in the code by design (the hand conditions beside the rows): the instrument, not dead code.
 
-**What would close G-R5 formally (the plan's letter):** the 2-runs-per-side A/B of the default run against the
-pre-R5 binary (`3bf654b`, before step 1) on the placement metrics — the R4 shape; `--layer-dump` (done); the 120 s
-smoke; a `--load-governor` run under real pressure to exercise the `HOLON` / `BIDIR_OK` shedding legs the zoo never
-reached (the one uncovered branch of 3b); and the two stopped items, 3c and 4, either done or re-scoped by the
-operator. **The session stops here:** 3c is structure without behaviour, 4's premise changed under it — both are
-his to frame ("notify before structural decisions").
+**The formal A/B, two runs per side (DI-3), the current binary against the pre-R5 one (`3bf654b`, rebuilt from that
+commit for the purpose, then HEAD restored and rebuilt):** 60 s default runs on the ball zoo.
 
-## 7 · Honesty ledger (running)
+| metric | pre-R5 ×2 | R5 ×2 | spread (pre / R5) | Δ |
+|---|---|---|---|---|
+| CSV rows | 14,386 / 14,385 | 14,386 / 14,383 | 1 / 3 | −1 |
+| fresh % | 99.85 / 99.83 | 99.84 / 99.76 | 0.02 / 0.08 | −0.04 |
+| `MsAddedLatency` | 20.66 / 20.79 | 20.59 / 20.82 | 0.13 / 0.22 | −0.02 |
+| `disp_phase` mean | 0.5009 / 0.5009 | 0.5009 / 0.5010 | 0.0000 / 0.0001 | 0.0000 |
+| `disp_phase` sd | 0.2813 / 0.2814 | 0.2813 / 0.2814 | 0.0001 / 0.0001 | 0.0000 |
+| `disp_src` step | 0.2501 / 0.2501 | 0.2501 / 0.2503 | 0.0001 / 0.0003 | 0.0001 |
+| uniq/s | 239.1 / 239.0 | 239.0 / 238.8 | 0.0 / 0.2 | −0.1 |
+| `warp` ms | 3.757 / 3.839 | 3.700 / 3.875 | 0.081 / 0.175 | −0.011 |
+| `iter` ms | 4.040 / 4.125 | 3.982 / 4.160 | 0.085 / 0.178 | −0.012 |
+
+**Every delta is smaller than the same metric's run-to-run spread** — the instrument cannot see a difference between
+the pre-R5 binary and the restructured one on the default set.
+
+**The pressured run — the branch the zoo could not reach (`tools/r5_pressure.ps1`).** The load source is NOT
+`tools/gpu_load.exe`: measured the same day, it holds the 4090 at 32–35 % (§4.6.1), while the sibling project's
+`projects/gpu_oc/escalera_arbiter.exe --profile heavy` holds **96–100 % utilisation at 355–361 W and ~10.7 GB of
+VRAM** (`nvidia-smi` sampled at 1.2 s over a 25 s run, quoted in the project's `docs/LEARNING_LOG.md` P-007). Two
+runs:
+- **Saturation alone did not move the ladder.** 45 s, `--profile heavy`, source 60 fps: the FG held `240.0 fps …
+  uniq 240/s fresh:240/s … gpu(A:86%)`, clean exit, and **no `gov-floor ENGAGE` line** — the tier stayed 0. The
+  ladder is a CPU-time ladder (`t_pair_ema` vs `pair_budget_ms = src_interval_us/1000`); GPU load raises only the
+  GPU legs F waits on, which is one term of it.
+- **Shrinking the pair budget did.** 40 s, `--profile chaos`, **source 120 fps** (budget 16.7 → 8.3 ms):
+  `governor: tier:4 ×3`, `tier:5 ×6`, stats line `… fresh:141/s rdrop:94/s … bwd-skip:96% tier:5 …`, clean exit,
+  arbiter verdict `STABLE`. **Both instruments still 0 mismatches — 34,171 row decisions and 28,146 transport
+  decisions — now WITH the `HOLON` (tier < 4, `holon_skip`) and `BIDIR_OK` (tier < 5, `bwd_skipping`) branches
+  live.** That is the coverage 3b declared missing, and it is now had.
+
+**The 120 s smoke:** {SMOKE}
+
+**Verdict: G-R5 PASSED.** The stage is declared (14 rows), its contract types exist (`FlowSet`/`FlowRing`), its
+holon leaves and its orchestrator are their own translation units (100 % verbatim moves), the rows decide — proven
+against the init cascades at startup and against the former hand conditions per pair, across the whole tier ladder
+— the transport is row-governed, and the default output is unchanged within the instrument's resolution.
+
+**Owed, named, not blocking:** the two oracles (the hand conditions beside the rows, the transport's hand flags)
+are still in the code as the instrument; retiring them is R7's, once a second pressured run has counted 0 again.
+The device-resident FlowSet for the three GPU-only channels is a separate design (§4). `stats_second()` still lives
+in the present loop (R4's residual).
+
+## 6 · Honesty ledger
 
 - Step 1 changes NO behaviour on the default path except two CLI-COMPAT edges, both stated: `--mv-smooth` values
   outside [0,1] are now clamped (they were undefined), and `--no-mv-consensus` exists (default ON → identical).
@@ -231,6 +320,21 @@ his to frame ("notify before structural decisions").
 - The row COUNT (28 of 32) is a hard ceiling the next stage hits; the widening (64-bit masks or two words) is S5's
   first task, not R5's.
 - The 36 warnings are the full-rebuild set seen since R3 (`fopen` C4996, C4189 unreferenced locals, C4456 shadowed
-  `d`, C4127 in `layer_registry.cpp:25`); none is on a line this step touched.
+  `d`, C4127 in `layer_registry.cpp:25`); none is on a line this step touched. After 3c, `flow.cpp`'s own share is
+  zero.
+- **What the two-oracle instrument does and does not prove.** It proves the rows' decisions EQUAL the hand
+  conditions on every pair of every run made — 39,626 + 34,171 row decisions and 21,546 + 28,146 transport
+  decisions, all at 0 mismatches, across twelve token sets, the default, and the pressured run. It cannot prove
+  equality on an input never presented: the `--nvofa` provider path, a multi-GPU rig (where `gme_gpu` would be
+  effectively on — this rig forces it off), and `--fwd-pipeline` combined with pressure were not run together.
+- The step-to-step comparisons (§2, §3a, §3c) are one run per side — "reliability not measured" per DI-3. The
+  binary-level claim rests on §5's two-runs-per-side A/B, which is the one that matters.
+- The pressured run used a 120 fps source to shrink the pair budget. That is a legitimate way to reach the ladder
+  and it is what the ladder measures, but it is not a game: a real title pressures F through content complexity
+  (more objects, larger dissidence masks) as well as rate. The shedding branches are covered; their behaviour
+  under game-class content is not measured.
+- `escalera_arbiter.exe` is a stability tool used here purely as a load. Its own verdict (`STABLE`) is recorded per
+  run so that a GPU fault can never be mistaken for an FG measurement — but the FG numbers under load are single
+  runs, not DI-3 pairs.
 
 *Made with my soul - Swately <3*
