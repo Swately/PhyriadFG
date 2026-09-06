@@ -105,6 +105,7 @@
 #include "core/fg_context.hpp"
 // E1: the init-seq ownership structs (the former hoisted declaration block).
 #include "core/app_init.hpp"
+#include "flow/flow_set.hpp"      // R5: FlowRing / FlowSet (STAGE_CONTRACT §1)
 // ─── kGenRing lives in flow/flow.{hpp,cpp} ──
 
 // The object-/scene-/shape-field holon constants live in flow/flow.hpp so run_flow can name
@@ -560,54 +561,21 @@ int main(int argc, char** argv) {
         // constant (auto varies it; the cap is cfg.fg_factor).
 
         RealSlot c_slots[kCapSlots]{};
-        std::atomic<uint64_t> c_seq{0}, f_seq{0};
-        // F publishes WHICH capture its set's pair-cur is (seq/slot/t_cap), written BEFORE the f_seq
-        // publish (the seq_cst fetch_add/load pair orders them), so P can present THE MATCHING real:
-        // interp(N-1→N) must be followed by real N — not by the newest capture N+1/N+2, which would make
-        // displayed content NON-MONOTONIC.
-        uint64_t f_pair_cseq_a[NS]{}; int f_pair_slot_a[NS]{}; double f_pair_tcap_a[NS]{};
-        // span = how many source frames F's pair covers (drops → >1). The set's interps represent span×T
-        // of motion; P paces them over span×T (kills the walking 2× pulse). per-set N actually generated
-        // (auto may pick <cap); P paces with THIS N.
-        uint64_t f_pair_span_a[NS]{}; int f_pair_n_a[NS]{};
-        // The per-pair global affine model F fits on the CPU travels to P through THIS SAME publish channel
-        // (written by f_gen index BEFORE the f_seq.fetch_add that publishes the set; P reads them after
-        // observing the new f_seq — the seq_cst fetch_add/load ordering covers it, no new synchronization).
-        // 6 params {a,b,c,d,e,f} + a validity flag (0 until the first fit, so P pushes gme_on=0 for the rare
-        // unfitted generation). Plain arrays, F-written / P-read.
-        float f_pair_gme_a[NS][6]{}; int f_pair_gme_valid_a[NS]{};
-        // The BACKWARD (cur-anchored) affine model F fits on the bwd MV field rides the SAME publish
-        // channel (F-written before the f_seq.fetch_add, P-read after — the seq_cst fetch_add/load ordering
-        // covers it, no new synchronization, exactly the fwd pattern). NOT pushed to the shader (the bwd
-        // DISSIDENCE MASK carries the leading-edge information; the bwd model itself is published for a
-        // future cur-anchored background layer). Its validity tracks the fwd model's (both fits run in the
-        // same iteration when gme+bidir are live).
-        float f_pair_gme_bwd_a[NS][6]{};
-        // The per-pair ANCHORED MATTE MASSES — the expected-mass terms. F counts, on the SAME CPU walk
-        // that fills hostDIS/hostDISB, the number of MV blocks whose dissidence byte exceeds
-        // matte_thresh-quantized (byte > matte_thresh·255 — the mask stores min(255,16·r), and the shader
-        // classifies OBJECT when byte/255 > matte_thresh, so the byte test mirrors the shader EXACTLY).
-        // m_fwd = prev-anchored mass, m_bwd = cur-anchored mass. They ride the SAME F→P publish channel
-        // (F-written by f_gen index BEFORE the f_seq.fetch_add, P-read after — the seq_cst fetch_add/load
-        // ordering covers it, no new sync, exactly the gme/validity pattern). P forms the PHASE-t expected
-        // mass = lerp(m_fwd, m_bwd, t) and compares it against the GPU-measured presented mass to drive the
-        // threshold feedback. Block-grid counts (mvw·mvh space) — the GPU counter is in PIXEL space, so the
-        // comparison is RATIO-based (err is dimensionless), not an absolute match.
-        float f_pair_mfwd_a[NS]{}; float f_pair_mbwd_a[NS]{};
-        // --motion-fallback: the per-pair gme DISPERSION (dis% in [0,100]) rides the SAME F->P publish
-        // channel (F-written by f_gen BEFORE the f_seq.fetch_add, P-read after — the seq_cst fetch_add/load
-        // ordering covers it, no new sync, exactly the gme/matte pattern). P gates the fast-motion
-        // real-fallback on it.
-        float f_pair_disp_a[NS]{};
-        // Per-generation BACKWARD validity. Rides the SAME F→P publish channel (F-written by f_gen index
-        // BEFORE the f_seq.fetch_add, P-read after — the seq_cst fetch_add/load ordering covers it, exactly
-        // the fwd-validity pattern). 1 when this pair recorded+fit the bwd flow; 0 when F SKIPPED the bwd
-        // pass under pressure (the adaptive throttle) OR no bwd ran. When 0, P pushes occl_thresh=0 AND
-        // matte_on=0 for that generation — the bidir classification and the dual-anchored matte degrade
-        // gracefully for THAT pair only (the fwd warp + the safety net still run). Initialized 1 so the
-        // off-bidir build (no skip discipline) behaves as before; P only consults it under use_bidir.
-        int f_pair_bwd_valid_a[NS];
-        for(int _g=0;_g<NS;++_g) f_pair_bwd_valid_a[_g]=1;
+        std::atomic<uint64_t> c_seq{0};
+        // R5 step 2 — the F→P generation ring is DECLARED: pfg::flow::FlowRing (flow/flow_set.hpp) owns the per-pair
+        // scalars that were twelve locals here and the two counters of the ring contract (f_seq, p_presenting), and
+        // binds the per-generation host bridges by reference (their allocation stays with o_host / core_init). The
+        // field notes (cseq/slot/tcap, span/n, gme, gme_bwd, mfwd/mbwd, disp, bwd_valid — and the publish discipline)
+        // moved with the fields. The loop keeps the former names as ALIASES: the same memory, the same code below.
+        pfg::flow::FlowRing ring(hostMV, hostSAD, hostMVB, hostC2, hostDIS, hostDISB, hostGmeM, hostGmeMB, hostPER, hostI);
+        std::atomic<uint64_t>& f_seq = ring.f_seq;
+        uint64_t (&f_pair_cseq_a)[NS] = ring.cseq; int (&f_pair_slot_a)[NS] = ring.slot; double (&f_pair_tcap_a)[NS] = ring.tcap;
+        uint64_t (&f_pair_span_a)[NS] = ring.span; int (&f_pair_n_a)[NS] = ring.n;
+        float (&f_pair_gme_a)[NS][6] = ring.gme; int (&f_pair_gme_valid_a)[NS] = ring.gme_valid;
+        float (&f_pair_gme_bwd_a)[NS][6] = ring.gme_bwd;
+        float (&f_pair_mfwd_a)[NS] = ring.mfwd; float (&f_pair_mbwd_a)[NS] = ring.mbwd;
+        float (&f_pair_disp_a)[NS] = ring.disp;
+        int (&f_pair_bwd_valid_a)[NS] = ring.bwd_valid;   // initialized 1 by the ring (the off-bidir build behaves as before)
         std::mutex c_mtx, f_mtx, g_q_mtx;
         // Under single_gpu BOTH the C-thread's convert (submit_wait_q2) AND the F-thread's flow (the
         // WAP/non-WAP submits below) target A.q2 — two threads on one VkQueue handle = external-sync
@@ -668,7 +636,7 @@ int main(int argc, char** argv) {
         // P publishes the f_seq value it is currently presenting so F can detect a ring-overwrite hazard:
         // F must not build into the generation P still holds. With kGenRing=3 this only fires during
         // span≥kGenRing stalls but guards the remaining edge.
-        std::atomic<uint64_t> p_presenting{0};
+        std::atomic<uint64_t>& p_presenting = ring.p_presenting;   // R5 step 2: the ring owns it; the name stays
         // WGC ring Map outcomes under primary saturation — fb = fell back to the older unread slot
         // (newest's copy not executed yet); miss = both slots unmappable.
         std::atomic<uint64_t> stat_mapfb{0}, stat_mapmiss{0};

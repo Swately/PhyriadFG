@@ -1,6 +1,6 @@
 # R5_GATE — Stage 3 FLOW: the rows declared, `FlowSet`/`FlowRing`, the holons bound, `wap_upload` conditional (M-R5)
 
-**Status: IN PROGRESS — step 1 of 4 closed (2026-09-06).** The operator's word: "adelante, continua segun todas tus
+**Status: IN PROGRESS — steps 1 and 2 of 4 closed (2026-09-06).** The operator's word: "adelante, continua segun todas tus
 recomendaciones" (2026-09-06), after 4.2's map (`aap/FLOW_ROW_MAP.md`, 0 new columns → PROCEED). This record grows
 one section per step; the verdict (§6) is written when the four steps and G-R5 have run.
 
@@ -74,7 +74,36 @@ arms are declared, the code still decides by hand — step 3 binds them, with `A
 unchanged; `--layer-model-json` is preceded by two `[ra] --no-igpu-field cascade` lines on stdout (pre-existing; the
 UI's loader finds the brace — noted, not fixed here).
 
-## 2 · Step 2 — `FlowSet` + `FlowRing` (pending)
+## 2 · Step 2 — `FlowSet` + `FlowRing` declared (2026-09-06) — CLOSED
+
+**Built (`flow/flow_set.hpp`, new; `r5s2_patch.py` on `main.cpp`):** `pfg::flow::FlowRing` — `NS = kGenRing`, the two
+counters of the ring contract (`f_seq`, `p_presenting`), the twelve per-pair scalar arrays that were `main()` locals
+(`cseq/slot/tcap, span/n, gme[6]/gme_valid, gme_bwd[6], mfwd/mbwd, disp, bwd_valid` — `bwd_valid` initialized 1 by
+the ring, as before), and the ten per-generation host bridges BOUND BY REFERENCE (`mv, sad, mvb, c2, dis, disb,
+gme_m, gme_mb, per, interp[kMaxInterp]`; their allocation stays with `HostBridgeInit` / `core_init.cpp`, which
+allocates a bridge only when its producer is armed). `FlowSet` is the declared per-generation VIEW (`ring.at(gen)`):
+pointers + references into the ring — STAGE_CONTRACT §1's type, the one the instruments and step 3's rows read.
+`main.cpp`: the twelve locals and `f_seq` / `p_presenting` replaced by the ring + ALIASES with the former names
+(`uint64_t (&f_pair_cseq_a)[NS] = ring.cseq;` …), so `flow.cpp`, `present.cpp` and the `FgContext` binding are
+untouched and read / write the same memory. The eleven field-note comment blocks moved to the header with their
+substance (the publish discipline, the monotonic-real rule, the span pacing, the matte-mass ratio, the bwd-validity
+degrade). Build 0 errors; 8 warnings = `main.cpp`'s pre-existing C4189 set.
+
+**Gate:** byte-identical by construction (the same storage under new ownership; not one line of the consumers
+changed) and measured once: the three exit paths (async default / sync / grid, 10 s: `rc=0 done=1 clean=1
+abandon=0` each) and a 60 s default run against the step-1 binary's:
+
+| default, 60 s, ball zoo | rows | fresh | `MsAddedLatency` | `disp_phase` mean / sd | `disp_src` step | uniq/s |
+|---|---|---|---|---|---|---|
+| before (step 1 binary) | 14,386 | 99.85 % | 20.58 | 0.5010 / 0.2815 | 0.2500 | 239.1 |
+| after (step 2 binary) | 14,384 | 99.79 % | 20.80 | 0.5010 / 0.2814 | 0.2503 | 238.9 |
+
+One run per side (reliability not measured — DI-3); every placement number inside R4's measured spread for the same
+content; the latency difference (0.22 ms) is inside the 0.6 ms window the R4b DI-3 pairs showed run to run.
+
+**Not in this step, named:** no consumer reads `FlowSet` yet (the view exists, the code still names the arrays);
+`c_seq` (the capture ring's counter) stays a `main()` local — it is the FrameRing's, R6's; `g_seq` (the GPU-record
+counter under `--fwd-pipeline`) stays F-local — it is not a ring field.
 
 ## 3 · Step 3 — the holons bound (pending)
 

@@ -293,7 +293,10 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    por pasos con compuerta (`records/R5_GATE.md`): (1) HECHO 2026-09-06 — las catorce filas FLOW en el registro
    (`Kind::H`, arms PRIOR/HOLON/BWD_HOLON/BIDIR_OK, 7 bits de canal, el consenso con su propio interruptor
    `--mv-consensus`, default ON), paridad 39/39, superficies sin duplicados, tres caminos de salida limpios; los
-   holones siguen bajo las condiciones manuales hasta el paso 3; registro en 28 de 32 filas. (2) `FlowSet`/`FlowRing`;
+   holones siguen bajo las condiciones manuales hasta el paso 3; registro en 28 de 32 filas. (2) HECHO 2026-09-06 —
+   `flow/flow_set.hpp`: `FlowRing` posee los doce escalares por par y los dos contadores, enlaza los puentes host por
+   referencia; `main()` conserva los nombres como alias (consumidores intactos); corrida por defecto igual a la del
+   paso 1 (fase media 0.5010);
    (3) los holones extraídos por ancla y sus arms consumidos en F; (4) `wap_upload` condicional; compuerta G-R5 =
    A/B 2 corridas/lado como R4 + `--layer-dump`. Decisión de entrada corregida: las filas van ON por defecto (el
    "off" del plan era viejo); la compuerta es identidad byte del default. La palabra para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con
