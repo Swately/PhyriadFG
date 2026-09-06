@@ -30,7 +30,6 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
     auto& mvh_f = ctx.mvh_f;
     auto& flow_div = ctx.flow_div;
     auto& use_inertia = ctx.use_inertia;
-    auto& use_objects = ctx.use_objects;
     auto& use_memory = ctx.use_memory;
     auto& use_bidir = ctx.use_bidir;
     auto& use_gme = ctx.use_gme;
@@ -106,8 +105,6 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
     auto& up_streak = S.up_streak;
     auto& deg_streak = S.deg_streak;
     auto& dwell_sets = S.dwell_sets;
-    auto& flow_row_sites = S.flow_row_sites;
-    auto& flow_row_mismatch = S.flow_row_mismatch;
     auto& kTier4DwellPairs = S.kTier4DwellPairs;
     auto& objdump_left = S.objdump_left;
     auto& objdump_idx = S.objdump_idx;
@@ -203,12 +200,10 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                 // preserve --no-tiers semantics.
                 if(cfg.tiers && cfg.load_governor){ const int gf=g_gov_floor.load(); if(gf>pressure_tier) pressure_tier=gf; }
                 ++holon_pair_ctr;
-                const int holon_period = (pressure_tier>=3)?4:(pressure_tier==2?2:1);
                 // tier-4 sheds the holon REFINEMENT (object_repair + scene-memory) on EVERY pair, not
                 // every-Nth — the deficit recovery. gme-fit + matte + warp + inertia still run (the raw-flow
                 // WAP). Only reachable under --deficit-tier.
-                const bool shed_holon = (pressure_tier>=4);
-                const bool holon_skip_pair = shed_holon || (cfg.tiers && (holon_period>1) && (holon_pair_ctr%(uint64_t)holon_period!=0));
+                const bool holon_skip_pair = pfg::layers::holon_skip_for(pressure_tier, cfg.tiers, holon_pair_ctr);   // R7: == shed_holon || (cfg.tiers && holon_period>1 && ctr%period!=0), verbatim
                 stat_tier.store((uint64_t)pressure_tier);
                 // --load-governor: tier-5 is the DEEP-shed, a strict SUPERSET of tier-4 — shed_holon above is
                 // already true at tier≥4 (object_repair + scene-memory off every pair), and tier-5 ADDS: (a)
@@ -222,7 +217,10 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                 const uint32_t gme_iters = tier5_active ? 1u : (cfg.gme_irls2?2u:3u);
                 // R5 step 3b: the FLOW rows decide. ArmInputs from this pair's CONTROL facts → the arm mask; a row acts
                 // when it is effectively ON (cfg.layers.eff / avail, resolved at init against the cascades) AND armed.
-                // The former hand conditions stay beside each site as the second oracle (row_check counts a disagreement).
+                // R7: the former hand conditions are gone from here. They were the second oracle of R5 step 3b and
+                // they counted 0 disagreements over 58,853 decisions across two pressured runs; the ARM half of what
+                // they proved is now enumerated in tests/layers/test_arm_parity.cpp (every state, not the sampled
+                // ones), the EFF half is layer_flow_resolve's loud exit 3 at every startup. The rows are the code.
                 pfg::layers::ArmInputs fin{}; fin.has_prev=have_prev_f; fin.tier=pressure_tier; fin.holon_skip=holon_skip_pair; fin.pipelined=!allow_bwd; fin.bwd_skipping=bwd_skipping;
                 const uint32_t feff=cfg.layers.eff, favail=cfg.layers.avail;
                 auto rbit=[](pfg::layers::LayerId id){ return 1u<<(unsigned)id; };
@@ -238,10 +236,8 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                 const bool row_mem_bwd    = row_on(pfg::layers::LayerId::MEM_BWD);
                 const bool row_objects_bwd= row_on(pfg::layers::LayerId::OBJECTS_BWD);
                 const bool row_mem_refresh= row_on(pfg::layers::LayerId::MEM_REFRESH);
-                auto row_check=[&](bool row, bool hand){ ++flow_row_sites; if(row!=hand) ++flow_row_mismatch; };
                 // allow_bwd folds in the pipeline's bwd-off rule (single ofp / 2 Bframe slots). tier-5 ALSO
                 // forces it off (skip the bwd pyramid + bwd gme entirely).
-                row_check(row_bidir, allow_bwd && use_bidir && have_prev_f && !bwd_skipping && !tier5_active);
                 const bool do_bwd = row_bidir;
                 if(do_bwd){
                     // --nvofa: the bwd direction (cur→prv). Run the OFA provider FIRST (it writes
@@ -289,12 +285,10 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                 }
                 double gme_fit_total_ms=0.0; bool gme_did_fit=false; bool gme_did_bwd=false; double gme_dis_pct_fwd=0.0; float gme_m6_fwd[6]={};
                 double obj_cost_ms=0.0; uint32_t obj_live_pair=0; uint32_t obj_rep_pair=0; uint32_t obj_infill_pair=0;
-                row_check(row_gme_ran, use_gme&&have_prev_f);
                 if(row_gme_ran){
                     const double g0=now_ms();
                     float m6[6]={};
                     double dis_pct;
-                    row_check(row_gme_gpu, use_gme_gpu);
                     if(row_gme_gpu){
                         // ── gme-gpu: the GPU produced the model (hostGmeM) + dis-mask (hostDIS) in cmdF,
                         // already waited (fF). Read the 6 floats; dis% derives from the mask (a stat-only
@@ -346,7 +340,6 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                     f_pair_gme_valid_a[f_gen]=1;
                     f_pair_disp_a[f_gen]=(float)gme_dis_pct_fwd;   // publish the per-pair gme dispersion to P (F-write-before-fetch_add ordering)
                     gme_dis_x100.store((uint64_t)(dis_pct*100.0+0.5));
-                    row_check(row_mem_fwd, use_memory && !holon_skip_pair);
                     if(row_mem_fwd){
                         const double mc0=now_ms();
                         mem_advect(hostMV[f_gen]);
@@ -361,7 +354,6 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                     const float au_thr=cfg.matte_thresh*255.0f;
                     const double au_span=(double)(span?span:1);
                     if(mv_audit_left>0){ mv_audit_stat(hostMV[f_gen],(const uint8_t*)hostDIS[f_gen],au_thr,&auR_mean,&auR_max,&auR_n); }
-                    row_check(row_objects, use_objects && !holon_skip_pair);
                     if(row_objects){
                         const double o0=now_ms();
                         uint32_t live=0,rep=0,infill=0;
@@ -455,11 +447,9 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                 if(use_bidir && !do_bwd && have_prev_f) stat_bwd_skips.fetch_add(1);
                 if(do_bwd){
                     vk_wait_live(FD.dev,fB2);   // catch a TDR on the bwd flow — the consume-side wait, FD.dev (B.dev null under single_gpu would crash)
-                    row_check(row_gme_bwd, use_gme);
                     if(row_gme_bwd){
                         const double gb0=now_ms();
                         float mb6[6]={};
-                        row_check(row_gme_gpu, use_gme_gpu);
                         if(row_gme_gpu){
                             // ── gme-gpu: the bwd model + mask were produced in cmdB_bwd on B (waited via fB2
                             // just above). Read the 6 floats; the bwd mask is already in hostDISB. No CPU bwd fit.
@@ -472,13 +462,11 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                             (void)dis_pct_b;
                         }
                         gme_fit_total_ms+=now_ms()-gb0; gme_did_bwd=true;
-                        row_check(row_mem_bwd, use_memory);
                         if(row_mem_bwd){
                             const double mc0=now_ms();
                             mem_merge((uint8_t*)hostDISB[f_gen],hostMVB[f_gen],mem_adv.data());
                             obj_cost_ms+=now_ms()-mc0;
                         }
-                        row_check(row_objects_bwd, use_objects);
                         if(row_objects_bwd){
                             const double o0=now_ms();
                             uint32_t live_b=0,rep_b=0,infill_b=0;
@@ -496,7 +484,6 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                         for(int _p=0;_p<6;++_p) f_pair_gme_bwd_a[f_gen][_p]=mb6[_p];
                     }
                 }
-                row_check(row_mem_refresh, use_memory && gme_did_fit && !holon_skip_pair);
                 if(row_mem_refresh){
                     const double mr0=now_ms();
                     mem_refresh(gme_did_bwd?(const uint8_t*)hostDISB[f_gen]:nullptr, gme_did_bwd,
@@ -514,7 +501,6 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                     if(!gme_fit_printed&&gme_fits>=1){ gme_fit_printed=true;
                         if(gme_fit_ema>1.0) std::printf("[ra] gme: fit cost EMA %.2fms%s (>1ms — shown in stats)\n",gme_fit_ema,gme_did_bwd?" (fwd+bwd)":""); }
                 }
-                row_check(row_objects, use_objects&&gme_did_fit&&!holon_skip_pair);
                 if(row_objects){
                     obj_live.store((uint64_t)obj_live_pair);
                     const double rep_pct=obj_infill_pair?100.0*(double)obj_rep_pair/(double)obj_infill_pair:0.0;

@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S4.R5 (FlowSet + FlowRing; the holons as rows; the MV median → a stage-3 row — where the consensus-pass default becomes the operator's declared switch) · **R5 DONE 2026-09-06, G-R5 PASSED** (`records/R5_GATE.md`): the FLOW stage declared (14 rows, `Kind::H`), `FlowSet`/`FlowRing`, the holon leaves and the orchestrator extracted (100 % verbatim), the rows deciding on F, the 3→5 transport row-governed; the A/B vs the pre-R5 binary inside the noise and the pressured run covering the tier ladder. **4.3 DONE 2026-09-06** (`records/S4_3_GATE.md`: 45 tests wired, every gate seen red, two false greens fixed). **R6 DONE 2026-09-06, G-R6 PASSED** (`records/R6_GATE.md`: stage 2 is its own module, the ingest rings + one publish that owns the order, the directory names adopted — `src/` now reads `capture · ingest · flow · clock · generate · present · control · instrument`). **Next: R7 (the operator's — it needs the M1 baselines)** · 4.2, R5's paper half, done 2026-09-06 (`aap/FLOW_ROW_MAP.md`: 13 FLOW rows, **0 new columns** → PROCEED; XR3's residual discharged); R4 done 2026-09-05 (records/R4_GATE.md); A0/M1 is R7's`**
+**`P → S4.R5 (FlowSet + FlowRing; the holons as rows; the MV median → a stage-3 row — where the consensus-pass default becomes the operator's declared switch) · **R5 DONE 2026-09-06, G-R5 PASSED** (`records/R5_GATE.md`): the FLOW stage declared (14 rows, `Kind::H`), `FlowSet`/`FlowRing`, the holon leaves and the orchestrator extracted (100 % verbatim), the rows deciding on F, the 3→5 transport row-governed; the A/B vs the pre-R5 binary inside the noise and the pressured run covering the tier ladder. **4.3 DONE 2026-09-06** (`records/S4_3_GATE.md`: 45 tests wired, every gate seen red, two false greens fixed). **R6 DONE 2026-09-06, G-R6 PASSED** (`records/R6_GATE.md`: stage 2 is its own module, the ingest rings + one publish that owns the order, the directory names adopted — `src/` now reads `capture · ingest · flow · clock · generate · present · control · instrument`). **R7(b) DONE 2026-09-06** (`records/R7_GATE.md`: the two-oracle instrument retired — after a second and third pressured run at 107,867 decisions / 0 disagreements AND an exhaustive static replacement, because both runs sat at `bwd-skip:100%` and could not exercise the sites they were certifying; the convert deduplicated; the RawRing given its rules; `stats_second()` measured and left open with its method). **Next: R7(a), and it is BLOCKED BY MEASUREMENT before it is the operator's** — the M1 table does not exist for the `--fg-core` path and MOTION_TRUTH T2–T5 have no code · 4.2, R5's paper half, done 2026-09-06 (`aap/FLOW_ROW_MAP.md`: 13 FLOW rows, **0 new columns** → PROCEED; XR3's residual discharged); R4 done 2026-09-05 (records/R4_GATE.md); A0/M1 is R7's`**
 > **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
 > background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
 > a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.
@@ -254,9 +254,23 @@ exactos que simulen de forma correcta el movimiento".)
     `present.cpp:713-836` and `:779`, which R4 extracts), so doing it first re-does work. Its paper
     half — mapping `flow.cpp`'s holon family onto the LAYERTAB schema, the exercise R0 did for ten
     shader layers — is unblocked TODAY and is XR3's accepted residual.
-  - **S4.R6** Stages 1–2 named (`capture/` + `ingest/`), `RawFrame`/`RealFrame` = M-R6 · `blocked (R5)`
-  - **S4.R7** closing: `--legacy-warp` out of the default only with M1 baselines on both paths (S2.T4–T5) +
-    MR-4 byte-diff + MR-8 operator eye = M-R7 · `blocked (operator, S2)`
+  - **S4.R6** Stages 1–2 named (`capture/` + `ingest/`), `RawFrame`/`RealFrame` = M-R6 · **`done`**
+    (2026-09-06, `records/R6_GATE.md`, G-R6 PASSED): stage 2 is `src/ingest/` (225/225 verbatim, capture.cpp
+    972 → 683), the ingest rings own the publish ORDER, and the directory names the operator adopted on
+    2026-09-03 are in (`warp_blend/` → `generate/`, `cli/` + `layers/` → `control/`). `RawFrame`/`RealFrame`
+    were written and deleted before commit — the eight readers address the ring by arbitrary slot, so the view
+    had no consumer (rule 1); the reason is recorded in `ingest/frames.hpp` itself.
+  - **S4.R7** closing · **TWO HALVES, tracked separately (2026-09-06)**
+    - **R7(a)** `--legacy-warp` out of the default: M1 baselines on BOTH paths (S2.T4–T5) + MR-4 byte-diff +
+      MR-8 operator eye = M-R7 · `blocked (measurement, then operator)` — M1 exists for the shipping default
+      only; the `--fg-core` path needs MOTION_TRUTH T2–T5 built (`records/BACKLOG_AUDIT.md` A6). No proxy
+      closes an M1 gate, and the default itself is the operator's.
+    - **R7(b)** the code residuals R5 and R6 named · **`done`** (2026-09-06, `records/R7_GATE.md`): the
+      two-oracle instrument retired after a second and third pressured run (107,867 decisions, 0 disagreements)
+      and replaced by an EXHAUSTIVE static test (`pfg_arm_test`, 8,209 checks, seen red three ways — the
+      runtime oracle could not cover the `if(do_bwd)` sites it was certifying, P-016); the convert
+      deduplicated (one function, two callers; `ingest.cpp` 322 → 244); the `RawRing` given its publish and
+      drop-to-newest rules. `stats_second()` measured and left open with its method (§6 of the record).
 - **S5 — PERCEPTUAL QUALITY (ghosting / crescents / seams; the 0.3.0–0.4.0 layer arcs)** · **`parked`**
   (operator, 2026-09-02: "no me interesa de momento"). Kept whole: the layers stay in the donor; each
   re-enters only through S4.2's net-gain gate. Detail: `SINGLE_TRACK_MODE_PLAN.md`, `SATURATION_PLAN.md`,

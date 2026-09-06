@@ -60,8 +60,6 @@ struct ConsumeState {
     int& up_streak;
     int& deg_streak;
     int& dwell_sets;
-    uint64_t& flow_row_sites;
-    uint64_t& flow_row_mismatch;
     const uint64_t& kTier4DwellPairs;
     int& objdump_left;
     uint64_t& objdump_idx;

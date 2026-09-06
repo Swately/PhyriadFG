@@ -150,6 +150,12 @@ add_executable(pfg_clock_test tests/clock/test_phase_clock.cpp src/clock/phase_c
 target_compile_features(pfg_clock_test PRIVATE cxx_std_23)
 target_include_directories(pfg_clock_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
+# R7: the ARM half of the retired two-oracle instrument, enumerated. GPU-free and Vulkan-free: it links the
+# real registry and calls the real layer_arm_mask over the real row table.
+add_executable(pfg_arm_test tests/layers/test_arm_parity.cpp src/control/layer_registry.cpp)
+target_compile_features(pfg_arm_test PRIVATE cxx_std_23)
+target_include_directories(pfg_arm_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
 # R3: the row bodies are inputs of the generator (it checks them) and of fg_core.spv (it includes them).
 file(GLOB _layer_bodies CONFIGURE_DEPENDS "${_sh}/layers/*.glsl")
 add_executable(pfg_layer_gen tools/layer_gen.cpp)
@@ -204,6 +210,13 @@ set_tests_properties(clock_synthetic PROPERTIES PASS_REGULAR_EXPRESSION "THE REP
 #    a missing or renamed fixture would have reported success forever.
 add_test(NAME clock_replay_missing_log_fails COMMAND pfg_clock_test "${CMAKE_CURRENT_BINARY_DIR}/no_such_arrival.log")
 set_tests_properties(clock_replay_missing_log_fails PROPERTIES WILL_FAIL TRUE)
+
+# 4b. R7: the FLOW rows' ARM decisions vs the hand conditions the two-oracle instrument used to compute
+#     beside them, over every combination of the arm inputs. The runtime instrument is retired (R7_GATE
+#     §2); this is what carries its knowledge, and it covers states no run reaches -- both pressured runs
+#     ran bwd-skip:100%, which is exactly when the four `if(do_bwd)` sites stop being exercised.
+add_test(NAME layer_arm_parity COMMAND pfg_arm_test)
+set_tests_properties(layer_arm_parity PROPERTIES PASS_REGULAR_EXPRESSION "OK: all [0-9]+ checks passed")
 
 # 5. The registry's parity oracle over a token corpus. `--dump-config` parses, runs layer_config_parity() and exits
 #    (exit 3 on a mismatch) before any device is created — a pure CPU test. These are the combinations that broke

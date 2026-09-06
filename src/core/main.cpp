@@ -803,6 +803,7 @@ int main(int argc, char** argv) {
             .c_cv = c_cv,
             // INGEST-ASYNC: the acquire↔convert-worker decoupling state (inert unless cfg.ingest_async).
             .frames = frames,
+            .raws = raws,                 // R7: the RawRing owns the publish rule and the drop-to-newest read
             .raw_seq = raw_seq,
             .dd_acq = dd_acq,
             .dd_uniq = dd_uniq,

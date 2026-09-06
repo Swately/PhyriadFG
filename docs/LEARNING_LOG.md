@@ -9,6 +9,65 @@
 
 ---
 
+### P-016 · A sampled oracle starves exactly the sites the run is certifying
+- **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
+- **evidence:** R5 said the two-oracle instrument could be retired once a pressured run counted 0 mismatches.
+  Both pressured runs report `bwd-skip:100% tier:5` — the tier-5 shed forces `do_bwd` false, which is precisely
+  when the four `row_check` sites nested inside `if(do_bwd)` stop executing. The runs that certify the shedding
+  branches are the runs that cannot exercise the backward ones.
+- **lesson:** A runtime oracle's coverage is not uniform and can be ANTI-correlated with the condition being
+  certified: the state that engages the branch under test is the same state that disables its neighbours. A
+  pass count is not coverage — ask which sites the run could not reach before reading a 0 as proof.
+- **corrective:** the retirement does not rest on the runs. `tests/layers/test_arm_parity.cpp` enumerates the
+  11 sites over every combination of the arm inputs (4,157 checks, 4,052 site comparisons, seen red three
+  ways), so the states no run reaches are the ones the test covers best. `records/R7_GATE.md` §2.
+
+### P-015 · A pattern match that ignores structure (indentation, comments) reads the wrong thing
+- **class:** recurrence · **date:** 2026-09-06 · **recurrences:** 2 · **status:** corrected
+- **evidence:** `s2.index("        if(!use_igpu_convert){")` (8 spaces, the worker's copy) also matches inside
+  the 16-space copy, because a substring search knows nothing about lines. It landed in the function just
+  written and `src/ingest/ingest.cpp` went 322 → 68 lines in one run. R6 §1 hit the sibling failure — the same
+  anchor matching in BOTH copies — which is why the count is 1, not 0.
+- **lesson:** In a patch script a "line" anchor must be bracketed by the line terminator (`eol + text + eol`)
+  and its match count asserted. Indentation makes every shallower anchor a suffix of a deeper one, and a
+  duplication being removed is exactly what puts two matching regions in the file.
+- **corrective:** `r7_convert.py` asserts `count == 1` on both bracketed anchors AND that the extracted block
+  length falls in a plausible range; every search is bounded to the enclosing function's own region.
+- **second instance, same day:** the dead-alias check written to find which `auto& x = ctx.x;` lines lost their
+  last reader counted name matches on RAW lines, so `\bA\b` matched the "A" in a comment like *"A-path"* and
+  `\bd\b` matched the `d` in `ctx.d.cap_rot`. It reported **0 orphans**; the compiler's `/W4` `C4189` list
+  reported **seven**, and the compiler was right.
+- **STRONGER corrective** (a second recurrence obliges more than a third note — METACOGNITION §7): for "is this
+  local still read", do not write the check. Build and read `C4189` from the FULL log. The compiler already
+  parses C++; a regex over lines does not, and the failure is silent in the direction that says "nothing to do".
+  Where a script must match code, it strips comments and string literals first — the same `strip()` the block
+  finders use — and its result is confirmed against a build before it is believed.
+
+
+### P-014 · At n = 2 the spread can be exactly zero, and then every difference looks significant
+- **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
+- **evidence:** the R7 A/B at 2 runs per side: `frame_count` was 10788 in both pre runs and 10789 in both post
+  runs, so the within-side spread was **0** and a one-present difference over 10,788 read as "outside the
+  spread"; three more metrics flagged the same way. At 4 runs per side the range is 2 and every metric is
+  inside it (`records/R7_GATE.md` §3).
+- **lesson:** DI-3's "compute it twice" is a floor for detecting gross error, not a resolution estimate. A
+  quantised metric (an integer count) can return the same value twice by luck; the spread then comes out 0 and
+  the comparison rejects noise as signal. When the question is "did this change anything", n = 2 cannot say no.
+- **corrective:** the A/B table in R7 is n = 4 per side, alternated, with the second block run in the reverse
+  order; the n = 2 table is quoted nowhere as a result.
+
+### P-013 · A Python heredoc carrying a Windows path is a syntax error waiting to happen
+- **class:** recurrence · **date:** 2026-09-06 · **recurrences:** 3 · **status:** corrected
+- **evidence:** `python - <<EOF` with a `C:\Users\...` path in a string raises
+  `SyntaxError: (unicode error) codec can't decode bytes ... truncated \UXXXXXXXX escape` (`\U` from
+  `\Users`). It fired three times in one session — the third time while writing THIS entry through a heredoc.
+  The shell's quoting is not the problem; Python's own escape processing of the literal is.
+- **lesson:** Any script that mentions a Windows path is written to a FILE in the scratchpad and run by path.
+  A heredoc is for one-liners with no backslashes. The file form is what the by-anchor method needs anyway:
+  re-runnable, reviewable, and quotable in the gate record.
+- **corrective:** every patch and analysis script of this session is a scratchpad file; the three heredocs
+  that failed were rewritten as files (`r7_red.py`, `r7_convert.py`, this one).
+
 ### P-012 · Probing whether a flag exists starts a real run
 - **class:** recurrence-risk · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
 - **evidence:** `phyriad_fg --latency-trace` was run to find out whether the token was accepted. It is accepted, so
@@ -121,6 +180,22 @@
 - **corrective:** `--mv-consensus` / `--no-mv-consensus` live in `parse_extra`; noted in
   `records/R5_GATE.md` §1 as a finding for E4 (the flag-surface single-source stage).
 - **accepted by:** the session — the chain is not restructured here; E4 owns that.
+
+### P-017 · A stray `\r\r\n` suppresses git's CRLF normalisation — removing it renormalises the whole file
+- **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** accepted
+- **evidence:** `src/core/main.cpp` carries one `\r\r\n` at line 108, left by R6 step 2's patch script (P-003).
+  Removing that single byte took `git diff --numstat src/core/main.cpp` from **1 0** to **1279 1278** — the
+  entire file. The repo has `core.autocrlf=true` and this file's BLOB is CRLF; while the working copy contains
+  an irreversible sequence git skips the CRLF→LF conversion, so the two sides matched. Clean the sequence and
+  git normalises the working copy, which then differs from a CRLF blob on every line.
+- **lesson:** In a repo with `autocrlf=true` and CRLF blobs, a `\r\r\n` is load-bearing by accident: it is what
+  keeps a file out of git's conversion path. "Tidy up the line endings" in a file you are also editing hides a
+  one-line change inside a whole-file diff, and the reviewer loses the change.
+- **corrective:** the byte is LEFT IN PLACE (`status: accepted` — accepted by the session, re-openable). MSVC
+  compiles it: C4335 fires on a file that is Mac-format throughout, not on one stray sequence. If it is ever
+  cleaned it must be its OWN commit, touching nothing else, so the renormalisation is visible as what it is.
+  Rule for this session's kind of work: **restore from the index and re-apply the intended change by bytes**
+  rather than repairing a file's endings while editing it.
 
 ### P-003 · Files written by a patch script can carry `\r\r\n`
 - **class:** recurrence-risk · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected

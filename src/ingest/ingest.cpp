@@ -18,14 +18,19 @@
 
 namespace pfg::ingest {
 
-// ── convert_and_publish — the serial path's tail (capture.cpp:703-793 pre-extraction). TRANSFORMS: none; the
-//    captured names are rebound below by the same lines run_capture uses, and the two locals are parameters. ──
-void convert_and_publish(FgContext& ctx, uint32_t cap_rot180, int s) {
+// ── convert_record_submit — THE convert (R7, closing R6 §1's named duplication). ────────────────────
+// Records the format convert for real slot `s` and submits it, waiting the fence. Two callers, two
+// differences, both parameters: `a_src` is the A-path copy SOURCE (the single Astage on the serial path,
+// the chosen raw slot in the worker), and `g_src`/`g_range` re-point the iGPU convert's binding-0 when the
+// caller's source rotates (VK_NULL_HANDLE = leave the init-time binding alone). Everything else was
+// executable-identical between the two copies before this — measured, not assumed: 71 and 74 executable lines,
+// differing by exactly one substituted line and one three-line insertion (r7_convert_diff.py).
+static void convert_record_submit(FgContext& ctx, uint32_t cap_rot180, int s,
+                                  VkBuffer a_src, VkBuffer g_src, VkDeviceSize g_range) {
     auto& cfg = ctx.cfg;
     auto& d = ctx.d;
     auto& NAT_W = ctx.NAT_W;
     auto& NAT_H = ctx.NAT_H;
-    auto& Astage = ctx.Astage;
     auto& use_igpu_convert = ctx.use_igpu_convert;
     auto& cmdA = ctx.cmdA;
     auto& Anative = ctx.Anative;
@@ -50,12 +55,11 @@ void convert_and_publish(FgContext& ctx, uint32_t cap_rot180, int s) {
     auto& g_q_mtx = ctx.g_q_mtx;
     auto& hostFIELD = ctx.hostFIELD;
     auto& hostR = ctx.hostR;
-    auto& c_cv = ctx.c_cv;
                 if(!use_igpu_convert){
                     vkResetCommandBuffer(cmdA,0);
                     VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdA,&bi);
                     img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
-                    { VkBufferImageCopy cp=full_bic(NAT_W,NAT_H); vkCmdCopyBufferToImage(cmdA,Astage.buf,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
+                    { VkBufferImageCopy cp=full_bic(NAT_W,NAT_H); vkCmdCopyBufferToImage(cmdA,a_src,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
                     img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                     img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT);
                     vkCmdBindPipeline(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvPipe); vkCmdBindDescriptorSets(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvLayout,0,1,&cvSet,0,nullptr);
@@ -82,6 +86,15 @@ void convert_and_publish(FgContext& ctx, uint32_t cap_rot180, int s) {
                 } else {
                     vkResetCommandBuffer(cmdG,0);
                     VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdG,&bi);
+                    // The convert SRC. On the serial path the descriptor was written once at init and never
+                    // moves (one Astage), so g_src is null and nothing is re-pointed — byte-identical to before.
+                    // The --ingest-async worker rotates through the raw ring, so its slot's G-import is bound
+                    // here: once per FRAME, not per pixel, and the previous convert's fence was already waited.
+                    if(g_src!=VK_NULL_HANDLE){
+                        VkDescriptorBufferInfo bi0{}; bi0.buffer=g_src; bi0.offset=0; bi0.range=g_range;
+                        VkWriteDescriptorSet w0{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,cpPipe[s].set,0,0,1,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,nullptr,&bi0,nullptr};
+                        vkUpdateDescriptorSets(G.dev,1,&w0,0,nullptr);
+                    }
                     vkCmdBindPipeline(cmdG,VK_PIPELINE_BIND_POINT_COMPUTE,cpPipe[s].pipe);
                     vkCmdBindDescriptorSets(cmdG,VK_PIPELINE_BIND_POINT_COMPUTE,cpPipe[s].layout,0,1,&cpPipe[s].set,0,nullptr);
                     const bool is_bgra=(d.fmt==DXGI_FORMAT_B8G8R8A8_UNORM);
@@ -139,8 +152,13 @@ void convert_and_publish(FgContext& ctx, uint32_t cap_rot180, int s) {
                             std::printf("[ra] igpu-field-verify[slot %d]: %llu/%llu px differ (muestreo step-16), max|d|=%u (CPU Sobel vs GPU)\n",s,(unsigned long long)ndiff,(unsigned long long)npx,dmax);
                     }
                 }
-                ctx.frames.publish(s, cfg.latency_trace ? now_ms() : 0.0);   // R6 step 2: the stamp + the seq_cst bump, in that order (ingest/frames.hpp)
-                c_cv.notify_all();
+}
+
+// ── convert_and_publish — the serial path's tail (capture.cpp:703-793 pre-extraction). ─────────────
+void convert_and_publish(FgContext& ctx, uint32_t cap_rot180, int s) {
+    convert_record_submit(ctx, cap_rot180, s, ctx.Astage.buf, VK_NULL_HANDLE, 0);
+    ctx.frames.publish(s, ctx.cfg.latency_trace ? now_ms() : 0.0);   // R6 step 2: the stamp + the seq_cst bump, in that order (ingest/frames.hpp)
+    ctx.c_cv.notify_all();
 }
 
 }  // namespace pfg::ingest
@@ -177,32 +195,7 @@ void run_convert_worker(FgContext& ctx){
     auto& cap_slots = ctx.cap_slots;
     auto& total_real = ctx.total_real;
     auto& c_cv = ctx.c_cv;
-    auto& c_conv_us = ctx.c_conv_us;
-    auto& use_igpu_convert = ctx.use_igpu_convert;
     auto& g_quit_threads = ctx.g_quit_threads;
-    auto& cmdA = ctx.cmdA;
-    auto& Anative = ctx.Anative;
-    auto& Awork = ctx.Awork;
-    auto& cvPipe = ctx.cvPipe;
-    auto& cvLayout = ctx.cvLayout;
-    auto& cvSet = ctx.cvSet;
-    auto& IS_HDR = ctx.IS_HDR;
-    auto& WW = ctx.WW;
-    auto& WH = ctx.WH;
-    auto& hR_a = ctx.hR_a;
-    auto& A = ctx.A;
-    auto& single_gpu = ctx.single_gpu;
-    auto& a_q2_mtx = ctx.a_q2_mtx;
-    auto& fA = ctx.fA;
-    auto& cmdG = ctx.cmdG;
-    auto& cpPipe = ctx.cpPipe;
-    auto& fpipe = ctx.fpipe;
-    auto& G = ctx.G;
-    auto& fG = ctx.fG;
-    auto& g_q_mtx = ctx.g_q_mtx;
-    auto& hostFIELD = ctx.hostFIELD;
-    auto& hostR = ctx.hostR;
-    auto& d = ctx.d;
     auto& NAT_W = ctx.NAT_W;
     auto& NAT_H = ctx.NAT_H;
     auto& nat_bpp = ctx.nat_bpp;
@@ -218,10 +211,8 @@ void run_convert_worker(FgContext& ctx){
             raw_cv.wait_for(lk,std::chrono::milliseconds(5),[&]{ return g_quit||g_quit_threads.load()||raw_seq.load()>last_converted; });
         }
         if(g_quit||g_quit_threads.load()) break;
-        const uint64_t newest=raw_seq.load();
-        if(newest<=last_converted) continue;   // spurious wake
-        last_converted=newest;                 // DROP-TO-NEWEST: discard the backlog, convert only the freshest
-        const int rk=(int)((newest-1u)%(uint64_t)kRawSlots);
+        const int rk=ctx.raws.take_newest(last_converted);   // R7: DROP-TO-NEWEST, from the ring; -1 = spurious wake
+        if(rk<0) continue;
         raw_busy.store(rk);                     // torn-read guard: the acquire will not overwrite rk until we clear it
         const int s=(int)(c_seq.load()%(uint64_t)cap_slots);   // output slot (same convention as the serial loop)
         c_slots[s].t_cap_ms=raw_tcap[rk];       // freshage anchor carried from acquire (parity with serial's t_cap)
@@ -235,85 +226,10 @@ void run_convert_worker(FgContext& ctx){
             if(cmp>0.0){ const uint64_t pv=lt_compose_us.load();
                 lt_compose_us.store(pv?(uint64_t)((double)pv*0.8+cmp*0.2):(uint64_t)cmp); }
         }
-        if(!use_igpu_convert){
-            vkResetCommandBuffer(cmdA,0);
-            VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdA,&bi);
-            img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
-            { VkBufferImageCopy cp=full_bic(NAT_W,NAT_H); vkCmdCopyBufferToImage(cmdA,raw_astage_a[rk].buf,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }   // SRC = the chosen raw slot (vs the single Astage)
-            img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
-            img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT);
-            vkCmdBindPipeline(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvPipe); vkCmdBindDescriptorSets(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvLayout,0,1,&cvSet,0,nullptr);
-            struct{uint32_t is_hdr;float exposure;uint32_t rot180;}pcv{IS_HDR?1u:0u,1.f,cap_rot180}; vkCmdPushConstants(cmdA,cvLayout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcv),&pcv);
-            vkCmdDispatch(cmdA,(WW+7)/8,(WH+7)/8,1);
-            img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
-            { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyImageToBuffer(cmdA,Awork.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hR_a[s].buf,1,&cp); }
-            vkEndCommandBuffer(cmdA);
-            const double tcv0=now_ms();
-            if(cfg.convert_gpu==CG_PRIMARY && A.q2!=A.q){
-                if(single_gpu){ std::lock_guard<std::mutex> lk(a_q2_mtx); submit_wait_q2(A,cmdA,fA); }
-                else submit_wait_q2(A,cmdA,fA);
-            } else submit_wait(A,cmdA,fA);
-            { const double dt=now_ms()-tcv0;
-              const uint64_t prev=c_conv_us.load();
-              c_conv_us.store(prev?(uint64_t)((double)prev*0.8+dt*1000.0*0.2):(uint64_t)(dt*1000.0)); }
-        } else {
-            // iGPU path: re-point cpPipe[s] binding-0 (the convert SRC) to the chosen raw slot's G-import
-            // (once per frame, NOT per pixel; the set is free — the previous convert's fence was waited).
-            { VkDescriptorBufferInfo bi0{}; bi0.buffer=raw_astage_g[rk].buf; bi0.offset=0; bi0.range=ab_g;
-              VkWriteDescriptorSet w0{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,nullptr,cpPipe[s].set,0,0,1,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,nullptr,&bi0,nullptr};
-              vkUpdateDescriptorSets(G.dev,1,&w0,0,nullptr); }
-            vkResetCommandBuffer(cmdG,0);
-            VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdG,&bi);
-            vkCmdBindPipeline(cmdG,VK_PIPELINE_BIND_POINT_COMPUTE,cpPipe[s].pipe);
-            vkCmdBindDescriptorSets(cmdG,VK_PIPELINE_BIND_POINT_COMPUTE,cpPipe[s].layout,0,1,&cpPipe[s].set,0,nullptr);
-            const bool is_bgra=(d.fmt==DXGI_FORMAT_B8G8R8A8_UNORM);
-            struct{uint32_t groups;uint32_t is_bgra;uint32_t px;uint32_t is_hdr;float exposure;uint32_t rot180;}
-                pcg{(WW*WH+3u)/4u,(uint32_t)is_bgra,WW*WH,IS_HDR?1u:0u,1.f,cap_rot180};
-            vkCmdPushConstants(cmdG,cpPipe[s].layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcg),&pcg);
-            vkCmdDispatch(cmdG,(pcg.groups+63)/64,1,1);
-            if(cfg.igpu_field){
-                VkMemoryBarrier mb{}; mb.sType=VK_STRUCTURE_TYPE_MEMORY_BARRIER; mb.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; mb.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;
-                vkCmdPipelineBarrier(cmdG,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,1,&mb,0,nullptr,0,nullptr);
-                vkCmdBindPipeline(cmdG,VK_PIPELINE_BIND_POINT_COMPUTE,fpipe[s].pipe);
-                vkCmdBindDescriptorSets(cmdG,VK_PIPELINE_BIND_POINT_COMPUTE,fpipe[s].layout,0,1,&fpipe[s].set,0,nullptr);
-                struct{uint32_t w,h,edge_thr,pad;}pcf{(uint32_t)WW,(uint32_t)WH,cfg.igpu_field_thr,0u};
-                vkCmdPushConstants(cmdG,fpipe[s].layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcf),&pcf);
-                vkCmdDispatch(cmdG,(WW*WH+63)/64,1,1);
-            }
-            vkEndCommandBuffer(cmdG);
-            vkResetFences(G.dev,1,&fG);
-            const double tcv0=now_ms();
-            { VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO;
-              si.commandBufferCount=1; si.pCommandBuffers=&cmdG;
-              if(G.q2!=G.q){ vkQueueSubmit(G.q2,1,&si,fG); }
-              else { std::lock_guard<std::mutex> lk(g_q_mtx); vkQueueSubmit(G.q,1,&si,fG); } }
-            vk_wait_live(G.dev,fG);
-            { const double dt=now_ms()-tcv0;
-              const uint64_t prev=c_conv_us.load();
-              c_conv_us.store(prev?(uint64_t)((double)prev*0.8+dt*1000.0*0.2):(uint64_t)(dt*1000.0)); }
-            // El Sobel CPU se MUESTREA con paso 16 (~8K px a 1080p) cada frame → coste sub-ms constante,
-            // sin pico (un full-frame O(W×H) amortizado dejaría un pico periódico ~20-40ms). El compute corre
-            // cada frame; sólo el printf se limita a ~1/120 (vfy_n).
-            static uint64_t vfy_n=0;
-            if(cfg.igpu_field && cfg.igpu_field_verify && hostFIELD[s]){
-                const uint32_t* src=(const uint32_t*)hostR[s];
-                const uint32_t* gpu=(const uint32_t*)hostFIELD[s];
-                auto lum=[&](int x,int y)->float{ const uint32_t px=src[(size_t)y*WW+x]; return 0.299f*(float)(px&0xffu)+0.587f*(float)((px>>8)&0xffu)+0.114f*(float)((px>>16)&0xffu); };
-                uint64_t npx=0,ndiff=0; uint32_t dmax=0;
-                for(int y=0;y<(int)WH;y+=16) for(int x=0;x<(int)WW;x+=16){
-                    const int xm=x>0?x-1:0, xp=x+1<(int)WW?x+1:(int)WW-1, ym=y>0?y-1:0, yp=y+1<(int)WH?y+1:(int)WH-1;
-                    const float gx=(lum(xp,ym)+2.f*lum(xp,y)+lum(xp,yp))-(lum(xm,ym)+2.f*lum(xm,y)+lum(xm,yp));
-                    const float gy=(lum(xm,yp)+2.f*lum(x,yp)+lum(xp,yp))-(lum(xm,ym)+2.f*lum(x,ym)+lum(xp,ym));
-                    const float mag=std::sqrt(gx*gx+gy*gy)*0.25f;
-                    const uint32_t dist=(uint32_t)(mag<0.f?0.f:(mag>255.f?255.f:mag));
-                    const uint32_t cpu=dist | (((dist>=cfg.igpu_field_thr)?1u:0u)<<8);
-                    const uint32_t g=gpu[(size_t)y*WW+x]&0xffffu;
-                    const uint32_t diff=(cpu>g)?cpu-g:g-cpu; if(diff){++ndiff; if(diff>dmax)dmax=diff;} ++npx;
-                }
-                if((vfy_n++%120u)==0u)
-                    std::printf("[ra] igpu-field-verify[slot %d]: %llu/%llu px differ (muestreo step-16), max|d|=%u (CPU Sobel vs GPU)\n",s,(unsigned long long)ndiff,(unsigned long long)npx,dmax);
-            }
-        }
+        // R7: the same convert as the serial path, from one function (R6 §1's duplication closed). The
+        // worker's two differences are its arguments: the A-path source is this raw slot, and the iGPU
+        // path's binding-0 is re-pointed at the slot's G-import because the source rotates.
+        pfg::ingest::convert_record_submit(ctx, cap_rot180, s, raw_astage_a[rk].buf, raw_astage_g[rk].buf, ab_g);   // run_convert_worker lives at global scope; the convert lives in the stage namespace
         raw_busy.store(-1);             // convert done — release the slot (the acquire may reuse it)
         ctx.frames.publish(s, cfg.latency_trace ? now_ms() : 0.0);   // R6 step 2: the same publish as the serial path — one function, one order (ingest/frames.hpp)
         total_real.fetch_add(1);        // PROMPT publish

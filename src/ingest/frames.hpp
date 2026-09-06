@@ -27,7 +27,9 @@
 // rings and by `publish()` below; the per-frame view arrives when a reader needs one, not before.
 // Made with my soul - Swately <3
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
 #include "core/fg_context.hpp"   // RealSlot, kRawSlots, HBuf
 
 namespace pfg::ingest {
@@ -66,6 +68,26 @@ struct RawRing {
     double  (&lt_submit)[N];
     double  (&lt_compose)[N];
     static int slot_of(uint64_t s) { return (int)(s % (uint64_t)N); }
+
+    // THE publish (R7). Both acquire branches -- the DDA acquire and the WGC pickup -- wrote this out by
+    // hand. The store goes UNDER the worker's mutex so it cannot land between the worker's predicate check
+    // and its wait() (a lost wakeup would stall ingest until the next frame); the notify goes OUTSIDE the
+    // lock so the woken worker does not immediately block on it. `next_index` is "newest published + 1",
+    // i.e. the slot just filled is (next_index - 1) % N. The slot's fields are written by the caller
+    // BEFORE this call -- that ordering is the same contract the FrameRing states.
+    void publish(uint64_t next_index, std::mutex& mtx, std::condition_variable& cv) {
+        { std::lock_guard<std::mutex> lk(mtx); seq.store(next_index); }
+        cv.notify_one();
+    }
+    // THE drop-to-newest read (R7). Returns the slot the worker must convert, or -1 for "nothing newer"
+    // (a spurious wake). The backlog is DISCARDED, never queued: `last_converted` jumps straight to the
+    // newest published index, which is the whole reason this ring exists.
+    int take_newest(uint64_t& last_converted) const {
+        const uint64_t newest = seq.load();
+        if (newest <= last_converted) return -1;
+        last_converted = newest;
+        return slot_of(newest - 1u);
+    }
 };
 
 }  // namespace pfg::ingest

@@ -1,5 +1,5 @@
-# r5_pressure.ps1 — G-R5's missing run: PhyriadFG under REAL GPU saturation, so the CONTROL-plane branches the ball
-# zoo alone never reaches are exercised — the pressure-tier ladder and, with it, the `HOLON` (tier < 4, !holon_skip)
+# r5_pressure.ps1 -- G-R5's missing run: PhyriadFG under REAL GPU saturation, so the CONTROL-plane branches the ball
+# zoo alone never reaches are exercised -- the pressure-tier ladder and, with it, the `HOLON` (tier < 4, !holon_skip)
 # and `BIDIR_OK` (tier < 5) arms the FLOW rows carry since R5 step 3b, plus the bwd-skip hysteresis.
 #
 # The load source is the SIBLING project's stability tool, not tools/gpu_load.exe: measured 2026-09-06,
@@ -14,7 +14,11 @@
 # actually engaged; (3) both two-oracle instruments still report 0 mismatches - the rows and the transport agree with
 # the former hand conditions WITH the shedding branches live; (4) the arbiter's verdict.
 # Made with my soul - Swately <3
-param([int]$Seconds = 45, [string]$Profile = 'heavy', [int]$ZooFps = 60)
+param([int]$Seconds = 45, [string]$Profile = 'heavy', [int]$ZooFps = 60, [string[]]$FgArgs = @(), [string]$Tag = '')
+# -FgArgs: extra flags handed to phyriad_fg.exe for THIS run. R7 uses it for the coverage R5 named missing:
+#   `--fwd-pipeline` combined with pressure was never run, and it is the ONLY producer of ArmInputs.pipelined
+#   (`fin.pipelined = !allow_bwd`, flow_consume.cpp) -- an arm input the FLOW rows read on every pair. -Tag
+#   distinguishes the output files so a second run does not overwrite the first's evidence.
 # ZooFps raises the SOURCE rate, which shrinks the F thread's per-pair budget (pair_budget_ms = src_interval_us/1000)
 # and is the lever that actually moves the pressure tier: the ladder compares t_pair_ema against that budget
 # (flow.cpp), so GPU saturation alone does not raise it - it raises the GPU legs F waits on, which is only part of t_pair.
@@ -26,14 +30,16 @@ $exe = Join-Path $root 'build-release\phyriad_fg.exe'
 $zooScript = Join-Path $root 'tools\ball_zoo.ps1'
 if (-not (Test-Path $arb)) { "MISSING: $arb (build it with projects\gpu_oc\build_arbiter.bat)"; exit 1 }
 
-$tag = "pressure_${Profile}_${ZooFps}fps"
+$tag = "pressure_${Profile}_${ZooFps}fps" + $(if ($Tag) { "_$Tag" } else { '' })
 $zoo = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',$zooScript,'-Fps',"$ZooFps",'-W','1920','-H','1080','-X','0','-Y','0' -PassThru
 Start-Sleep -Seconds 4
 $arbLog = Join-Path $out ($tag + '_arbiter.log')
 $arbProc = Start-Process $arb -ArgumentList '--secs',"$($Seconds + 20)",'--profile',$Profile,'--gpu','0' -PassThru -RedirectStandardOutput $arbLog -WindowStyle Minimized
 Start-Sleep -Seconds 6            # let the load ramp and the 9 GB allocation settle before the FG starts measuring
 $csv = Join-Path $out ($tag + '.csv'); $log = Join-Path $out ($tag + '.log')
-& $exe '--window' 'RA Ball Zoo' '--exit-after' "$Seconds" '--csv' $csv '--warp-timing' > $log 2>&1
+$fgArgList = @('--window','RA Ball Zoo','--exit-after',"$Seconds",'--csv',$csv,'--warp-timing') + $FgArgs
+"  fg args: $($fgArgList -join ' ')"
+& $exe @fgArgList > $log 2>&1
 $rc = $LASTEXITCODE
 Stop-Process -Id $zoo.Id -Force -ErrorAction SilentlyContinue
 $arbProc.WaitForExit(40000) | Out-Null

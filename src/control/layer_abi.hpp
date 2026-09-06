@@ -46,6 +46,18 @@ struct ArmInputs { bool gme_ok, bwd_ok, matte_ok, appear_ok, commit_ok;
                    bool bwd_skipping = false;  // the bwd-skip hysteresis on t_pair_ema (flow.cpp:1428-1431)
                  };
 
+// R7: the CONTROL derivation of the HOLON arm's `holon_skip` input. It was an expression inside
+// flow_consume.cpp's pair body; it moves here VERBATIM because the arm that reads it is declared here and
+// because the retired two-oracle instrument's equality rests on one property of it -- tier >= 4 implies
+// skip, which is what makes HOLON's `tier < 4` term agree with hand conditions that only said
+// `!holon_skip_pair`. tests/layers/test_arm_parity.cpp pins that property; flow_consume.cpp calls these.
+constexpr int  holon_period_for(int tier) { return (tier >= 3) ? 4 : (tier == 2 ? 2 : 1); }
+constexpr bool holon_skip_for(int tier, bool tiers, unsigned long long pair_ctr) {
+    const bool shed_holon = (tier >= 4);              // tier-4 sheds the refinement on EVERY pair
+    const int  period     = holon_period_for(tier);   // tier 2/3 decimate it instead
+    return shed_holon || (tiers && (period > 1) && (pair_ctr % (unsigned long long)period != 0));
+}
+
 enum class ParamType : uint8_t { F32, I32, BOOL };
 enum class UiKind    : uint8_t { NUMBER, SWITCH, HIDDEN };
 

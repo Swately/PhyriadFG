@@ -4,7 +4,7 @@
 > [`planning/ACTION_PLAN.md`](planning/ACTION_PLAN.md); the durable knowledge is the D-22 memory
 > (`phyriadfg-*.md`). Rewritten at every checkpoint; older snapshots are not kept (the spine is).
 
-**Taken:** 2026-09-04 (backlog audit; supersedes the 2026-09-03 stamp). Sections 4b-4j are the
+**Taken:** 2026-09-06 (R7 code half; the 2026-09-04 backlog-audit stamp is superseded). Sections 4b-4j are the
 accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, Self-prompt) is.
 
 0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` →
@@ -338,20 +338,39 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    el que DESCRIBE el sistema actual se actualiza; el que REGISTRA lo hecho conserva sus rutas (por eso la foto
    mental y `aap/` se revirtieron). Compuerta: tasas idénticas al binario pre-R6 dentro del ruido, arranque sin
    cambios, humo de 120 s limpio, 45 pruebas verdes.
-5. **NEXT** — R0–R6 cerrados y aprobados; 4.2 y 4.3 cerrados. Lo que queda es **R7, y es del operador**:
-   (a) retirar `--legacy-warp` del default depende de las líneas base M1 y es un default de producto — su decisión;
-   (b) retirar los dos oráculos duplicados que R5 dejó en el código a propósito (filas vs condiciones manuales,
-   transporte vs banderas) tras una segunda corrida bajo presión con 0 discrepancias; (c) los residuos nombrados y
-   no hechos: `stats_second()` sigue en el lazo de present (residuo de R4), la lógica de convert está duplicada
-   entre la cola serial y el worker (R6 §1), y el `RawRing` solo posee su contador. No re-derivar: R3 (4q), R4 (4r),
-   R4b (4s), 4.2 (4t), R5 (4u), metacognición (4v), 4.3 (4w), R6 (4x).
+4y. **R7 (la mitad de código) HECHO 2026-09-06 — `records/R7_GATE.md`.** R7 tiene dos mitades y no son la misma
+   clase de cosa. (a) `--legacy-warp` fuera del default sigue **BLOQUEADO**, y ahora con el bloqueo nombrado: la
+   tabla M1 tiene que existir en las DOS rutas y MOTION_TRUTH T2–T5 son `designed` con cero código; ningún proxy
+   cierra una compuerta M1. Además es un default de producto — suyo. (b) Los residuos de código que R5 y R6
+   dejaron nombrados, cerrados: **el instrumento de dos oráculos retirado** (la condición de R5 era "una segunda
+   corrida bajo presión con 0"; se corrió dos veces más, la segunda CON `--fwd-pipeline` — la combinación que R5
+   declaró nunca probada y el único productor del arm-input `pipelined` — 107,867 decisiones, 0 desacuerdos);
+   **el convert unificado** (los dos copias eran idénticas salvo dos cosas, medidas antes de tocar nada);
+   **el RawRing con sus reglas** (el publish bajo el lock y el drop-to-newest, escritos a mano en tres sitios).
+   Lo que NO se aceptó: cerrar el oráculo apoyándose en las corridas. Las dos reportan `bwd-skip:100%`, que es
+   exactamente cuando los cuatro sitios dentro de `if(do_bwd)` dejan de ejecutarse — la corrida que certifica el
+   shedding es la que no puede ejercitar sus vecinos (P-016). El conocimiento se mudó: `pfg_arm_test` enumera los
+   11 sitios sobre TODAS las combinaciones de los arm-inputs (8,209 checks; visto en rojo tres veces, dos veces:
+   la segunda tras ensanchar el test). `stats_second()` se MIDIÓ y se dejó abierto con el número al lado (60
+   referencias compartidas — el doble de lo que necesitó `consume_wap`) y con el método que sí lo cerraría.
 
-**Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
-`fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con
-`--fg-core-ab`). Releer primero CONDUCT y esta foto (4q + NEXT); luego `git status` en el proyecto: si el
-árbol tiene solo los 15 archivos nuevos de shaders, el parche NO se aplicó → correr `r3_patch.py` del
-scratchpad y construir; si ya hay más archivos modificados, el parche corrió → seguir por el punto de NEXT
-que falte. No pedir decisiones al operador que ya delegó; reportarle con números y la línea de evidencia.
+5. **NEXT** — R0–R6 cerrados y aprobados; 4.2, 4.3 y la mitad de código de R7 cerrados. Lo que queda:
+   (a) **R7(a), del operador y bloqueado por medición**: `--legacy-warp` fuera del default necesita la tabla M1 en
+   la ruta `--fg-core` también, y eso significa construir MOTION_TRUTH T2–T5 (`records/BACKLOG_AUDIT.md` A6,
+   "large"). Es el único camino: ningún proxy cierra M1.
+   (b) **`stats_second()`**: abierto, medido, método especificado (`R7_GATE.md` §6). No es una mudanza sino un
+   paso de diseño del plano INSTRUMENT: los ~25 acumuladores por ventana deben ser de un tipo que los posea.
+   (c) Sin residuos ocultos: la lista que esta foto traía (oráculos, convert duplicado, RawRing) está cerrada.
+   No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t), R5 (4u), metacognición (4v), 4.3 (4w), R6 (4x), R7 (4y).
+
+**Auto-prompt (post-compactación):** soy la sesión de PhyriadFG que acaba de cerrar la mitad de código de R7
+(`records/R7_GATE.md`): el instrumento de dos oráculos retirado con su reemplazo estático (`pfg_arm_test`), el
+convert unificado y el RawRing con sus reglas. Releer primero CONDUCT, esta foto (4y + NEXT) y
+`records/R7_GATE.md` §0 — que dice qué mitad de R7 NO se cerró y por qué. Luego `git status`: si el árbol está
+limpio en `analysis/0.3.0-quality-push`, el trabajo está confirmado (push NO autorizado, sin upstream). Lo
+siguiente NO es "seguir con R7": R7(a) es del operador y está bloqueado por una medición que no existe (M1 en la
+ruta `--fg-core` → MOTION_TRUTH T2–T5, sin código). Reportarle con números y la línea de evidencia; no pedirle
+decisiones que ya delegó.
 
 6. **CONSTRAINTS in play** — child projects relocated by the operator only; never delete invested work
    (the donor stays behind `--legacy-*`); byte-identical-off on every new path; M4 is a veto with T6 as

@@ -506,9 +506,6 @@ void run_flow(FgContext& ctx){
     auto& use_nvofa = ctx.use_nvofa;
     auto& use_ambig = ctx.use_ambig;
     auto& use_mv_smooth = ctx.use_mv_smooth;
-    // R5 step 3b: the two-oracle instrument — every site where a FLOW row now decides also computes the former hand
-    // condition; a disagreement is counted here and printed at F's exit (the gate requires 0).
-    uint64_t flow_row_sites=0, flow_row_mismatch=0;
     auto& use_fwd_prestage = ctx.use_fwd_prestage;
     auto& b_q2_split = ctx.b_q2_split;
     auto& ofp = ctx.ofp;
@@ -956,8 +953,6 @@ void run_flow(FgContext& ctx){
                 .up_streak = up_streak,
                 .deg_streak = deg_streak,
                 .dwell_sets = dwell_sets,
-                .flow_row_sites = flow_row_sites,
-                .flow_row_mismatch = flow_row_mismatch,
                 .kTier4DwellPairs = kTier4DwellPairs,
                 .objdump_left = objdump_left,
                 .objdump_idx = objdump_idx,
@@ -1393,6 +1388,5 @@ void run_flow(FgContext& ctx){
             // holds one pair back). vkDeviceWaitIdle(B) at shutdown will have drained the GPU; here we only
             // need the CPU consume + the final f_seq bump. allow_bwd=false (the pipeline never bwd'd).
             if(cfg.fwd_pipeline && use_wap && pend.valid){ consume_wap(pend, /*allow_bwd=*/false); pend.valid=false; }
-    std::printf("[layertab] flow rows vs the hand conditions: %llu site decisions, %llu mismatches\n", (unsigned long long)flow_row_sites, (unsigned long long)flow_row_mismatch);   // R5 step 3b: the two-oracle instrument
 }
 // Made with my soul - Swately <3

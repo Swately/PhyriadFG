@@ -4,6 +4,7 @@
 // take the SPIR-V as a param).
 #include "capture/capture.hpp"
 #include "ingest/ingest.hpp"   // R6 step 1: STAGE 2 (the convert + publish, and the --ingest-async worker)
+#include "ingest/frames.hpp"   // R7: RawRing::publish -- the acquire side of the 1->2 ring
 #include <d3d11_4.h>   // ID3D11Multithread (ring: shared immediate-context protection)
 #include <cstring>     // std::strstr (find_window_by_substr / enum_wnd_cb)
 #include "core/fg_context.hpp"   // FgContext (the C-thread's shared main()-locals as refs)
@@ -210,7 +211,6 @@ void run_capture(FgContext& ctx){
     auto& c_slots = ctx.c_slots;
     auto& total_real = ctx.total_real;
     // The acquire-side decoupling state (touched only on the cfg.ingest_async branch below).
-    auto& raw_seq = ctx.raw_seq;
     auto& dd_acq = ctx.dd_acq;
     auto& dd_uniq = ctx.dd_uniq;   // frames ÚNICOS reales (escrito en el camino de acquire, serial + async)
     auto& raw_busy = ctx.raw_busy;
@@ -355,10 +355,7 @@ void run_capture(FgContext& ctx){
                                         last_dd_arr_ms=t_arr_pub;
                                     }
                                     raw_tcap[rk]=now_ms();           // freshage anchor = host-resident instant (≈ serial's about-to-convert tcap)
-                                    // PUBLISH under raw_mtx so the store can't slip between the worker's predicate
-                                    // check and its wait() (lost-wakeup-safe); the notify itself is outside the lock.
-                                    { std::lock_guard<std::mutex> lk(raw_mtx); raw_seq.store(pframe+1u); }   // newest published raw index = rk
-                                    raw_cv.notify_one();             // wake the worker (drop-to-newest)
+                                    ctx.raws.publish(pframe+1u, raw_mtx, raw_cv);   // R7: the publish rule (store under the lock, notify outside) lives in RawRing
                                 }
                             } else {
                                 // Map miss = the in-flight copy still needs ~ms; drop this prev frame (drop-to-newest).
@@ -539,9 +536,7 @@ void run_capture(FgContext& ctx){
                         raw_tcap[rk]=now_ms();                // freshage anchor (≈ el t_cap del serial; el worker lo lleva a c_slots[s])
                         raw_lt_submit[rk]=lt_wgc_submit_ms;   // (R6) lat-trace carry al worker (0 con trace off → inerte)
                         raw_lt_compose[rk]=lt_wgc_compose_us;
-                        // PUBLISH bajo raw_mtx (lost-wakeup-safe — el patrón del acquire DDA); notify fuera del lock.
-                        { std::lock_guard<std::mutex> lk(raw_mtx); raw_seq.store(wpub+1u); }
-                        raw_cv.notify_one();
+                        ctx.raws.publish(wpub+1u, raw_mtx, raw_cv);   // R7: la MISMA publicación que el acquire DDA, desde RawRing
                         ++wpub;
                         continue;   // R3: el tail serial (convert + c_seq publish) NO se alcanza en async
                     }

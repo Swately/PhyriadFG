@@ -1,8 +1,9 @@
 @echo off
 rem PhyriadFG - run the test suite (4.3, 2026-09-06). The suite is CPU-only and takes ~1.5 s: R2's 148 seam checks,
 rem R1's PhaseClock bit-parity oracle over a recorded arrival log, the registry's parity corpus (34 token
-rem combinations), the pinned contract hash, the CLI's exit codes, and two negative tests (a clock log it cannot
-rem open must FAIL; the layer generator must REFUSE a malformed row body).
+rem combinations), the pinned contract hash, the CLI's exit codes, two negative tests (a clock log it cannot
+rem open must FAIL; the layer generator must REFUSE a malformed row body), and R7's arm-parity enumeration
+rem (the FLOW rows' per-pair decisions vs the hand conditions the retired two-oracle instrument used).
 rem
 rem   tools\run_tests.bat            run everything
 rem   tools\run_tests.bat -R clock   run the tests whose name matches
