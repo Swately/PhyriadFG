@@ -3,6 +3,7 @@
 // external linkage. nvofa_run is a TEMPLATE -> its definition lives in the header.
 #include "flow/flow.hpp"
 #include "flow/holons.hpp"       // R5 step 3a: the holon leaves (object_repair, mem_advect/merge/refresh) + HolonScratch
+#include "layers/layer_config.hpp"   // R5 step 3b: layer_arm_mask / LayerId — the FLOW rows decide on F
 #include "core/ra_simd.hpp"        // ra::decode_f16 — the F16C batch decode for gme_fit_affine
 #include "instrument/instrument.hpp"  // dump_bmp (the F-thread objdump grids)
 #include <cstdint>
@@ -506,6 +507,9 @@ void run_flow(FgContext& ctx){
     auto& use_nvofa = ctx.use_nvofa;
     auto& use_ambig = ctx.use_ambig;
     auto& use_mv_smooth = ctx.use_mv_smooth;
+    // R5 step 3b: the two-oracle instrument — every site where a FLOW row now decides also computes the former hand
+    // condition; a disagreement is counted here and printed at F's exit (the gate requires 0).
+    uint64_t flow_row_sites=0, flow_row_mismatch=0;
     auto& use_fwd_prestage = ctx.use_fwd_prestage;
     auto& b_q2_split = ctx.b_q2_split;
     auto& ofp = ctx.ofp;
@@ -1047,9 +1051,29 @@ void run_flow(FgContext& ctx){
                 // count — single pass at tier-5 (cheapest), else 2/3 (irls2/default).
                 const bool tier5_active = (pressure_tier>=5);
                 const uint32_t gme_iters = tier5_active ? 1u : (cfg.gme_irls2?2u:3u);
+                // R5 step 3b: the FLOW rows decide. ArmInputs from this pair's CONTROL facts → the arm mask; a row acts
+                // when it is effectively ON (cfg.layers.eff / avail, resolved at init against the cascades) AND armed.
+                // The former hand conditions stay beside each site as the second oracle (row_check counts a disagreement).
+                pfg::layers::ArmInputs fin{}; fin.has_prev=have_prev_f; fin.tier=pressure_tier; fin.holon_skip=holon_skip_pair; fin.pipelined=!allow_bwd; fin.bwd_skipping=bwd_skipping;
+                const uint32_t feff=cfg.layers.eff, favail=cfg.layers.avail;
+                auto rbit=[](pfg::layers::LayerId id){ return 1u<<(unsigned)id; };
+                uint32_t farm=pfg::layers::layer_arm_mask(fin);
+                const bool row_bidir = (feff & rbit(pfg::layers::LayerId::BIDIR)) && (farm & rbit(pfg::layers::LayerId::BIDIR));
+                fin.bwd_ok=row_bidir; farm=pfg::layers::layer_arm_mask(fin);   // the backward legs' arm (BWD) reads the bidir row's decision
+                auto row_on=[&](pfg::layers::LayerId id){ return (feff & rbit(id)) && (farm & rbit(id)); };
+                const bool row_gme_ran    = (favail & rbit(pfg::layers::LayerId::GME)) && (farm & rbit(pfg::layers::LayerId::GME));   // the model exists this pair (either variant)
+                const bool row_gme_gpu    = (feff & rbit(pfg::layers::LayerId::GME_GPU)) != 0u;
+                const bool row_mem_fwd    = row_on(pfg::layers::LayerId::MEM_FWD);
+                const bool row_objects    = row_on(pfg::layers::LayerId::OBJECTS);
+                const bool row_gme_bwd    = row_on(pfg::layers::LayerId::GME_BWD);
+                const bool row_mem_bwd    = row_on(pfg::layers::LayerId::MEM_BWD);
+                const bool row_objects_bwd= row_on(pfg::layers::LayerId::OBJECTS_BWD);
+                const bool row_mem_refresh= row_on(pfg::layers::LayerId::MEM_REFRESH);
+                auto row_check=[&](bool row, bool hand){ ++flow_row_sites; if(row!=hand) ++flow_row_mismatch; };
                 // allow_bwd folds in the pipeline's bwd-off rule (single ofp / 2 Bframe slots). tier-5 ALSO
                 // forces it off (skip the bwd pyramid + bwd gme entirely).
-                const bool do_bwd = allow_bwd && use_bidir && have_prev_f && !bwd_skipping && !tier5_active;
+                row_check(row_bidir, allow_bwd && use_bidir && have_prev_f && !bwd_skipping && !tier5_active);
+                const bool do_bwd = row_bidir;
                 if(do_bwd){
                     // --nvofa: the bwd direction (cur→prv). Run the OFA provider FIRST (it writes
                     // ofp.motion_image()=bwd MV, RO, via its own submits), THEN cmdB_bwd records the copy-out +
@@ -1096,11 +1120,13 @@ void run_flow(FgContext& ctx){
                 }
                 double gme_fit_total_ms=0.0; bool gme_did_fit=false; bool gme_did_bwd=false; double gme_dis_pct_fwd=0.0; float gme_m6_fwd[6]={};
                 double obj_cost_ms=0.0; uint32_t obj_live_pair=0; uint32_t obj_rep_pair=0; uint32_t obj_infill_pair=0;
-                if(use_gme&&have_prev_f){
+                row_check(row_gme_ran, use_gme&&have_prev_f);
+                if(row_gme_ran){
                     const double g0=now_ms();
                     float m6[6]={};
                     double dis_pct;
-                    if(use_gme_gpu){
+                    row_check(row_gme_gpu, use_gme_gpu);
+                    if(row_gme_gpu){
                         // ── gme-gpu: the GPU produced the model (hostGmeM) + dis-mask (hostDIS) in cmdF,
                         // already waited (fF). Read the 6 floats; dis% derives from the mask (a stat-only
                         // approximation, see gme_dispct_from_mask). NO CPU gme_fit_affine.
@@ -1151,7 +1177,8 @@ void run_flow(FgContext& ctx){
                     f_pair_gme_valid_a[f_gen]=1;
                     f_pair_disp_a[f_gen]=(float)gme_dis_pct_fwd;   // publish the per-pair gme dispersion to P (F-write-before-fetch_add ordering)
                     gme_dis_x100.store((uint64_t)(dis_pct*100.0+0.5));
-                    if(use_memory && !holon_skip_pair){
+                    row_check(row_mem_fwd, use_memory && !holon_skip_pair);
+                    if(row_mem_fwd){
                         const double mc0=now_ms();
                         mem_advect(hostMV[f_gen]);
                         mem_merge((uint8_t*)hostDIS[f_gen],hostMV[f_gen],mem_prior.data());
@@ -1165,7 +1192,8 @@ void run_flow(FgContext& ctx){
                     const float au_thr=cfg.matte_thresh*255.0f;
                     const double au_span=(double)(span?span:1);
                     if(mv_audit_left>0){ mv_audit_stat(hostMV[f_gen],(const uint8_t*)hostDIS[f_gen],au_thr,&auR_mean,&auR_max,&auR_n); }
-                    if(use_objects && !holon_skip_pair){
+                    row_check(row_objects, use_objects && !holon_skip_pair);
+                    if(row_objects){
                         const double o0=now_ms();
                         uint32_t live=0,rep=0,infill=0;
                         object_repair(hostMV[f_gen],(uint8_t*)hostDIS[f_gen],m6,obj_slots_fwd,
@@ -1258,10 +1286,12 @@ void run_flow(FgContext& ctx){
                 if(use_bidir && !do_bwd && have_prev_f) stat_bwd_skips.fetch_add(1);
                 if(do_bwd){
                     vk_wait_live(FD.dev,fB2);   // catch a TDR on the bwd flow — the consume-side wait, FD.dev (B.dev null under single_gpu would crash)
-                    if(use_gme){
+                    row_check(row_gme_bwd, use_gme);
+                    if(row_gme_bwd){
                         const double gb0=now_ms();
                         float mb6[6]={};
-                        if(use_gme_gpu){
+                        row_check(row_gme_gpu, use_gme_gpu);
+                        if(row_gme_gpu){
                             // ── gme-gpu: the bwd model + mask were produced in cmdB_bwd on B (waited via fB2
                             // just above). Read the 6 floats; the bwd mask is already in hostDISB. No CPU bwd fit.
                             std::memcpy(mb6, hostGmeMB[f_gen], 6u*sizeof(float));
@@ -1273,12 +1303,14 @@ void run_flow(FgContext& ctx){
                             (void)dis_pct_b;
                         }
                         gme_fit_total_ms+=now_ms()-gb0; gme_did_bwd=true;
-                        if(use_memory){
+                        row_check(row_mem_bwd, use_memory);
+                        if(row_mem_bwd){
                             const double mc0=now_ms();
                             mem_merge((uint8_t*)hostDISB[f_gen],hostMVB[f_gen],mem_adv.data());
                             obj_cost_ms+=now_ms()-mc0;
                         }
-                        if(use_objects){
+                        row_check(row_objects_bwd, use_objects);
+                        if(row_objects_bwd){
                             const double o0=now_ms();
                             uint32_t live_b=0,rep_b=0,infill_b=0;
                             wake_n=0;
@@ -1295,7 +1327,8 @@ void run_flow(FgContext& ctx){
                         for(int _p=0;_p<6;++_p) f_pair_gme_bwd_a[f_gen][_p]=mb6[_p];
                     }
                 }
-                if(use_memory && gme_did_fit && !holon_skip_pair){
+                row_check(row_mem_refresh, use_memory && gme_did_fit && !holon_skip_pair);
+                if(row_mem_refresh){
                     const double mr0=now_ms();
                     mem_refresh(gme_did_bwd?(const uint8_t*)hostDISB[f_gen]:nullptr, gme_did_bwd,
                                 wake_rec.data(), wake_n);
@@ -1312,7 +1345,8 @@ void run_flow(FgContext& ctx){
                     if(!gme_fit_printed&&gme_fits>=1){ gme_fit_printed=true;
                         if(gme_fit_ema>1.0) std::printf("[ra] gme: fit cost EMA %.2fms%s (>1ms — shown in stats)\n",gme_fit_ema,gme_did_bwd?" (fwd+bwd)":""); }
                 }
-                if(use_objects&&gme_did_fit&&!holon_skip_pair){
+                row_check(row_objects, use_objects&&gme_did_fit&&!holon_skip_pair);
+                if(row_objects){
                     obj_live.store((uint64_t)obj_live_pair);
                     const double rep_pct=obj_infill_pair?100.0*(double)obj_rep_pair/(double)obj_infill_pair:0.0;
                     obj_rep_x10.store((uint64_t)(rep_pct*10.0+0.5));
@@ -1794,5 +1828,6 @@ void run_flow(FgContext& ctx){
             // holds one pair back). vkDeviceWaitIdle(B) at shutdown will have drained the GPU; here we only
             // need the CPU consume + the final f_seq bump. allow_bwd=false (the pipeline never bwd'd).
             if(cfg.fwd_pipeline && use_wap && pend.valid){ consume_wap(pend, /*allow_bwd=*/false); pend.valid=false; }
+    std::printf("[layertab] flow rows vs the hand conditions: %llu site decisions, %llu mismatches\n", (unsigned long long)flow_row_sites, (unsigned long long)flow_row_mismatch);   // R5 step 3b: the two-oracle instrument
 }
 // Made with my soul - Swately <3

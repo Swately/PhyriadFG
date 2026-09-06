@@ -197,6 +197,58 @@ bool layer_config_parity(const Config& c) {
     return ok;
 }
 
+// ── R5 step 3b: the resolved state ─────────────────────────────────────────────────────────────
+void layer_resolve_effective(LayerConfig& lc, uint32_t unavailable) {
+    uint32_t avail = 0;
+    for (int pass = 0; pass < 16; ++pass) {   // a monotone fixpoint over `needs` (depth ≤ the longest needs chain)
+        uint32_t next = 0;
+        for (uint16_t i = 0; i < kLayerCount; ++i) {
+            const LayerDesc& L = kLayers[i];
+            if (L.kind == Kind::X || !lc.on[i] || (unavailable & (1u << i))) continue;
+            bool ok = true;
+            if (L.needs) { const uint32_t have = L.needs & avail; ok = L.req_any ? (have != 0) : (have == L.needs); }
+            if (ok) next |= (1u << i);
+        }
+        if (next == avail) break;
+        avail = next;
+    }
+    uint32_t eff = avail;
+    for (uint16_t i = 0; i < kLayerCount; ++i)
+        if ((avail & (1u << i)) && (kLayers[i].excludes & avail)) eff &= ~(1u << i);
+    lc.avail = avail; lc.eff = eff;
+}
+bool layer_flow_resolve(Config& c, bool use_wap, bool use_gme, bool use_gme_gpu, bool use_objects, bool use_memory,
+                        bool use_bidir, bool use_ambig, bool use_inertia, bool use_mv_smooth) {
+    uint32_t unavailable = 0;
+    if (!use_wap) for (uint16_t i = 0; i < kLayerCount; ++i) if (kLayers[i].stage == Stage::FLOW) unavailable |= (1u << i);   // the stage exists only under WAP
+    if (!use_gme_gpu) unavailable |= (1u << (unsigned)LayerId::GME_GPU);      // forced off on single-GPU or when gme_create failed (flow_init.cpp)
+    if (!use_mv_smooth) unavailable |= (1u << (unsigned)LayerId::MV_SMOOTH);  // the pipe was not created (mvsm_create)
+    if (!use_ambig && c.ambig && use_gme) unavailable |= (1u << (unsigned)LayerId::CANDIDATES);   // the host bridge failed (init_host_bridge)
+    layer_resolve_effective(c.layers, unavailable);
+    const LayerConfig& lc = c.layers;
+    auto E = [&](LayerId id) { return (lc.eff & (1u << (unsigned)id)) != 0u; };
+    auto A = [&](LayerId id) { return (lc.avail & (1u << (unsigned)id)) != 0u; };
+    bool ok = true;
+    auto chk = [&](const char* what, bool hand, bool row) { if (hand != row) { std::printf("[layertab] FLOW PARITY FAIL %-16s init=%d rows=%d\n", what, (int)hand, (int)row); ok = false; } };
+    chk("gme (avail)",   use_gme,       A(LayerId::GME));
+    chk("gme_gpu (eff)", use_gme_gpu,   E(LayerId::GME_GPU));
+    chk("gme cpu (eff)", use_gme && !use_gme_gpu, E(LayerId::GME));
+    chk("objects",       use_objects,   E(LayerId::OBJECTS));
+    chk("objects_bwd",   use_objects && use_bidir, E(LayerId::OBJECTS_BWD));
+    chk("mem_fwd",       use_memory,    E(LayerId::MEM_FWD));
+    chk("mem_bwd",       use_memory && use_bidir, E(LayerId::MEM_BWD));
+    chk("mem_refresh",   use_memory,    E(LayerId::MEM_REFRESH));
+    chk("gme_bwd",       use_gme && use_bidir, E(LayerId::GME_BWD));
+    chk("bidir",         use_bidir,     E(LayerId::BIDIR));
+    chk("candidates",    use_ambig,     E(LayerId::CANDIDATES));
+    chk("persistence",   use_inertia,   E(LayerId::PERSISTENCE));
+    chk("mv_smooth",     use_mv_smooth, E(LayerId::MV_SMOOTH));
+    std::printf("[layertab] flow rows resolved: avail=0x%08X eff=0x%08X (gme=%d gme_gpu=%d objects=%d memory=%d bidir=%d candidates=%d persistence=%d mv_smooth=%d consensus=%d) %s\n",
+                lc.avail, lc.eff, (int)A(LayerId::GME), (int)E(LayerId::GME_GPU), (int)E(LayerId::OBJECTS), (int)E(LayerId::MEM_FWD), (int)E(LayerId::BIDIR),
+                (int)E(LayerId::CANDIDATES), (int)E(LayerId::PERSISTENCE), (int)E(LayerId::MV_SMOOTH), (int)E(LayerId::MV_CONSENSUS), ok ? "== the init cascades" : "!= the init cascades");
+    return ok;
+}
+
 // ── the contract hash (FNV-1a 64 over the resolved chain, in execution order) ───────────────────
 static void fnv(uint64_t& h, const void* p, size_t n) {
     const unsigned char* b = (const unsigned char*)p;
@@ -247,7 +299,6 @@ uint32_t layer_arm_mask(const ArmInputs& in) {
             case ArmId::COMMIT:      ok = in.commit_ok; break;
             case ArmId::PRIOR:       ok = in.has_prev; break;
             case ArmId::HOLON:       ok = in.has_prev && in.tier < 4 && !in.holon_skip; break;
-            case ArmId::BWD_HOLON:   ok = in.bwd_ok && in.tier < 4 && !in.holon_skip; break;
             case ArmId::BIDIR_OK:    ok = in.has_prev && in.tier < 5 && !in.pipelined && !in.bwd_skipping; break;
         }
         if (ok) m |= (1u << i);

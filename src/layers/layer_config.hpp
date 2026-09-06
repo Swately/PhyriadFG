@@ -18,6 +18,11 @@ namespace pfg::layers {
 struct LayerConfig {
     bool  on[kLayerCount];
     float val[kParamCount == 0 ? 1 : kParamCount];   // I32 / BOOL stored as integral floats
+    // R5 step 3b — the RESOLVED state, computed once at init by layer_resolve_effective() (bit = layer id):
+    //   avail: on && not unavailable && every `needs` row avail (transitive; req_any = any) — "wanted and its inputs exist"
+    //   eff:   avail && no `excludes` row avail — the row's call happens. (gme: avail = the model exists, eff = the CPU
+    //          variant runs; gme_gpu's eff = the device variant runs.) The FLOW rows on F read these.
+    uint32_t avail = 0, eff = 0;
     LayerConfig();                                    // defaults from kLayers / kParams
 };
 
@@ -65,6 +70,14 @@ size_t   layer_params_bytes();
 void     layer_params_fill(const Config& c, void* out, bool clean_sim);
 uint32_t layer_arm_mask(const ArmInputs& in);
 
+// R5 step 3b: resolve avail / eff (above) from the raw enables and the init-time unavailable mask (rows whose
+// create-time precondition failed: no WAP → every FLOW row; gme_gpu forced off; a pipe / bridge that failed).
+void     layer_resolve_effective(LayerConfig& lc, uint32_t unavailable);
+// The FLOW parity: the resolved rows must equal the init cascades' use_* facts (the proof that the rows' declared
+// relations reproduce resolve_config / flow_init). Prints "[layertab] FLOW PARITY FAIL ..." per mismatch; false if any.
+// Computes the unavailable mask from the facts, resolves, checks, prints the resolved FLOW line once.
+bool     layer_flow_resolve(Config& c, bool use_wap, bool use_gme, bool use_gme_gpu, bool use_objects, bool use_memory,
+                            bool use_bidir, bool use_ambig, bool use_inertia, bool use_mv_smooth);
 // Execution order: (stage, rank) ascending; fills out[0..kLayerCount).
 void layer_exec_order(uint16_t out[kLayerCount]);
 

@@ -155,8 +155,7 @@ constexpr const char* stage_name(Stage s) {
 constexpr const char* arm_name(ArmId a) {
     switch (a) { case ArmId::ALWAYS: return "ALWAYS"; case ArmId::GME: return "GME"; case ArmId::BWD: return "BWD";
                  case ArmId::GME_AND_BWD: return "GME+BWD"; case ArmId::COMMIT: return "COMMIT";
-                 case ArmId::PRIOR: return "PRIOR"; case ArmId::HOLON: return "HOLON"; case ArmId::BWD_HOLON: return "BWD+HOL";
-                 case ArmId::BIDIR_OK: return "BIDIR"; }
+                 case ArmId::PRIOR: return "PRIOR"; case ArmId::HOLON: return "HOLON"; case ArmId::BIDIR_OK: return "BIDIR"; }
     return "?";
 }
 constexpr char kind_char(Kind k) { return k == Kind::F ? 'F' : (k == Kind::P ? 'P' : (k == Kind::H ? 'H' : 'X')); }

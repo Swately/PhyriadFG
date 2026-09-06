@@ -531,6 +531,12 @@ int main(int argc, char** argv) {
     init_wap(cfg,WW,WH,WW_warp,WH_warp,o_dev,o_flow,o_wap);
     // ── gme-gpu pipeline + use_* re-finalization (E1 → flow/flow_init.cpp) ─────
     init_gme_finalize(cfg,o_dev,o_flow,o_gme);
+    // R5 step 3b: the registry's FLOW rows resolved against the init cascades (the loud abort of R0's parity, one
+    // level later: after every create-time fact is known). F reads cfg.layers.eff / avail from here on.
+    if(!pfg::layers::layer_flow_resolve(cfg,use_wap,use_gme,use_gme_gpu,use_objects,use_memory,use_bidir,use_ambig,use_inertia,use_mv_smooth)){
+        std::printf("[layertab] FLOW PARITY FAIL: the registry's resolved rows disagree with the init cascades -- refusing to run (exit 3)\n");
+        return 3;
+    }
 
     // ── Command buffers + fences + semaphores (E1 → core/core_init.cpp) ────────
     init_cmd_sync(cfg,single_gpu,o_dev,FD,o_img,o_flow,o_cs,o_br);

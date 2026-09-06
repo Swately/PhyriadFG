@@ -274,9 +274,10 @@ PFG_LAYER(GME_BWD, "gme_bwd", FLOW, 70, H, true, false, PFG_BIT(GME) | PFG_BIT(B
           "The affine model + dissidence mask of the backward field (the CPU or the device-B variant, per gme_gpu).")
 PFG_LAYER_END(GME_BWD)
 
-// rank 71 — the scene-holon, backward merge (:1290–1310; call :1712–1716).
+// rank 71 — the scene-holon, backward merge (:1290–1310; call :1712–1716). Arm BWD: the backward legs run whenever the
+// backward match did — they are not decimated by the tier shedding (step 3b, read from the code).
 PFG_LAYER(MEM_BWD, "mem_bwd", FLOW, 71, H, true, false, PFG_BIT(MEM_FWD) | PFG_BIT(BIDIR), false, 0u,
-          CH_DISSIDENCE | CH_MEM_ADV, CH_DISSIDENCE, SH_NONE, BWD_HOLON, "Flow",
+          CH_DISSIDENCE | CH_MEM_ADV, CH_DISSIDENCE, SH_NONE, BWD, "Flow",
           nullptr, "--no-memory", nullptr,
           "Merge the advected prior into the backward dissidence mask before the backward clustering.")
 PFG_LAYER_END(MEM_BWD)
@@ -284,7 +285,7 @@ PFG_LAYER_END(MEM_BWD)
 // rank 72 — the object-holon, backward (call :1717–1729). Leaves the label scratch + the wake records mem_refresh reads.
 PFG_LAYER(OBJECTS_BWD, "objects_bwd", FLOW, 72, H, true, false, PFG_BIT(OBJECTS) | PFG_BIT(BIDIR), false, 0u,
           CH_MV_BWD | CH_DISSIDENCE | CH_GME_BWD | CH_OBJ_STATE,
-          CH_MV_BWD | CH_DISSIDENCE | CH_OBJ_STATE | CH_WAKE | CH_PAIR_STATS, SH_NONE, BWD_HOLON, "Flow",
+          CH_MV_BWD | CH_DISSIDENCE | CH_OBJ_STATE | CH_WAKE | CH_PAIR_STATS, SH_NONE, BWD, "Flow",
           nullptr, "--no-objects", nullptr,
           "The clustering + identity + repair over the backward field; emits the wake records (the object takes its "
           "silhouette with it) and the backward matte mass.")

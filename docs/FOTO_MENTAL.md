@@ -299,7 +299,13 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    paso 1 (fase media 0.5010); (3a) HECHO 2026-09-06 — las cuatro hojas (`object_repair`, `mem_advect/merge/refresh`)
    extraídas por ancla a `flow/holons.{hpp,cpp}` (339/339 líneas de cuerpo idénticas; `HolonScratch` en `run_flow`
    como `hs` con alias; envolturas con la misma firma → `consume_wap` intacto); corrida por defecto igual al paso 2;
-   vistos en rojo antes: finales de línea `\r\r\n` (C4335) y un parámetro sin uso (C4100), ambos corregidos;
+   vistos en rojo antes: finales de línea `\r\r\n` (C4335) y un parámetro sin uso (C4100), ambos corregidos; (3b) HECHO
+   2026-09-06 — las filas deciden en F: `avail`/`eff` resueltos en el registro (`needs`/`excludes` + hechos de init:
+   sin WAP, gme_gpu forzado, tubería/puente fallidos), probados contra las cascadas `use_*` en `main()` (salida 3 si
+   difieren); `consume_wap` llena `ArmInputs` por par y nueve sitios actúan sobre `eff ∧ armado` con la condición
+   manual al lado como segundo oráculo: 12 corridas con tokens + 60 s por defecto, todas `== the init cascades`,
+   0 discrepancias en 39,604 decisiones; corrección: las patas hacia atrás NO se diezman hoy → arm `BWD`
+   (`BWD_HOLON` eliminado); no ejercitado: la escalera de tiers (el zoo no presiona a F);
    (3) los holones extraídos por ancla y sus arms consumidos en F; (4) `wap_upload` condicional; compuerta G-R5 =
    A/B 2 corridas/lado como R4 + `--layer-dump`. Decisión de entrada corregida: las filas van ON por defecto (el
    "off" del plan era viejo); la compuerta es identidad byte del default. La palabra para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con

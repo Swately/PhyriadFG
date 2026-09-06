@@ -1,6 +1,6 @@
 # R5_GATE — Stage 3 FLOW: the rows declared, `FlowSet`/`FlowRing`, the holons bound, `wap_upload` conditional (M-R5)
 
-**Status: IN PROGRESS — steps 1, 2 and 3a of 4 closed (2026-09-06).** The operator's word: "adelante, continua segun todas tus
+**Status: IN PROGRESS — steps 1, 2, 3a and 3b of 4 closed (2026-09-06).** The operator's word: "adelante, continua segun todas tus
 recomendaciones" (2026-09-06), after 4.2's map (`aap/FLOW_ROW_MAP.md`, 0 new columns → PROCEED). This record grows
 one section per step; the verdict (§6) is written when the four steps and G-R5 have run.
 
@@ -21,9 +21,11 @@ holon family becomes FLOW-stage rows of the registry; the MV consensus leaves P'
    (`--gme-gpu` / `--no-gme-gpu`) — the `mv_guided`/`mv_edge_snap` pattern — rather than a `device` param
    (`FLOW_ROW_MAP` §2.1 allowed either). Total rows 26 + 2 pseudo = **28 of the 32** the id bitmasks allow; the
    33rd row (S5's perceptual family) forces the widening the `static_assert` in `layer_table.hpp` names.
-3. **Four ArmId values, not three:** `PRIOR`, `HOLON`, `BWD_HOLON`, `BIDIR_OK` — the backward legs' arm (bwd ∧ the
-   holon shedding) is its own combination; `ArmInputs` gains five fields (`has_prev, tier, holon_skip, pipelined,
-   bwd_skipping`), the map's four plus the bwd-skip hysteresis it had folded into "tier".
+3. **Three ArmId values (corrected in step 3b):** `PRIOR`, `HOLON`, `BIDIR_OK`. Step 1 had added a fourth, `BWD_HOLON`
+   (bwd ∧ the holon shedding), from the map; step 3b read the code: the backward legs run whenever the backward match
+   did (`if(do_bwd){ … if(use_memory) … if(use_objects) … }`) — they are NOT decimated by the tier ladder — so their
+   arm is the existing `BWD` and `BWD_HOLON` was removed. `ArmInputs` gains five fields (`has_prev, tier, holon_skip,
+   pipelined, bwd_skipping`), the map's four plus the bwd-skip hysteresis it had folded into "tier".
 4. **The consensus stays where it runs in this step** (P's `wap_upload`, `present.cpp:747`) but becomes a ROW with its
    OWN switch: `--mv-consensus` / `--no-mv-consensus`, default ON (byte-identical). Moving the dispatch to F is
    step 3's question (a device / image change; `STAGE_CONTRACT` §2 allows the MVCOND placement as the alternative).
@@ -136,7 +138,43 @@ default run against the step-2 binary's — rows 14,385 vs 14,384, fresh 99.82 v
 
 **Not in this step:** the arms (3b), `consume_wap` (3c), the consensus move (3c's question).
 
-### 3b · `ArmInputs` on F, the rows' effective ON, the call sites bound (pending)
+### 3b · The rows decide on F: the effective ON resolved and proven, the arms consumed, nine sites bound (2026-09-06) — CLOSED
+
+**Built (`r5s3b_patch.py`):** (1) `LayerConfig` gains the RESOLVED state — `avail` (on ∧ not unavailable ∧ every
+`needs` row avail, a monotone fixpoint; `req_any` = any) and `eff` (avail ∧ no `excludes` row avail) —
+`layer_resolve_effective()`; and `layer_flow_resolve()` computes the init-time unavailable mask (every FLOW row when
+`!use_wap`; `GME_GPU` when forced off; `MV_SMOOTH` when its pipe was not created; `CANDIDATES` when its bridge failed),
+resolves, and checks thirteen FLOW facts against the init cascades' `use_*` (`gme` avail, `gme_gpu` eff, the CPU gme
+eff, `objects`, `objects_bwd`, `mem_fwd/bwd/refresh`, `gme_bwd`, `bidir`, `candidates`, `persistence`, `mv_smooth`)
+— `main.cpp` calls it after `init_gme_finalize()` and refuses to run on a disagreement (exit 3, R0's discipline one
+level later), printing the resolved line once. (2) `consume_wap` fills `ArmInputs` from this pair's CONTROL facts
+(`have_prev_f`, `pressure_tier`, `holon_skip_pair`, `!allow_bwd`, `bwd_skipping`), evaluates `layer_arm_mask`, feeds
+the bidir row's decision back as `bwd_ok` and evaluates it again; **nine sites now act on `eff ∧ armed`:** the
+backward match (`do_bwd` = the BIDIR row), the forward fit (`row_gme_ran` = GME avail ∧ PRIOR), the device variant
+(`GME_GPU` eff, both anchors), `mem_fwd`, `objects`, `gme_bwd`, `mem_bwd`, `objects_bwd`, `mem_refresh`, and the
+objects stats block — while the former hand condition is computed beside each and every disagreement is COUNTED
+(`row_check`) and printed at F's exit. (3) `BWD_HOLON` removed (entry decision 3, corrected). Build 0 errors; 36
+warnings = the full-rebuild pre-existing set.
+
+**Gate, seen green on this binary:** `--layer-dump` shows `bidir P arm=BIDIR`, `gme_bwd / mem_bwd / objects_bwd H
+arm=BWD`, `mem_refresh H arm=HOLON`; the parse-parity corpus 21 / 21 (a subset of step 1's, re-run on this binary);
+**twelve bounded runs on the ball zoo, each `rc=0`, clean exit, `PARITY FAIL` count 0, the resolved line `== the init
+cascades`, and `0 mismatches`** over 9,981 / 9,992 / 9,992 / 6,360 / 4,539 / 9,981 / 6,360 / 9,981 / 9,981 / 9,970 / 0
+/ 9,992 site decisions (default, `--no-memory`, `--no-objects`, `--no-bidir`, `--no-gme`, `--no-gme-gpu`,
+`--fwd-pipeline`, `--no-ambig`, `--no-inertia`, `--mv-smooth 0.5`, `--no-warp-at-presenter` — the FLOW stage
+unavailable: every row off, 0 sites, `== the init cascades` — and `--no-async-present`); the 60 s default run:
+**39,604 site decisions, 0 mismatches**, presents 14,382, `fresh:240/s`. Quoted (default): `[layertab] flow rows
+resolved: avail=0x0FEF7F6D eff=0x0FEF7F6D (gme=1 gme_gpu=0 objects=1 memory=1 bidir=1 candidates=1 persistence=1
+mv_smooth=0 consensus=1) == the init cascades` — `gme_gpu=0` is the single-GPU rig's forced-off, reproduced by the
+unavailable mask.
+
+**What the two oracles do NOT cover, named:** the tier ladder above tier 1 (the ball zoo never pressures F: the
+`HOLON` arm's `tier < 4` / `holon_skip` legs and `BIDIR_OK`'s `tier < 5` were evaluated on `tier = 0` every pair — the
+CONTROL inputs are wired, their shedding branches were not exercised; a `--load-governor` run under real pressure
+is the named test); `bwd_skipping` likewise (never latched here). The hand conditions stay in the code as the second
+oracle — they are the instrument, not dead code; step 3c or R7 may retire them once a pressured run has counted 0.
+
+### 3c · `consume_wap` extracted (pending)
 
 ### 3c · `consume_wap` (pending)
 

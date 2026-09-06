@@ -32,7 +32,7 @@ enum class Kind  : uint8_t { F, P, X, H };   // H (R5, FLOW_ROW_MAP §2.1) = a H
 enum class ArmId : uint8_t { ALWAYS, GME, BWD, GME_AND_BWD, COMMIT,
                              PRIOR,       // R5 (FLOW): the pair has a prior (has_prev) — the first pair after start runs only the source
                              HOLON,       // R5: has_prev && tier < 4 && !holon_skip — the holon refinement (memory/objects), shed at tier 4, decimated at 2/3
-                             BWD_HOLON,   // R5: bwd_ok && tier < 4 && !holon_skip — the same for the backward legs
+                             // (the backward legs are NOT decimated today — flow.cpp `if(do_bwd){ … if(use_memory) … if(use_objects) … }` — their arm is BWD; step 3b)
                              BIDIR_OK };  // R5: has_prev && tier < 5 && !pipelined && !bwd_skipping — the backward match itself
 // The per-generation validity inputs (STAGE_CONTRACT §1 ArmInputs) the host derives arm_mask from — one
 // struct, so every ArmId has its input and layer_arm_mask() switches over all of them (R3).

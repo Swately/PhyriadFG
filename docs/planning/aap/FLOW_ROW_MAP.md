@@ -108,7 +108,7 @@ channel. Stated so the disagreement has a name.
 |---|---|
 | **New COLUMNS from the thirteen FLOW rows (the decision-rule number)** | **0** (one named candidate, §2.5, judged unnecessary) |
 | New Kind VALUES | 1 (`H`, host pass — §2.1) |
-| New ArmId VALUES / `ArmInputs` FIELDS | 3 / 4 (§2.4) |
+| New ArmId VALUES / `ArmInputs` FIELDS | 3 / 5 (§2.4; R5 step 3b: `PRIOR`, `HOLON`, `BIDIR_OK` — the backward legs' arm is the existing `BWD`, they are not decimated today; `bwd_skipping` is a fifth input) |
 | New channel BITS | 7 (§2.5) |
 | Invariant relaxations | 1 (a token may drive two rows — `--inertia`, §2.2) |
 | Rows whose default is the operator's declared switch | 1 (`mv_consensus` with its own token, default ON — §1 row 13) |
