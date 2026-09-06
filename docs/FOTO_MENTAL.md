@@ -280,8 +280,12 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    están en `R4_GATE.md` §4.6 y en la secuencia del escritorio, 3.2b); (b) el operador YA corrió `--tdr-test 15` (R4c, `R4_GATE.md` §5): la detección
    quedó probada (`VK_ERROR_DEVICE_LOST` capturado e impreso) y el desmontaje se colgó en esperas
    `vkWaitForFences(UINT64_MAX)` sobre fences que ya no señalizan → `vk_wait_live` (20 ms por rebanada, abandona
-   con dispositivo perdido) en los 14 sitios; caminos sanos re-verificados; falta SU re-corrida del mismo comando
-   sobre el binario nuevo (la sesión no lo ejecuta: L3 + clasificador);
+   con dispositivo perdido) en los 14 sitios; su SEGUNDA corrida: P quedó atorado dentro de una llamada del
+   driver/DXGI desde el tick del hang (F: "P pinned on gen 902") y la ventana propia quedó en pantalla con el
+   último cuadro — el watchdog del pilar no puede ocultar la ventana de un hilo atorado (ShowWindow desde otro
+   hilo espera su bucle de mensajes) → los joins llevan plazo de 3 s bajo pérdida, nombran al sobreviviente y
+   `TerminateProcess`; caminos sanos re-verificados tras cada arreglo; falta SU tercera corrida (la sesión no lo
+   ejecuta: L3 + clasificador);
    (c) R5 — `FlowSet`/`FlowRing`, holones como filas, el pase de consenso como fila de la etapa 3, `wap_upload`
    condicional — precedido por 4.2 (la mitad de papel). No re-derivar: R3 (4q), R4 (4r), R4b (4s).
 

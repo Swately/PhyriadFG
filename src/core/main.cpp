@@ -1048,9 +1048,31 @@ int main(int argc, char** argv) {
         c_cv.notify_all(); f_cv.notify_all();
         raw_cv.notify_all();   // INGEST-ASYNC: wake the convert worker so it observes the quit latch and drains
 
-        thr_c.join();
-        if(thr_cw.joinable()) thr_cw.join();   // INGEST-ASYNC: join BEFORE the convert/Vulkan teardown (it touches cmdA/cmdG/fA/fG + the raw imports)
-        thr_f.join(); thr_p.join();
+        // R4c (2026-09-05): the joins get a DEADLINE once the device is LOST. The operator's --tdr-test runs showed
+        // the P thread stuck inside a driver/DXGI call it entered in the tick that dispatched the hang (F: "P pinned
+        // on gen" from that tick on): no code of ours runs on that thread again, its join never returns, and the
+        // own-window plane it owns stays on the panel with the last frame — the pillar's OA-10 watchdog cannot hide
+        // a window whose owning thread is wedged (ShowWindow/SetWindowPos from another thread wait on that thread's
+        // message loop). The only give-back is the process ending: 3 s past the quit with the loss latched and a
+        // worker still alive → name the survivors, flush, TerminateProcess (the OS reclaims the window; the device
+        // is lost anyway; no CSV finalize on this path — said). One joiner per worker so the survivors can be named.
+        // On a normal quit (no loss) the joins are the unbounded ones they were — byte-identical.
+        std::atomic<bool> c_done{false}, cw_done{true}, f_done{false}, p_done{false};
+        std::thread j_c([&]{ thr_c.join(); c_done.store(true); });
+        std::thread j_cw; if(thr_cw.joinable()){ cw_done.store(false); j_cw=std::thread([&]{ thr_cw.join(); cw_done.store(true); }); }
+        std::thread j_f([&]{ thr_f.join(); f_done.store(true); });
+        std::thread j_p([&]{ thr_p.join(); p_done.store(true); });
+        const auto t_join0=std::chrono::steady_clock::now();
+        while(!(c_done.load()&&cw_done.load()&&f_done.load()&&p_done.load())){
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            if(g_device_lost.load() && (std::chrono::steady_clock::now()-t_join0)>std::chrono::seconds(3)){
+                std::printf("[ra] device lost: worker(s) still alive 3 s after the quit --%s%s%s%s -- a driver/DXGI call never returned; terminating the process so the panel is released (no CSV finalize on this path)\n",
+                    c_done.load()?"":" C(capture)", cw_done.load()?"":" CW(convert)", f_done.load()?"":" F(flow)", p_done.load()?"":" P(present)");
+                std::fflush(stdout);
+                TerminateProcess(GetCurrentProcess(), 3);
+            }
+        }
+        j_c.join(); if(j_cw.joinable()) j_cw.join(); j_f.join(); j_p.join();   // INGEST-ASYNC: CW joined BEFORE the convert/Vulkan teardown (it touches cmdA/cmdG/fA/fG + the raw imports)
 
         const uint64_t total_interp=(total_frames.load()>total_real.load())?(total_frames.load()-total_real.load()):0;
         std::printf("[ra] done (real=%llu interp=%llu total_presents=%llu)\n",

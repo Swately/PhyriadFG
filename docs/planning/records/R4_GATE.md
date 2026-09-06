@@ -313,12 +313,41 @@ result as before, ~20 ms later at worst when a wait genuinely straddles a slice 
 
 **Verification of the healthy paths (the session, 10 s bounded runs, ball zoo):** {VERIFY}
 
-**Status of G-R4's TDR item:** the detection half is PROVEN by the operator's run; the teardown half is FIXED and
-**awaits his re-run** of the same command line on the new binary — the record will carry that output. Side
+**His second run (the `vk_wait_live` binary, same command line):** the same three lines — `ARMED`, `dispatching the
+GPU hang NOW`, `VK_ERROR_DEVICE_LOST -- graceful exit` — then again nothing, and this time he reported what the panel
+showed: **the own-window plane stayed on screen with the last generated, scaled frame** ("el FG mantiene la pantalla
+secuestrada"). Two new facts in that output: `[ra] F lap-escape: P pinned on gen (p_presenting=902, fs=904) 64ms`
+printed right after the dispatch line — F found P still holding gen 902 from the dispatch tick on, i.e. **P never
+ticked again after submitting the hang**; and the DXGI loss line (`present-surface device loss (DXGI)`) never printed
+— P never reached `account()` with a terminal HRESULT. So the fence fix was necessary (F and C now exit) but not the
+hang: **the P thread is inside a driver / DXGI call it entered in the dispatch tick and that call never returned**,
+even after the reset. Which call is not proven (no thread dump; his console is the evidence); consistent with
+`Present(0)` on the two-buffer flip swapchain blocking for a back buffer behind the hung engine and not being
+failed by the runtime after the reset. Why the plane stays: the pillar's OA-10 watchdog (`PresentSurface.cpp:511`)
+does fire on the heartbeat stall, but its `yield_plane()` is `SetWindowPos` + `ShowWindow(SW_HIDE)` from another
+thread — Win32 routes those through the OWNING thread's message loop, and that thread is wedged, so the hide
+never lands and the DWM keeps composing the last flip. No code of ours runs on P again; **the only give-back is
+the process ending.**
+
+**The second fix (`r4c2_patch.py`, `main.cpp:1051-1075`):** the worker joins get a DEADLINE once the device is lost.
+One joiner thread per worker (C, CW, F, P) sets a done flag; the main thread polls them; 3 s past the quit with
+`g_device_lost` latched and a flag still false → it prints the survivors by name (`[ra] device lost: worker(s)
+still alive 3 s after the quit -- P(present) -- a driver/DXGI call never returned; terminating the process so the
+panel is released (no CSV finalize on this path)`), flushes, and `TerminateProcess` — the OS reclaims the window;
+the device is lost anyway; the CSV finalize (owned by P's scope exit) is lost on this path, and the line says so.
+On a normal quit the joins are the unbounded ones they were (the `while` only fires under the loss) — the three
+healthy paths re-verified 3 / 3 on this binary (async / sync / grid, 10 s: `rc=0 done=1 clean=1 abandon=0`).
+Build: 0 errors; only `main.cpp` recompiled, its 8 warnings the pre-existing C4189 set.
+
+**Status of G-R4's TDR item:** the detection half is PROVEN by the operator's two runs; the teardown is now
+bounded twice (the waits, then the joins) and **awaits his third run** of the same command line — expected: the
+DEVICE_LOST line, then within ~3 s the survivor line naming `P(present)`, the process gone and the panel back.
+If P does return on its own this time, `[ra] done (…)` prints instead. Either output closes the item; the record
+will carry it. Side
 evidence from his run, on 1280×720 capture: the first eight stats windows show `fresh:243/s` with `slip 0.00`, then
 `fresh:121/s rdrop:121/s` as `slip` climbs 0.26 → 7.35 ms — §4.6's mechanism on a second content and session.
 
-## 6 · Verdict — **G-R4 PASSED, except the forced-TDR item (detection proven; the teardown fix awaits his re-run)**
+## 6 · Verdict — **G-R4 PASSED, except the forced-TDR item (detection proven; the teardown bounded twice, his third run pending)**
 
 - **The extraction changes nothing the instruments can see:** presents Δ +0.5 (spread 1–2), `disp_phase` mean
   Δ +0.0002 (A's spread 0.0003), `disp_src` step 0.2495 both, uniq/s Δ −0.03, `MsBetweenDisplayChange` median
@@ -332,9 +361,11 @@ evidence from his run, on 1280×720 capture: the first eight stats windows show 
   own-window surface, `last_flip_qpc()` now a `FlipStats` edge (MR-7); nine references bound, nothing copied,
   the slots bound not re-created (CR1); its own TU under LTO, presents/latency inside spread (PR1).
 - **The decision is declared** — `Decision::{Warp, Dup, Drop, Decimated}` — and load-bearing: `begin()` consumes it.
-- **`--tdr-test N`:** run by the operator (§5): the device-loss DETECTION proven (`VK_ERROR_DEVICE_LOST` latched, the
-  graceful-exit line printed), the TEARDOWN hung on unbounded fence waits — fixed the same day (`vk_wait_live`, 14
-  sites), healthy paths re-verified; the re-run on the fixed binary is his and pending.
+- **`--tdr-test N`:** run twice by the operator (§5): the device-loss DETECTION proven (`VK_ERROR_DEVICE_LOST`
+  latched, the graceful-exit line printed); the TEARDOWN hung both times — first on unbounded fence waits
+  (`vk_wait_live`, 14 sites), then on the P thread wedged inside a driver/DXGI call with the plane left on the
+  panel (the joins now carry a 3 s deadline under loss → survivors named → `TerminateProcess`); healthy paths
+  re-verified after each; his third run is pending.
 - **Two findings for the operator (§4.4–4.6), neither R4's to fix:** `--exit-after` was WAP-only (fixed by R4b,
   hoisted); the async present re-shows the front on half the ticks — **49.9 % fresh, 119.3/s**, measured with
   the R4b instruments against 100 % / 239.3/s on the sync path; the batch executes in 0.1 ms and CAN complete in
@@ -356,6 +387,10 @@ evidence from his run, on 1280×720 capture: the first eight stats windows show 
   dump; the bounded-wait fix covers the whole class (every unbounded GPU wait) rather than the one thread that
   hung, because that thread was not identified. The 2 s post-quit abandon is a new behaviour on a HEALTHY device
   only if a fence is genuinely stuck — a condition that previously hung the process; it is printed when it fires.
+  The deadline join is the same shape one level up: a hard exit is a NEW behaviour, gated on `g_device_lost`, and
+  it names what it killed; the P thread's wedged call is inferred from "never ticked again" + "no DXGI loss line",
+  not observed — a procdump of the wedged process would settle which call, and is the named next step if the
+  operator wants the pillar's present path hardened rather than the process ended.
 - **R4b (§4.6):** every number is from one content (the ball zoo, 60 fps, 1920×1080) on this rig, 60 s runs;
   no `gpu_load` soak and no real game were run with the R4b instruments — the `--present-waitable` result is a
   mechanism test, not a product qualification. The "completion" latency is what the poll SAW: the async
