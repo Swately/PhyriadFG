@@ -47,3 +47,7 @@ pslab_run/
 # Python bytecode (a .pyc was committed by a `git add -A` on 2026-09-03; untracked 2026-09-04)
 __pycache__/
 *.pyc
+
+# Run artifacts of tools/r5_pressure.ps1 (CSV + logs, ~2.5 MB per run). The harness is tracked;
+# its outputs are not — a `git add -A` on 2026-09-06 committed 5.4 MB of them before this line existed.
+tools/r5/
