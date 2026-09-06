@@ -115,6 +115,7 @@ add_executable(phyriad_fg
     src/flow/flow_consume.cpp                   # R5 step 3c: the FLOW stage per-pair CPU tail + F->P publish, moved by anchor from run_flow
     src/capture/capture.cpp                    # D3D11/DXGI interop (D3D/d3d_init/find_window/staging) + iGPU ConvPackPipe/UnpackPipe
     src/capture/capture_init.cpp               # E1: capture-side init sections (convert pipe + iGPU pipes + WGC backend), verbatim from main.cpp
+    src/ingest/ingest.cpp                      # R6: STAGE 2 -- the Vulkan convert + the FrameRing publish, moved by anchor from run_capture
     src/warp_blend/warp_blend.cpp              # WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask
     src/warp_blend/warp_blend_init.cpp         # E1: the WAP init section, verbatim from main.cpp
     src/present/present.cpp                     # the present-side UpPipe upscale (bilinear/lanczos) factory
