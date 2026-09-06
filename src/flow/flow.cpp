@@ -1406,7 +1406,7 @@ void run_flow(FgContext& ctx){
                 // leg of the overlapped pair and t_fuse = wait+CPU. Either way t_flow is the blocking-GPU-leg
                 // measure --fsub prints.
                 const double tf0 = (pc.fwd_fence!=VK_NULL_HANDLE) ? now_ms() : pc.tf0;
-                if(pc.fwd_fence!=VK_NULL_HANDLE) vkWaitForFences(FD.dev,1,&pc.fwd_fence,VK_TRUE,UINT64_MAX);   // the consume-side wait — FD.dev (B.dev null under single_gpu would crash)
+                if(pc.fwd_fence!=VK_NULL_HANDLE) vk_wait_live(FD.dev,pc.fwd_fence);   // the consume-side wait — FD.dev (B.dev null under single_gpu would crash)
                 { const double tflow=now_ms()-tf0; t_flow_ema=t_flow_ema>0.0?t_flow_ema*0.8+tflow*0.2:tflow; }
                 if(use_inertia && have_prev_f){
                     const uint16_t* hmv =(const uint16_t*)hostMV[f_gen];
@@ -1693,7 +1693,7 @@ void run_flow(FgContext& ctx){
                 f_pair_bwd_valid_a[f_gen] = do_bwd ? 1 : 0;
                 if(use_bidir && !do_bwd && have_prev_f) stat_bwd_skips.fetch_add(1);
                 if(do_bwd){
-                    vk_live(vkWaitForFences(FD.dev,1,&fB2,VK_TRUE,UINT64_MAX));   // catch a TDR on the bwd flow — the consume-side wait, FD.dev (B.dev null under single_gpu would crash)
+                    vk_wait_live(FD.dev,fB2);   // catch a TDR on the bwd flow — the consume-side wait, FD.dev (B.dev null under single_gpu would crash)
                     if(use_gme){
                         const double gb0=now_ms();
                         float mb6[6]={};
@@ -2143,7 +2143,7 @@ void run_flow(FgContext& ctx){
                                 // the q2 copy-outs are in flight in overlap mode — the dbg diff reads hostI
                                 // directly, so settle this k and the previous one's transfers first
                                 // (diagnostic path only; the production path collects these at SET END).
-                                if(b_q2_split){ vkWaitForFences(FD.dev,1,&tfb[k],VK_TRUE,UINT64_MAX); vkWaitForFences(FD.dev,1,&tfb[k-1],VK_TRUE,UINT64_MAX); }   // FD.dev (b_q2_split false under single_gpu — defensive)
+                                if(b_q2_split){ vk_wait_live(FD.dev,tfb[k]); vk_wait_live(FD.dev,tfb[k-1]); }   // FD.dev (b_q2_split false under single_gpu — defensive)
                                 // dense diff over a fixed rect (x 460-800, y 180-560)
                                 const uint8_t* a8=(const uint8_t*)hostI[f_gen][k-1];
                                 const uint8_t* b8=(const uint8_t*)hostI[f_gen][k];
@@ -2174,7 +2174,7 @@ void run_flow(FgContext& ctx){
                 // flight. Only the B-else overlapped path submitted them (not pfg, not the NI_use<1 path); in
                 // dump mode tfb[k]/tfb[k-1] were already settled inline but re-waiting is a no-op.
                 if(b_q2_split&&have_prev_f&&NI_use>=1&&!(fg_on_prim_f&&pfg_enabled)&&!use_wap){
-                    for(int k=0;k<NI_use;++k) vk_live(vkWaitForFences(FD.dev,1,&tfb[k],VK_TRUE,UINT64_MAX));   // catch a TDR on the flow — FD.dev (b_q2_split false under single_gpu — defensive)
+                    for(int k=0;k<NI_use;++k) vk_wait_live(FD.dev,tfb[k]);   // catch a TDR on the flow — FD.dev (b_q2_split false under single_gpu — defensive)
                 }
                 // the WAP path advances its own loop-progression (cur_f/have_prev_f/prev_ingest_cseq per
                 // RECORD) AND does its own publish + live_n in consume_wap (deferred one pair when

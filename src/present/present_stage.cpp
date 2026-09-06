@@ -194,7 +194,7 @@ void PresentStage::submit(const Tick& tk, VkSubmitInfo& si) {
     if(timing_) submit_ms_[tk.back] = now_ms();   // R4b: the host clock at submit (the latency's start)
     struct SyncRead { PresentStage& s; const Tick& tk; ~SyncRead(){ if(!tk.ap && s.timing_) s.timing_read(tk.back); } } _r{ *this, tk };   // sync: the fence completed inside
     if(!tk.ap){
-        vkQueueSubmit(A.q,1,&si,tk.fence); vk_live(vkWaitForFences(A.dev,1,&tk.fence,VK_TRUE,UINT64_MAX));   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
+        vkQueueSubmit(A.q,1,&si,tk.fence); vk_wait_live(A.dev,tk.fence);   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
     } else {
         // submit non-blocking; mark this slot in flight. The present thread polls it on a
         // LATER tick (the preamble above). No vkWaitForFences here — that wait IS the latency we shed.
@@ -207,7 +207,7 @@ void PresentStage::submit(const Tick& tk, VkSubmitInfo& si) {
 // TRANSFORMS: `fBridge` → `fence`.
 void PresentStage::submit_sync(VkFence fence, VkSubmitInfo& si) {
     VDev& A = A_;
-    vkQueueSubmit(A.q,1,&si,fence); vk_live(vkWaitForFences(A.dev,1,&fence,VK_TRUE,UINT64_MAX));   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
+    vkQueueSubmit(A.q,1,&si,fence); vk_wait_live(A.dev,fence);   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
 }
 
 // ── shallow_queue: the bounded early promote of THIS tick's warp (legacy present.cpp:1635-1650) ─────────

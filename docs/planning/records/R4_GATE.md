@@ -274,17 +274,51 @@ history — with these numbers: (1) accept ~120 fresh/s (ships today); (2) flip 
 +0.8 ms, the P thread 94 % busy; (3) `--shallow-queue` at 4000 µs: 73–78 % fresh at LOWER latency than the
 default, but bistable on the 16 s cycle — not a product setting; (4) `--present-waitable` — an EXISTING default-off knob (the pillar's FG_PRESENT_PACING_DESIGN option B): 99.85 % fresh on the async path at +0.35 ms `MsAddedLatency`, the P thread blocked in the waitable wait; making it the default is the same product decision, with that design note as its history. The session's recommendation, for his decision: (4) over (2) — the same 240 fresh/s at 0.4 ms less added latency than sync and without the fence wait's overrun exposure — after a DI-3 pair under `gpu_load` and on real game content, neither run here.
 
-## 5 · `--tdr-test` — built, NOT run
+## 5 · `--tdr-test` — run by the operator: the detection PASSED, the teardown HUNG, the hang fixed, re-run pending
 
 The forced GPU hang resets the device that carries the operator's interactive display: an **L3** operation under
-`SAFETY_PROTOCOL.md` §5 (GPU context), which requires the working tree checkpointed first (this commit) and the
-operator's explicit approval. The instrument is complete (`shaders/tdr_hang.comp`: one workgroup whose loop bound
-is a push value the compiler cannot fold; `PresentStage::tdr_arm/tdr_maybe`: armed at init, recorded ONCE into
-the tick's command buffer at T+N s, before `vkEndCommandBuffer`). Expected path: the hang → Windows TDR (~2 s) →
-`VK_ERROR_DEVICE_LOST` on the next fence wait/poll → `vk_live()` → `g_quit` → the clean teardown. **G-R4's TDR
-item is `built, awaiting the operator's word`**; the record will carry the run's output when he gives it.
+`SAFETY_PROTOCOL.md` §5, so the operator ran it himself (2026-09-05 evening, `build-release\phyriad_fg.exe --window
+"RA Ball Zoo" --exit-after 60 --tdr-test 15`, the R4b binary). The instrument: `shaders/tdr_hang.comp` (one workgroup
+whose loop bound is a push value the compiler cannot fold) + `PresentStage::tdr_arm/tdr_maybe` (armed at init,
+recorded ONCE into the tick's command buffer at T+N s, before `vkEndCommandBuffer`).
 
-## 6 · Verdict — **G-R4 PASSED, except the forced-TDR item (built, awaiting the operator's word)**
+**What his run printed (quoted):** `[ra] --tdr-test 15: ARMED -- a never-terminating compute dispatch will be
+recorded into the present-stage command buffer at T+15 s to force a GPU timeout (TDR) and prove the device-loss
+exit path` → 40 stats windows of normal presenting (`[ra] 242.5 fps (present) | … | ps 242/s ok=3510 to=0 er=0`)
+→ `[ra] --tdr-test: dispatching the GPU hang NOW (expect VK_ERROR_DEVICE_LOST within the TDR window, then the
+clean g_quit exit)` → `[ra] VK_ERROR_DEVICE_LOST -- graceful exit (the game keeps running; PhyriadFG is an external
+overlay)` → **nothing more**: the process stayed alive and he had to force-close it ("cuando da el ultimo mensaje,
+crashea … tengo que forzar su cierre"). The desktop stayed usable (the TDR recovered the display).
+
+**Reading.** Two halves. (1) **The detection path PASSED:** the hang was dispatched at T+15 s, Windows' TDR reset
+the device, the next fence poll returned `VK_ERROR_DEVICE_LOST`, `vk_live` latched `g_device_lost`, printed the
+one-shot line and set `g_quit` — exactly the designed chain. (2) **The teardown FAILED:** neither `[ra] done (…)`
+nor the bounded-run clean-exit line printed, and both sit AFTER the worker joins (`main.cpp:1051-1053`:
+`thr_c.join(); … thr_f.join(); thr_p.join();`) — so a worker thread never exited. Cause, read from the code: the
+workers waited with `vkWaitForFences(…, VK_TRUE, UINT64_MAX)` (F: `flow.cpp:1409/1696/2146/2177`, `flow.hpp:201`;
+C: `capture.cpp:762/938`; P: `present_stage.cpp:197/210`, `present.cpp:255/686/789`; the init helpers
+`vk_util.cpp:66-67`, `vk_util.hpp:60`). After the loss a submit is refused and its fence never signals; an
+unbounded wait on it never returns, and `vk_live` wrapped around such a wait never gets to run. Under single-GPU
+(this run: flow + convert on A.q2, present on A.q) every worker shares the lost device. The thread was not
+identified by a dump — the operator's console is the only evidence — but every candidate is this pattern.
+
+**The fix (same day, `r4c_patch.py`):** ONE helper, `vk_wait_live(dev, fence)` / `vk_wait_sem_live(dev, wi)` in
+`core/globals.{hpp,cpp}`, beside `vk_live`: 20 ms slices; `VK_SUCCESS` → true; any error → `vk_live` (latches the
+loss) → false; `VK_TIMEOUT` with `g_device_lost` already latched on ANOTHER thread → false; an object still
+unsignalled 2 s after a quit request → false, said once (`[ra] vk_wait_live: an object stayed unsignalled 2 s
+after the quit request -- abandoning the wait (teardown proceeds)`). All 14 unbounded waits routed through it;
+`grep vkWait.*UINT64_MAX src/` is empty. On a healthy device a signalled fence returns on its slice — the same
+result as before, ~20 ms later at worst when a wait genuinely straddles a slice boundary (the sync present's
+4.03 ms fence never does). Build: 0 errors, 34 warnings, none on a touched line (the same `fopen`/C4189/C4456 set).
+
+**Verification of the healthy paths (the session, 10 s bounded runs, ball zoo):** {VERIFY}
+
+**Status of G-R4's TDR item:** the detection half is PROVEN by the operator's run; the teardown half is FIXED and
+**awaits his re-run** of the same command line on the new binary — the record will carry that output. Side
+evidence from his run, on 1280×720 capture: the first eight stats windows show `fresh:243/s` with `slip 0.00`, then
+`fresh:121/s rdrop:121/s` as `slip` climbs 0.26 → 7.35 ms — §4.6's mechanism on a second content and session.
+
+## 6 · Verdict — **G-R4 PASSED, except the forced-TDR item (detection proven; the teardown fix awaits his re-run)**
 
 - **The extraction changes nothing the instruments can see:** presents Δ +0.5 (spread 1–2), `disp_phase` mean
   Δ +0.0002 (A's spread 0.0003), `disp_src` step 0.2495 both, uniq/s Δ −0.03, `MsBetweenDisplayChange` median
@@ -298,7 +332,9 @@ item is `built, awaiting the operator's word`**; the record will carry the run's
   own-window surface, `last_flip_qpc()` now a `FlipStats` edge (MR-7); nine references bound, nothing copied,
   the slots bound not re-created (CR1); its own TU under LTO, presents/latency inside spread (PR1).
 - **The decision is declared** — `Decision::{Warp, Dup, Drop, Decimated}` — and load-bearing: `begin()` consumes it.
-- **`--tdr-test N`:** built, not run (§5) — the one G-R4 item that waits, for the stated safety reason.
+- **`--tdr-test N`:** run by the operator (§5): the device-loss DETECTION proven (`VK_ERROR_DEVICE_LOST` latched, the
+  graceful-exit line printed), the TEARDOWN hung on unbounded fence waits — fixed the same day (`vk_wait_live`, 14
+  sites), healthy paths re-verified; the re-run on the fixed binary is his and pending.
 - **Two findings for the operator (§4.4–4.6), neither R4's to fix:** `--exit-after` was WAP-only (fixed by R4b,
   hoisted); the async present re-shows the front on half the ticks — **49.9 % fresh, 119.3/s**, measured with
   the R4b instruments against 100 % / 239.3/s on the sync path; the batch executes in 0.1 ms and CAN complete in
@@ -316,6 +352,10 @@ item is `built, awaiting the operator's word`**; the record will carry the run's
   would re-read text a script already diffed.
 - PR1 (de-inlining): the stage lives in its own TU (like R1's clock); LTO/IPO is on; the presents/s and latency
   numbers of §4 are the measurement.
+- **R4c (§5):** the TDR hang was diagnosed from the operator's console output and the code, not from a thread
+  dump; the bounded-wait fix covers the whole class (every unbounded GPU wait) rather than the one thread that
+  hung, because that thread was not identified. The 2 s post-quit abandon is a new behaviour on a HEALTHY device
+  only if a fence is genuinely stuck — a condition that previously hung the process; it is printed when it fires.
 - **R4b (§4.6):** every number is from one content (the ball zoo, 60 fps, 1920×1080) on this rig, 60 s runs;
   no `gpu_load` soak and no real game were run with the R4b instruments — the `--present-waitable` result is a
   mechanism test, not a product qualification. The "completion" latency is what the poll SAW: the async

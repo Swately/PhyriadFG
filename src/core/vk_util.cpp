@@ -63,5 +63,6 @@ bool dbuf_create(VDev& d,VkDeviceSize bytes,VkBufferUsageFlags usage,HBuf& out){
     vkBindBufferMemory(d.dev,out.buf,out.mem,0); return true;
 }
 
-void submit_wait(VDev& d,VkCommandBuffer cmd,VkFence f){ vkResetFences(d.dev,1,&f); VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmd; vkQueueSubmit(d.q,1,&si,f); vk_live(vkWaitForFences(d.dev,1,&f,VK_TRUE,UINT64_MAX)); }
-void submit_wait_q2(VDev& d,VkCommandBuffer cmd,VkFence f){ vkResetFences(d.dev,1,&f); VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmd; vkQueueSubmit(d.q2,1,&si,f); vk_live(vkWaitForFences(d.dev,1,&f,VK_TRUE,UINT64_MAX)); }
+void submit_wait(VDev& d,VkCommandBuffer cmd,VkFence f){ vkResetFences(d.dev,1,&f); VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmd; vkQueueSubmit(d.q,1,&si,f); vk_wait_live(d.dev,f); }
+void submit_wait_q2(VDev& d,VkCommandBuffer cmd,VkFence f){ vkResetFences(d.dev,1,&f); VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmd; vkQueueSubmit(d.q2,1,&si,f); vk_wait_live(d.dev,f); }
+// Made with my soul - Swately <3

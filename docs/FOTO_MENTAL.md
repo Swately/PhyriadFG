@@ -277,8 +277,11 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    decisión de política de present (aceptar 120/s, pasar el default a síncrono, o quitar la espera) es del
    operador — un default de producto con historia visible.
 5. **NEXT** — (a) la decisión del operador sobre XR15 (política de present; las opciones y los números
-   están en `R4_GATE.md` §4.6 y en la secuencia del escritorio, 3.2b); (b) `--tdr-test 20` cuando el operador
-   lo ejecute (bloqueado para la sesión por la política del asistente; la línea está en el informe);
+   están en `R4_GATE.md` §4.6 y en la secuencia del escritorio, 3.2b); (b) el operador YA corrió `--tdr-test 15` (R4c, `R4_GATE.md` §5): la detección
+   quedó probada (`VK_ERROR_DEVICE_LOST` capturado e impreso) y el desmontaje se colgó en esperas
+   `vkWaitForFences(UINT64_MAX)` sobre fences que ya no señalizan → `vk_wait_live` (20 ms por rebanada, abandona
+   con dispositivo perdido) en los 14 sitios; caminos sanos re-verificados; falta SU re-corrida del mismo comando
+   sobre el binario nuevo (la sesión no lo ejecuta: L3 + clasificador);
    (c) R5 — `FlowSet`/`FlowRing`, holones como filas, el pase de consenso como fila de la etapa 3, `wap_upload`
    condicional — precedido por 4.2 (la mitad de papel). No re-derivar: R3 (4q), R4 (4r), R4b (4s).
 

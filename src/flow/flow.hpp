@@ -198,7 +198,7 @@ void nvofa_run(VDev& d,NvofaProvider& n,VkImage src_a,VkImage src_b,uint32_t src
     q2_submit(n.cmdConv,n.semOfa,(VkPipelineStageFlags)VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_NULL_HANDLE,n.fConv);
     // The F-thread blocks ONCE here: fConv signals only after the whole prep→OFA→convert chain has retired, so
     // both binary semaphores are back unsignaled and the per-pair cmd buffers are free to reset next pair.
-    vk_live(vkWaitForFences(d.dev,1,&n.fConv,VK_TRUE,UINT64_MAX));
+    vk_wait_live(d.dev,n.fConv);
     (void)mvOutView; (void)sadOutView;
 }
 
@@ -262,3 +262,4 @@ void med_destroy(VDev& d,MedianPipe& p);
 // ── Thread F — run_flow. main() builds FgContext ctx and launches
 //    std::thread thr_f(run_flow, std::ref(ctx)).
 void run_flow(FgContext& ctx);
+// Made with my soul - Swately <3

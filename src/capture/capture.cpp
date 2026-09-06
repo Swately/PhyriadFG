@@ -759,7 +759,7 @@ void run_capture(FgContext& ctx){
                       // (q2==q) still needs the lock (P also submits to that queue).
                       if(G.q2!=G.q){ vkQueueSubmit(G.q2,1,&si,fG); }
                       else { std::lock_guard<std::mutex> lk(g_q_mtx); vkQueueSubmit(G.q,1,&si,fG); } }
-                    vkWaitForFences(G.dev,1,&fG,VK_TRUE,UINT64_MAX);
+                    vk_wait_live(G.dev,fG);
                     { const double dt=now_ms()-tcv0;
                       const uint64_t prev=c_conv_us.load();
                       c_conv_us.store(prev?(uint64_t)((double)prev*0.8+dt*1000.0*0.2):(uint64_t)(dt*1000.0)); }
@@ -935,7 +935,7 @@ void run_convert_worker(FgContext& ctx){
               si.commandBufferCount=1; si.pCommandBuffers=&cmdG;
               if(G.q2!=G.q){ vkQueueSubmit(G.q2,1,&si,fG); }
               else { std::lock_guard<std::mutex> lk(g_q_mtx); vkQueueSubmit(G.q,1,&si,fG); } }
-            vkWaitForFences(G.dev,1,&fG,VK_TRUE,UINT64_MAX);
+            vk_wait_live(G.dev,fG);
             { const double dt=now_ms()-tcv0;
               const uint64_t prev=c_conv_us.load();
               c_conv_us.store(prev?(uint64_t)((double)prev*0.8+dt*1000.0*0.2):(uint64_t)(dt*1000.0)); }
@@ -969,3 +969,4 @@ void run_convert_worker(FgContext& ctx){
         c_cv.notify_all();
     }
 }
+// Made with my soul - Swately <3

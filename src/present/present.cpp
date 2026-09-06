@@ -252,7 +252,7 @@ void run_present(FgContext& ctx){
           VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO;
           si.commandBufferCount=1; si.pCommandBuffers=&cb;
           vkQueueSubmit(G.q,1,&si,f); }
-        vkWaitForFences(G.dev,1,&f,VK_TRUE,UINT64_MAX);
+        vk_wait_live(G.dev,f);
     };
     // ── PRESENT thread body (incl. all nested lambdas) ──
             // --pin-test 5: MMCSS token held thread-local → RAII AvRevert at thread exit.
@@ -683,7 +683,7 @@ void run_present(FgContext& ctx){
                         uint64_t cur=0; vkGetSemaphoreCounterValue(A.dev,A.semUpTL,&cur);   // non-blocking poll
                         if(cur < uslot_val[us]){   // this slot's prior upload is STILL executing on A.qT → wait (rare)
                             VkSemaphoreWaitInfo wi{}; wi.sType=VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO; wi.semaphoreCount=1; wi.pSemaphores=&A.semUpTL; wi.pValues=&uslot_val[us];
-                            vkWaitSemaphores(A.dev,&wi,UINT64_MAX);
+                            vk_wait_sem_live(A.dev,wi);
                         }
                     }
                 }
@@ -786,7 +786,7 @@ void run_present(FgContext& ctx){
                 } else {
                     vkResetFences(A.dev,1,&fBridge);
                     VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmdBridge;
-                    vkQueueSubmit(A.q,1,&si,fBridge); vk_live(vkWaitForFences(A.dev,1,&fBridge,VK_TRUE,UINT64_MAX));   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
+                    vkQueueSubmit(A.q,1,&si,fBridge); vk_wait_live(A.dev,fBridge);   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
                 }
             };
             // Per tick (WAP-on-A) warp at the exact phase t into wapOutA, blit → bridge

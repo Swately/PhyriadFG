@@ -50,6 +50,15 @@ extern std::atomic<bool> g_device_lost;
 // setting g_quit is what unwinds the threads). Trips ONLY on VK_ERROR_DEVICE_LOST; identity on the
 // happy path (VK_SUCCESS) → wrapped sites are byte-identical when no device is lost.
 bool vk_live(VkResult r) noexcept;
+// vk_wait_live / vk_wait_sem_live: THE fence / timeline-semaphore wait for every worker thread. Bounded 20 ms
+// slices, so a thread never sits in a driver call that cannot return: on a LOST device a fence whose submit was
+// refused never signals, and vkWaitForFences(UINT64_MAX) there is the hang the --tdr-test exposed (2026-09-05:
+// VK_ERROR_DEVICE_LOST latched and printed, then a worker join never returned). Returns true when the wait
+// completed; false when the device is lost — seen here (vk_live latches it) or on ANY other thread meanwhile —
+// or when the object is still unsignalled 2 s after a quit request (said once; the teardown proceeds). On a
+// healthy device a signalled object returns on its slice: byte-identical behaviour to the unbounded wait.
+bool vk_wait_live(VkDevice dev, VkFence f) noexcept;
+bool vk_wait_sem_live(VkDevice dev, const VkSemaphoreWaitInfo& wi) noexcept;
 BOOL WINAPI console_ctrl_handler(DWORD ctrl);
 // Made with my soul - Swately <3
 
