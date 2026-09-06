@@ -184,6 +184,16 @@ add_test(NAME clock_replay_oracle COMMAND pfg_clock_test "${CMAKE_CURRENT_SOURCE
 # ASCII only in the regex: the RESULT line carries an em-dash, which no single-byte regex atom matches.
 set_tests_properties(clock_replay_oracle PROPERTIES PASS_REGULAR_EXPRESSION "replay oracle over [0-9]+ ticks")
 
+# 2b. The same oracle over the two dimensions the first fixture cannot reach (4.3's honesty ledger named this gap):
+#     a different SOURCE RATE (120 fps -> a per-pair budget of 8.3 ms instead of 16.7) and a run under real GPU
+#     pressure where the governor engaged tier 5, i.e. with the bwd-skip and holon-shedding branches live and
+#     span > 1. Both reproduce bit-exactly; if the clock ever stops being deterministic under pressure, THIS is the
+#     test that says so, and the idle 60 fps one will not.
+add_test(NAME clock_replay_oracle_120fps COMMAND pfg_clock_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/clock/fixtures/ball_zoo_120fps_240hz.alog")
+set_tests_properties(clock_replay_oracle_120fps PROPERTIES PASS_REGULAR_EXPRESSION "replay oracle over [0-9]+ ticks")
+add_test(NAME clock_replay_oracle_pressured COMMAND pfg_clock_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/clock/fixtures/ball_zoo_120fps_pressured.alog")
+set_tests_properties(clock_replay_oracle_pressured PROPERTIES PASS_REGULAR_EXPRESSION "replay oracle over [0-9]+ ticks")
+
 # 3. The synthetic half alone — legitimate, and it must SAY that the oracle did not run (the pre-4.3 build printed
 #    "all checks passed (0)" here, which is the false green this step removed).
 add_test(NAME clock_synthetic COMMAND pfg_clock_test)

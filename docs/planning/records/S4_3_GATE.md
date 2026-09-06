@@ -32,21 +32,23 @@ The oracle had never run against a real log in its life. Its `replay()` takes a 
    missing-value class in one place) and the unknown-option branch — and `main` exits **2** when it is set. `--help`
    and every informational stop keep 0. This is a behaviour change to a shipped binary, deliberate and recorded.
 
-## 2 · The suite (43 tests, ~1.5 s, CPU-only, no GPU or window needed)
+## 2 · The suite (45 tests, ~1.5 s, CPU-only, no GPU or window needed)
 
 | # | test | what it guards |
 |---|---|---|
 | 1 | `seam_graph` | R2's 148 derived-barrier checks |
 | 2 | **`clock_replay_oracle`** | R1's bit-parity oracle over `tests/clock/fixtures/ball_zoo_60fps_240hz.alog` (2,877 ticks) — **the check that had never run** |
-| 3 | `clock_synthetic` | the synthetic half, and that it SAYS the oracle did not run |
-| 4 | `clock_replay_missing_log_fails` | negative: told to replay an unopenable log, it must FAIL |
-| 5–38 | `layer_parity_1..34` | the registry's shadow parser vs the hand parser over 34 token combinations (`--dump-config` exits 3 on a mismatch), including the `--gme-gpu-verify` / `--no-gme-gpu` ordering that broke it during R5 step 1 |
-| 39 | `layer_contract_hash` | the pinned contract hash of the default resolved chain (`0x9517AE73A530EAFE`) |
-| 40–42 | `cli_unknown_option_exits_2`, `cli_missing_value_exits_2`, `cli_help_exits_0` | §1.2's fix, both directions |
-| 43 | `layer_gen_rejects_bad_body` | negative: the generator must refuse a row body with a direct `lp.` UBO read (exit 3) — and the script first proves the UNMODIFIED tree generates cleanly, so a failure is attributable |
+| 3–4 | **`clock_replay_oracle_120fps`**, **`clock_replay_oracle_pressured`** | the same oracle at a halved per-pair budget (2,398 ticks) and under real GPU pressure with the governor at `tier:5`, span > 1 and the shedding branches live (2,118 ticks) — added the same day, §4 |
+| 5 | `clock_synthetic` | the synthetic half, and that it SAYS the oracle did not run |
+| 6 | `clock_replay_missing_log_fails` | negative: told to replay an unopenable log, it must FAIL |
+| 7–40 | `layer_parity_1..34` | the registry's shadow parser vs the hand parser over 34 token combinations (`--dump-config` exits 3 on a mismatch), including the `--gme-gpu-verify` / `--no-gme-gpu` ordering that broke it during R5 step 1 |
+| 41 | `layer_contract_hash` | the pinned contract hash of the default resolved chain (`0x9517AE73A530EAFE`) |
+| 42–44 | `cli_unknown_option_exits_2`, `cli_missing_value_exits_2`, `cli_help_exits_0` | §1.2's fix, both directions |
+| 45 | `layer_gen_rejects_bad_body` | negative: the generator must refuse a row body with a direct `lp.` UBO read (exit 3) — and the script first proves the UNMODIFIED tree generates cleanly, so a failure is attributable |
 
-The fixture is a real recording (`phyriad_fg --arrival-log`, ball zoo 60 fps → 240 Hz, 12 s, 2,880 lines, 1.1 MB).
-Committed deliberately: without it the oracle cannot run anywhere but on a machine with a GPU and a window.
+The fixtures are real recordings (`phyriad_fg --arrival-log` on the ball zoo; 2.9 MB for the three). Committed
+deliberately and marked `-text` in `.gitattributes`: without them the oracle cannot run anywhere but on a machine
+with a GPU and a window, and an end-of-line conversion would alter the very bytes it replays.
 
 **Where it runs:** `build-release.bat` now runs `ctest` after a successful build and exits non-zero if the suite is
 red — the binary is already written at that point, so nothing is blocked; what fails is the claim that the build is
@@ -55,11 +57,11 @@ good. `tools/run_tests.bat` is the standalone entry point.
 ## 3 · Every gate seen RED (EMPIRICAL_TEST §3.3)
 
 A test whose failure has never been observed is a claim, not a gate. Four perturbations, each built, run, and
-reverted; after every revert the suite returned to 43/43.
+reverted; after every revert the suite returned to green (43/43 at the time; 45/45 after the two fixtures below).
 
 | # | perturbation | expected red | result |
 |---|---|---|---|
-| A₀ | `phase_clock.cpp`: `+0.5` → `+0.5000001` in the phase-quantisation key | `clock_replay_oracle` | **STAYED GREEN — 43/43** |
+| A₀ | `phase_clock.cpp`: `+0.5` → `+0.5000001` in the phase-quantisation key | `clock_replay_oracle` | **STAYED GREEN** |
 | A | `phase_clock.cpp`: `t_use = phase_global` → `× (1 + 1e-15)` (one ulp) | `clock_replay_oracle` | **RED**: `mismatches … t_use=2877` of 2,877 ticks; `clock_synthetic` red too |
 | B | `layer_table.def`: `bg_reclaim` rank 30 → 31 | `layer_contract_hash` | **RED** |
 | C | `layer_registry.cpp`: the shadow parser stops applying `PF_IMPLIES_ON` | some `layer_parity_*` | **RED**: cases 10, 11, 18, 34 — exactly the `--mv-smooth` / `--gme-gpu-verify` / `--no-shapefield` families |
@@ -83,8 +85,13 @@ mismatch on **every single tick**.
   session — the annoyance is the mechanism.
 - The parity corpus is 34 hand-chosen combinations, not an exhaustive product of the token space; it covers every
   token R5 added plus the ordering that was seen red during R5 step 1.
-- The fixture is one content at one rate on one rig. A clock regression that only appears at another source rate
-  would not be caught. A second fixture is cheap and is not done.
+- ~~The fixture is one content at one rate on one rig; a second fixture is cheap and is not done.~~
+  **Closed the same day (2026-09-06):** two more fixtures recorded and wired — `ball_zoo_120fps_240hz.alog`
+  (2,398 ticks; the per-pair budget halves to 8.3 ms) and `ball_zoo_120fps_pressured.alog` (2,118 ticks,
+  recorded under the `gpu_oc` arbiter with the governor engaging `tier:5`, so span > 1 and the bwd-skip /
+  holon-shedding branches are live). Both replay with **0 mismatches on all eight compared quantities** —
+  the clock's bit-determinism under pressure was an assumption and is now measured. The suite is 45 tests.
+  Still one content and one rig.
 - `parse_failed` was added at two sites. There are 43 `return false` paths in `parse_args`; the rest are
   informational stops that keep exit 0. If any of them is actually an error, it still exits 0 — unclassified, and
   said here rather than claimed otherwise.
