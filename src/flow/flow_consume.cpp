@@ -7,8 +7,8 @@
 #include "core/fg_context.hpp"
 #include "core/vk_util.hpp"
 #include "core/globals.hpp"
-#include "cli/cli.hpp"
-#include "layers/layer_config.hpp"
+#include "control/cli.hpp"
+#include "control/layer_config.hpp"
 #include "instrument/instrument.hpp"
 #include <cstdio>
 #include <cstring>

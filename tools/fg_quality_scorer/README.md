@@ -8,7 +8,7 @@
 >
 > **`--qdump` AND THE PRESENT PATH:** the triple dump is written only on the SYNCHRONOUS present path
 > (`src/present/present.cpp`, the block is gated on `!ap`). The shipping default IS `--async-present`,
-> but `resolve_config` (`src/cli/cli.cpp:227–231`) AUTO-DISABLES it for any run that asks for `--qdump`
+> but `resolve_config` (`src/control/cli.cpp:227–231`) AUTO-DISABLES it for any run that asks for `--qdump`
 > or `--outdump`, and prints the reason — so `--qdump DIR N` alone is enough; `--no-async-present` is
 > equivalent, not required. VERIFIED 2026-09-03: the flag alone wrote 4 triples. (An earlier note in the
 > planning docs called `--qdump` "inert under the shipping default"; that was a misreading of the

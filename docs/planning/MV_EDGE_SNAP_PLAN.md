@@ -5,7 +5,7 @@
 - **Status:** `measured` — **INCONCLUSIVE on the ball-zoo bench** (see verdict). The code is correct,
   OFF is byte-identical, cost/stability gates pass; the geometry gates cannot be resolved above the
   bench's run-to-run measurement variance. Ships behind the default-OFF flag for the operator's eye.
-- **Scope:** `shaders/wap_warp.comp` (the fetch), `src/warp_blend/warp_blend.cpp` (`pcr.size`), `src/present/present.cpp` (encode + push), `src/cli/{cli.hpp,cli.cpp}` (flag), `src/core/main.cpp` (banner + WAP guard). No pacing / selection / PLL touched.
+- **Scope:** `shaders/wap_warp.comp` (the fetch), `src/generate/warp_blend.cpp` (`pcr.size`), `src/present/present.cpp` (encode + push), `src/control/{cli.hpp,cli.cpp}` (flag), `src/core/main.cpp` (banner + WAP guard). No pacing / selection / PLL touched.
 
 ## Measured motivation (the convicted defect)
 

@@ -2,7 +2,7 @@
 // Bodies of the present-side upscale factory declared in present/present.hpp; they have
 // external linkage here (main calls them).
 #include "present/present.hpp"
-#include "layers/layer_config.hpp"   // R3: FgPush, layer_arm_mask, the contract hash
+#include "control/layer_config.hpp"   // R3: FgPush, layer_arm_mask, the contract hash
 #include "clock/phase_clock.hpp"   // STAGE 4: the content clock (R1/X14)
 #include "present/present_stage.hpp"   // STAGE 6: the present stage (R4/X12)
 #include "tdr_hang_spv.hpp"           // kTdrHangSpv (--tdr-test, G-R4)

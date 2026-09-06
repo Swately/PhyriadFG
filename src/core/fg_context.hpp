@@ -9,12 +9,12 @@
 #include <cstdint>
 #include <vulkan/vulkan.h>
 #include <d3d11.h>                                  // ID3D11Texture2D (dxgi_stage)
-#include "cli/cli.hpp"                              // Config
+#include "control/cli.hpp"                              // Config
 #include "core/vk_util.hpp"                         // Img, HBuf (+ now_ms/img_barrier/full_bic/submit_wait used by the body)
 #include "core/device.hpp"                          // VDev
 #include "core/globals.hpp"                         // g_quit (true global referenced by the body)
 #include "capture/capture.hpp"                      // D3D, ConvPackPipe
-#include "warp_blend/warp_blend.hpp"                // FieldPipe
+#include "generate/warp_blend.hpp"                // FieldPipe
 #include "capture/wgc_ctx.hpp"                      // WgcCtx (MSVC/WGC)
 #include <phyriad/topology/HardwareTopology.hpp>    // phyriad::hw (MMCSS/pin - used by the body)
 #include <phyriad/render/vulkan/OpticalFlowPipeline.hpp>  // ofp/ofpA (the F-thread flow pipeline)

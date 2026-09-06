@@ -31,8 +31,8 @@
   134.5 → 15.7 px, ~92% of the regression closed; operator eye-test pending). Known residuals
   (operator-observed, non-blockers) in §9.
 - **Scope:** `shaders/wap_warp.comp` (the base-track bias at the warp composition + the reclaim damp
-  at the primary-MV fetch), `src/warp_blend/warp_blend.cpp` (`pcr.size`), `src/present/present.cpp`
-  (encode + push the two new fields), `src/cli/{cli.hpp,cli.cpp}` (two flags + cascades),
+  at the primary-MV fetch), `src/generate/warp_blend.cpp` (`pcr.size`), `src/present/present.cpp`
+  (encode + push the two new fields), `src/control/{cli.hpp,cli.cpp}` (two flags + cascades),
   `src/core/main.cpp` (banner markers + WAP guard). No pacing / PLL / selection / present-clock
   touched. Sibling of `MV_EDGE_SNAP_PLAN.md`.
 
@@ -351,12 +351,12 @@ target GPUs; 8B headroom left — this is the last comfortable slot, note for th
 
 Consistency checklist (all four MUST agree at 232B):
 1. `shaders/wap_warp.comp` `PushConsts`: append `float single_track; float bg_reclaim;`.
-2. `src/warp_blend/warp_blend.cpp`: `pcr.size = 232;` + comment update.
+2. `src/generate/warp_blend.cpp`: `pcr.size = 232;` + comment update.
 3. `src/present/present.cpp`: `pcw` struct append `float sto; float bgr;` + the initializer's two
    trailing values + the offset comment.
-4. `src/cli/cli.hpp`: `bool single_track=false;`, `float bg_reclaim=0.f;` (0=off; set to strength on
+4. `src/control/cli.hpp`: `bool single_track=false;`, `float bg_reclaim=0.f;` (0=off; set to strength on
    `--bg-reclaim`), `float bg_reclaim_strength=1.0f;`.
-5. `src/cli/cli.cpp`: parse `--single-track`, `--bg-reclaim [strength]`, `--bg-reclaim-strength`; add
+5. `src/control/cli.cpp`: parse `--single-track`, `--bg-reclaim [strength]`, `--bg-reclaim-strength`; add
    the WAP `--no-warp-at-presenter` cascade (both disabled) like `mv_edge_snap` (cli.cpp ~L174).
 6. `src/core/main.cpp`: banner markers (`single-track`, `bg-reclaim`) + the WAP guard.
 

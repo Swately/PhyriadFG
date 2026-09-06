@@ -1,4 +1,4 @@
-// PhyriadFG — src/layers/layer_registry.cpp : the registry's runtime (stage R0 of
+// PhyriadFG — src/control/layer_registry.cpp : the registry's runtime (stage R0 of
 // docs/planning/CONVERGENCE_MASTER_PLAN.md; strategies X1/X2 of CONVERGENCE_IMPLEMENTATION_STRATEGIES.md).
 //
 // Everything here reads ONLY pfg::layers::kLayers / kParams (layer_table.def expanded). The shadow
@@ -13,8 +13,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
-#include "cli/cli.hpp"
-#include "layers/layer_config.hpp"
+#include "control/cli.hpp"
+#include "control/layer_config.hpp"
 
 namespace pfg::layers {
 
@@ -412,7 +412,7 @@ static bool first_carrier(const uint16_t* order, uint16_t k, const char* tok) {
 }
 // ── --help section ──────────────────────────────────────────────────────────────────────────────
 void print_layer_help() {
-    std::printf("\nLAYERS (the registry: src/layers/layer_table.def is the single declaration site; --layer-dump prints the resolved chain,\n"
+    std::printf("\nLAYERS (the registry: src/control/layer_table.def is the single declaration site; --layer-dump prints the resolved chain,\n"
                 "        --layer-model-json emits the UI model, --dump-config the parsed record):\n");
     uint16_t order[kLayerCount]; layer_exec_order(order);
     for (uint16_t k = 0; k < kLayerCount; ++k) {

@@ -1,4 +1,4 @@
-#include "cli/cli.hpp"
+#include "control/cli.hpp"
 // PhyriadFG cli/ layer bodies — print_help + parse_args.
 #include <cstdio>
 #include <cstring>

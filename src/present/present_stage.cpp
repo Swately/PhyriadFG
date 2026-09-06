@@ -11,7 +11,7 @@
 // tree uses.
 // Made with my soul - Swately <3
 #include "present/present_stage.hpp"
-#include "cli/cli.hpp"                // Config (cfg.async_present / pace_hard / shallow_queue / present_* …)
+#include "control/cli.hpp"                // Config (cfg.async_present / pace_hard / shallow_queue / present_* …)
 #include "core/globals.hpp"           // g_quit / g_quit_threads / g_device_lost / vk_live
 #include "core/compat_reason.hpp"     // ra::compat::emit (the named-reason present-init bail)
 #include <phyriad/hal/CpuWait.hpp>    // phyriad::hal::cpu_wait_for_ns / spin_hint

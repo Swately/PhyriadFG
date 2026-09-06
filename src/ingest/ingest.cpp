@@ -8,7 +8,7 @@
 #include "core/fg_context.hpp"
 #include "core/vk_util.hpp"
 #include "core/globals.hpp"
-#include "cli/cli.hpp"
+#include "control/cli.hpp"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -22,12 +22,10 @@ namespace pfg::ingest {
 //    captured names are rebound below by the same lines run_capture uses, and the two locals are parameters. ──
 void convert_and_publish(FgContext& ctx, uint32_t cap_rot180, int s) {
     auto& cfg = ctx.cfg;
-    auto& c_seq = ctx.c_seq;
     auto& d = ctx.d;
     auto& NAT_W = ctx.NAT_W;
     auto& NAT_H = ctx.NAT_H;
     auto& Astage = ctx.Astage;
-    auto& c_slots = ctx.c_slots;
     auto& use_igpu_convert = ctx.use_igpu_convert;
     auto& cmdA = ctx.cmdA;
     auto& Anative = ctx.Anative;
@@ -159,6 +157,8 @@ void convert_and_publish(FgContext& ctx, uint32_t cap_rot180, int s) {
 // PROMPT publish: total_real + c_seq are bumped the instant the convert fence signals → the freshest
 // converted frame reaches F/P promptly. The worker is joined in main() BEFORE any convert/Vulkan teardown.
 void run_convert_worker(FgContext& ctx){
+    auto& c_seq = ctx.c_seq;       // the worker derives its output slot from the publish counter
+    auto& c_slots = ctx.c_slots;   // and carries the raw frame's capture stamp into the slot
     auto& cfg = ctx.cfg;
     // (issue #1) misma corrección ROTATE180 que el path serial (ver run_capture) — el worker
     // empuja los MISMOS push-constants a los MISMOS pipelines de convert.
@@ -174,9 +174,7 @@ void run_convert_worker(FgContext& ctx){
     auto& raw_lt_compose = ctx.raw_lt_compose;
     auto& lt_copy_us = ctx.lt_copy_us;
     auto& lt_compose_us = ctx.lt_compose_us;
-    auto& c_seq = ctx.c_seq;
     auto& cap_slots = ctx.cap_slots;
-    auto& c_slots = ctx.c_slots;
     auto& total_real = ctx.total_real;
     auto& c_cv = ctx.c_cv;
     auto& c_conv_us = ctx.c_conv_us;

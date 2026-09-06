@@ -1,4 +1,4 @@
-// PhyriadFG — src/layers/layer_table.def : THE REGISTRY. One PFG_LAYER block per layer.
+// PhyriadFG — src/control/layer_table.def : THE REGISTRY. One PFG_LAYER block per layer.
 // Nothing else declares a layer. Rows are the shipping default set of shaders/wap_warp.comp
 // (Candidate C §4.1–4.8, source ranges cited per row), in (stage, rank) order.
 //

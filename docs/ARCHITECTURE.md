@@ -115,7 +115,7 @@ tests/         seam/ (pfg_seam_test) and clock/ (pfg_clock_test) — built, but 
 ```
 
 > **Corrected 2026-09-04.** The block above previously omitted `src/clock/`, `src/seam/` and
-> `src/layers/` (the three directories R0/R1/R2 created) and filed `bench/` under `tools/`.
+> `src/control/` (the three directories R0/R1/R2 created) and filed `bench/` under `tools/`.
 > **There is no CTest and no CI**: `grep -c "enable_testing\|add_test" CMakeLists.txt` returns 0 and
 > there is no `.github/`, so `pfg_seam_test` and `pfg_clock_test` are built but never run automatically
 > — and `pfg_clock_test` exits 0 printing `SKIP` when given no arrival-log

@@ -22,7 +22,7 @@
 - **Relock:** run `prep_zoo_sequence.py` → Mode A over all 7 presets → write
   `docs/evidence/FG_QUALITY_BASELINE.json` for PhyriadFG (copy the catalog schema; the values WILL differ
   from the catalog's because the flow differs — that is the point of relocking, stated in the file).
-- **Document** in `README.md` (Run section) and in `print_help` (`src/cli/cli.cpp`, the `--qdump` line):
+- **Document** in `README.md` (Run section) and in `print_help` (`src/control/cli.cpp`, the `--qdump` line):
   "`--qdump` needs the synchronous present path; `resolve_config` auto-disables `--async-present` for the
   run and prints why, so the flag alone suffices". Do NOT change
   the gating code (`present.cpp:1315`) in this plan.

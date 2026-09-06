@@ -8,7 +8,7 @@
 > [`CONVERGENCE_IMPLEMENTATION_STRATEGIES.md`](CONVERGENCE_IMPLEMENTATION_STRATEGIES.md) ·
 > [`CONVERGENCE_RISK_REGISTER.md`](CONVERGENCE_RISK_REGISTER.md).
 > **Status:** `in execution` (v2, 2026-09-03) — **R0 and R1 built and gated (M-R0 `records/R0_GATE.md`,
-> M-R1 `records/R1_GATE.md`, M-R2 `records/R2_GATE.md`, **M-R3 `records/R3_GATE.md` (2026-09-05, gate PASSED (residual attributed))**, **M-R5 `records/R5_GATE.md` (2026-09-06, gate PASSED)**, **M-R4 `records/R4_GATE.md` (2026-09-05, gate PASSED except the forced-TDR item (built, awaiting the operator's word))**); R5+ not built**; every "exists / line N /
+> M-R1 `records/R1_GATE.md`, M-R2 `records/R2_GATE.md`, **M-R3 `records/R3_GATE.md` (2026-09-05, gate PASSED (residual attributed))**, **M-R6 `records/R6_GATE.md` (2026-09-06, gate PASSED)**, **M-R5 `records/R5_GATE.md` (2026-09-06, gate PASSED)**, **M-R4 `records/R4_GATE.md` (2026-09-05, gate PASSED except the forced-TDR item (built, awaiting the operator's word))**); R5+ not built**; every "exists / line N /
 > measured" claim was read or computed first-hand in the authoring session; every forward number is
 > labelled `estimated` or `unmeasured`. MUST / SHOULD / MAY are BCP-14.
 > **v2 re-aim (2026-09-03, operator: "hagamos tu recomendación" → "Sí adelante"):** v1 (same day, ATF-
@@ -58,7 +58,7 @@ document is written under this arc until a new measurement exists**; each R-stag
 | `src/flow/flow.cpp` (2,234): OFP fwd/bwd, CPU `gme_fit_affine` (`:44`), GPU gme (`:357–420`), candidates / dissidence / persistence / mv_target, the publish (`f_seq.fetch_add`, `:1777`, `:2191`); the holon family `object_repair` (`:885–1245`), `mem_*` (`:1275–1380`), `consume_wap` (`:1396–1809`) | works; the `FlowSet` exists as ~20 host arrays + `f_pair_*` arrays, not as a type | stage 3; the holons = FLOW rows (off) |
 | `src/present/present.cpp` (3,026): the OUTPUT-CLOCK loop `:1491–3020` interleaving the clock (`:1558–1596`, `:1964–1976`, `:2022–2061`, `:2370–2497`), the warp caller `wap_warp_present` (`:879–1402`), the present (`:377–460`, `:564`, `:2593`, `:2921`), qdump (`:1315–1357`), overlay (`:1188`), MV median in the bridge cmd (`:779`), `wap_upload` (`:713–836`) | works; three stages and two planes in one body | stages 4, 5, 6 + INSTRUMENT |
 | `shaders/wap_warp.comp` (1,336): core `:496–529/637/679`; `mv_fwd` `:344`, bg-reclaim damp `:394`, phase-anchor `:410`, single-track `:1321–1328` | the product's math; the override chain | stage 5 (LAYERTAB) |
-| `src/cli/cli.hpp` (1,011) + `cli.cpp` (787) + `ui/src/main.js`: 257 flags vs 173 UI entries | the four-site drift | CONTROL plane |
+| `src/control/cli.hpp` (1,011) + `cli.cpp` (787) + `ui/src/main.js`: 257 flags vs 173 UI entries | the four-site drift | CONTROL plane |
 | E1 result: `main()` 1,222; 13 `init_*`; G1 baseline 240 presents/s, 28,799 / 120 s | the M3 baseline | — |
 | Instruments: `--csv`, `--qdump` (needs the sync present path; `resolve_config` AUTO-DISABLES `--async-present` for the run and says so — verified 2026-09-03, an earlier note calling it "inert under the default" was wrong), `tools/ball_zoo.ps1`, `tools/gate_zoo.ps1` (operator's), `tools/gpu_load.exe`, `fg_quality_scorer` (catalog, builds) | the M3 / M4 / load fixtures | INSTRUMENT plane |
 | MOTION_TRUTH | **corrected 2026-09-04:** T0/T1/T1b/T1c `done` (gate records); T6 built, gate NOT passed; **T2–T5 unbuilt** | **M1 still not measurable** (§4.3) — the table comes from T4–T5 |
@@ -117,7 +117,7 @@ reported, `r` for per-cell comparisons; a gate binds to the exact tree it tested
 
 ### R0 — CONTROL: the registry with zero product risk (= milestone M-R0)
 
-`src/layers/` (the `.def` registry, the row schema, the generated `LayerConfig` / parser / help / JSON
+`src/control/` (the `.def` registry, the row schema, the generated `LayerConfig` / parser / help / JSON
 model, `layer_registry.cpp`) + `tools/gen_layer_glsl.cmake` + the CMake hook + `--layer-dump` +
 `--layer-model-json` + the UI rendering its layer section from the binary's model. **`shaders/wap_warp.comp`
 unchanged; the push block still assembled from `Config`.** A startup `layer_config_parity()` asserts the
@@ -132,7 +132,7 @@ generated `LayerConfig` field-by-field against today's `Config`.
   RE-SELECT at A3 toward Candidate A (R0's registry survives as the flag single-source).
 
 **Result record — R0 DONE, G-R0 PASSED (2026-09-03; the full evidence is [`records/R0_GATE.md`](records/R0_GATE.md)):**
-`src/layers/` (schema + 12-row registry + tables + runtime) · `tools/layer_gen.cpp` (a C++ generator from the
+`src/control/` (schema + 12-row registry + tables + runtime) · `tools/layer_gen.cpp` (a C++ generator from the
 same tables — deviation from C §1.1's `cmake -P`, recorded) · `tools/check_flag_roundtrip.py` · host edits in
 `cli.hpp/.cpp`, `main.cpp`, `CMakeLists.txt` · UI: `layer_model` command + the model-driven `Layers ·` groups,
 15 hand entries deleted. **Numbers:** build ×2 exit 0 · `--layer-dump` byte-identical across 2 runs, contract

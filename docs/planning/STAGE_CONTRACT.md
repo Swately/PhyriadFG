@@ -153,7 +153,7 @@ writes `Pair + FlowSet + Phase + GenFrame`, MOTION_TRUTH T1).
   agreement_threshold, t, arm_mask}` (20 B), `LayerParams` UBO (config-time), the registry's
   specialization constants. **Out:** `GenFrame`.
 - **Invariants:** the core is `fg_core()` = `wap_warp.comp:496–529, 637, 679` verbatim; one `imageStore`
-  with one source expression (G1); every layer is a registry row (`src/layers/layer_table.def`) with a
+  with one source expression (G1); every layer is a registry row (`src/control/layer_table.def`) with a
   stage, a rank, declared reads/writes and a printed override bit; the GPU work of this stage is ONE SG
   graph on P's queue (fused rows = 1 dispatch; `kind = P` rows = +1 pass +1 derived barrier); **no field
   of flow class is computed here** (stage 3's invariant, mirrored); the arm mask is derived from
@@ -207,7 +207,7 @@ writes `Pair + FlowSet + Phase + GenFrame`, MOTION_TRUTH T1).
 ## 4 · The planes
 
 - **CONTROL:** `Config` (parse) → `resolve_config()` (the single owner of non-layer cascades — RESTRUCTURE
-  §2.2, kept) → the layer registry (`src/layers/`, LAYERTAB: `LayerConfig`, spec constants, `LayerParams`,
+  §2.2, kept) → the layer registry (`src/control/`, LAYERTAB: `LayerConfig`, spec constants, `LayerParams`,
   `layer_arm_mask(ArmInputs)`) → the UI model (`--layer-model-json`; the ~150 host flags stay hand-written
   until migrated as `HOST` rows) → the governor (tier floor, fg-protect). It READS `FlowSet` validity and
   `FlipStats`; it WRITES only its own outputs (`ArmInputs`, `GovernorFloor`, thread policy).

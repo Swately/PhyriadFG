@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <string>
-#include "layers/layer_config.hpp"   // R0: the layer registry (LayerConfig + the parity shadow)
+#include "control/layer_config.hpp"   // R0: the layer registry (LayerConfig + the parity shadow)
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 enum CaptureApi { CA_DD, CA_WGC };
@@ -979,7 +979,7 @@ struct Config {
                                     // calibration vs the OFP confidence gate (residual_ceil in [0,192]).
     float nvofa_sadz_scale=4.0f;    // --nvofa-sadz-scale: input-block SUM|A-B| → WW_flow 8x8 SUM magnitude. The pixel-
                                     // count ratio (8*8)/(blk*blk) is ~4 at flow_div==1; PLACEHOLDER, eye-calibration.
-    // ── R0: the LAYER REGISTRY (src/layers/layer_table.def). `layers` is the registry's own parsed store
+    // ── R0: the LAYER REGISTRY (src/control/layer_table.def). `layers` is the registry's own parsed store
     //    (a SHADOW of the hand-parsed fields above until R3); `layers_old` is the pre-cascade snapshot of
     //    those fields taken by parse_args() so layer_config_parity() can compare the two stores.
     pfg::layers::LayerConfig    layers;

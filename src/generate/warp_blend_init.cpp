@@ -8,7 +8,7 @@
 #include "wap_warp_spv.hpp"
 #include "fg_core_spv.hpp"      // R3: the LAYERTAB kernel
 #include "fg_ab_diff_spv.hpp"   // R3: the --fg-core-ab byte-diff pass
-#include "layers/layer_config.hpp"
+#include "control/layer_config.hpp"
 #include <cstring>
 #include "mv_median_spv.hpp"
 #include "wap_fill_spv.hpp"

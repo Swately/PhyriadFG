@@ -103,9 +103,9 @@ add_custom_target(pfg_shaders DEPENDS
 
 add_executable(phyriad_fg
     src/core/main.cpp
-    src/cli/cli.cpp                            # the CLI/config layer (Config + print_help + parse_args)
+    src/control/cli.cpp                            # the CLI/config layer (Config + print_help + parse_args)
     src/clock/phase_clock.cpp                   # R1: STAGE 4 — the content clock (NCO+PLL, selection, phase, order)
-    src/layers/layer_registry.cpp              # R0: the layer registry (shadow parser, parity, help, UI model, dump, hash)
+    src/control/layer_registry.cpp              # R0: the layer registry (shadow parser, parity, help, UI model, dump, hash)
     src/core/vk_util.cpp                       # now_ms / route_for / Img+HBuf factories / barrier+submit helpers
     src/core/device.cpp                        # VDev + vdev_create/vdev_destroy
     src/core/globals.cpp                       # g_quit/device-lost/util+overlay atomics + vk_live + console Ctrl handler
@@ -116,8 +116,8 @@ add_executable(phyriad_fg
     src/capture/capture.cpp                    # D3D11/DXGI interop (D3D/d3d_init/find_window/staging) + iGPU ConvPackPipe/UnpackPipe
     src/capture/capture_init.cpp               # E1: capture-side init sections (convert pipe + iGPU pipes + WGC backend), verbatim from main.cpp
     src/ingest/ingest.cpp                      # R6: STAGE 2 -- the Vulkan convert + the FrameRing publish, moved by anchor from run_capture
-    src/warp_blend/warp_blend.cpp              # WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask
-    src/warp_blend/warp_blend_init.cpp         # E1: the WAP init section, verbatim from main.cpp
+    src/generate/warp_blend.cpp              # WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask
+    src/generate/warp_blend_init.cpp         # E1: the WAP init section, verbatim from main.cpp
     src/present/present.cpp                     # the present-side UpPipe upscale (bilinear/lanczos) factory
     src/present/present_init.cpp               # E1: the present-side init sections (bridge slots), verbatim from main.cpp
     src/present/present_stage.cpp              # R4: STAGE 6 -- the present stage (surface, slots, submit, present, FlipStats, --tdr-test)
@@ -162,8 +162,8 @@ set(_layer_gen_out
 add_custom_command(OUTPUT ${_layer_gen_out}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${_gen}/shaders"
     COMMAND pfg_layer_gen "${_gen}/shaders" "${_sh}"
-    DEPENDS pfg_layer_gen "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.def" ${_layer_bodies}
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_abi.hpp"
+    DEPENDS pfg_layer_gen "${CMAKE_CURRENT_SOURCE_DIR}/src/control/layer_table.def" ${_layer_bodies}
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/control/layer_table.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/control/layer_abi.hpp"
     COMMENT "layer_gen: registry -> generated GLSL/offsets" VERBATIM)
 # ── 4.3 — THE TESTS ARE WIRED (2026-09-06) ────────────────────────────────────────────────────────
 # Before this block `enable_testing()`/`add_test()` appeared ZERO times: R2's seam checks and R1's clock oracle were
@@ -283,7 +283,7 @@ add_dependencies(phyriad_fg pfg_shaders_r3)
 
 target_compile_features(phyriad_fg PRIVATE cxx_std_23)
 target_include_directories(phyriad_fg PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"          # so #include "cli/cli.hpp" resolves (same-dir quoted includes still win for main.cpp's "telemetry_csv.hpp" etc.)
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"          # so #include "control/cli.hpp" resolves (same-dir quoted includes still win for main.cpp's "telemetry_csv.hpp" etc.)
     "${_rv}/include" "${_gen}"
     "${_fw}/hal/include"
     "${_fw}/render/present/include"

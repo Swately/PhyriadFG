@@ -4,7 +4,7 @@
 #include "flow/flow.hpp"
 #include "flow/holons.hpp"
 #include "flow/flow_consume.hpp"   // R5 step 3c: the per-pair CPU tail + FwdPend       // R5 step 3a: the holon leaves (object_repair, mem_advect/merge/refresh) + HolonScratch
-#include "layers/layer_config.hpp"   // R5 step 3b: layer_arm_mask / LayerId — the FLOW rows decide on F
+#include "control/layer_config.hpp"   // R5 step 3b: layer_arm_mask / LayerId — the FLOW rows decide on F
 #include "core/ra_simd.hpp"        // ra::decode_f16 — the F16C batch decode for gme_fit_affine
 #include "instrument/instrument.hpp"  // dump_bmp (the F-thread objdump grids)
 #include <cstdint>

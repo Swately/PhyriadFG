@@ -1,5 +1,5 @@
 #pragma once
-// PhyriadFG — src/layers/layer_abi.hpp : the ROW SCHEMA of the layer registry (LAYERTAB).
+// PhyriadFG — src/control/layer_abi.hpp : the ROW SCHEMA of the layer registry (LAYERTAB).
 //
 // The layer contract chosen by the architecture search (docs/planning/aap/A3_CHOSEN_DESIGN.md,
 // Candidate C §1.4 + the grafts) and bound by docs/planning/STAGE_CONTRACT.md stage 5. One

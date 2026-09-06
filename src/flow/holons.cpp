@@ -3,7 +3,7 @@
 // is in records/R5_GATE.md §3a). Nothing here was retyped. Made with my soul - Swately <3
 #include "flow/holons.hpp"
 #include "flow/flow.hpp"          // kObj* / kPriorDecay constants
-#include "cli/cli.hpp"            // Config (cfg.matte_thresh, cfg.shapefield, cfg.obj_fill_rim, cfg.expire, ...)
+#include "control/cli.hpp"            // Config (cfg.matte_thresh, cfg.shapefield, cfg.obj_fill_rim, cfg.expire, ...)
 #include "core/vk_util.hpp"       // half_to_float / float_to_half
 #include <cstdint>
 #include <cstring>

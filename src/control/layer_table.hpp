@@ -1,12 +1,12 @@
 #pragma once
-// PhyriadFG — src/layers/layer_table.hpp : expands layer_table.def into the constexpr tables.
+// PhyriadFG — src/control/layer_table.hpp : expands layer_table.def into the constexpr tables.
 //   enum class LayerId          — dense ids, in .def order
 //   kLayers[] / kParams[]       — the rows and their params
 //   the static_asserts          — unique rank per stage; every requires/excludes target exists;
 //                                 param ranges sane; ids dense.
 // Everything downstream (LayerConfig, parser, help, JSON model, dump, hash, GLSL generation) reads
 // ONLY these tables. See layer_abi.hpp for the column semantics.
-#include "layers/layer_abi.hpp"
+#include "control/layer_abi.hpp"
 
 namespace pfg::layers {
 
@@ -17,7 +17,7 @@ enum class LayerId : uint16_t {
 #define PFG_LAYER_END(ID)
 #define PFG_PSEUDO(ID, ...)           ID,
 #define PFG_BIT(ID)                   0u
-#include "layers/layer_table.def"
+#include "control/layer_table.def"
 #undef PFG_LAYER
 #undef PFG_PARAM
 #undef PFG_LAYER_END
@@ -37,7 +37,7 @@ constexpr size_t kParamCount =
 #define PFG_LAYER_END(ID)
 #define PFG_PSEUDO(...)
 #define PFG_BIT(ID)                   0u
-#include "layers/layer_table.def"
+#include "control/layer_table.def"
 #undef PFG_LAYER
 #undef PFG_PARAM
 #undef PFG_LAYER_END
@@ -53,7 +53,7 @@ constexpr ParamDesc kParams[kParamCount == 0 ? 1 : kParamCount] = {
     ParamDesc{ static_cast<uint16_t>(LayerId::ID), #pname, ParamType::type, (float)(dflt), (float)(lo), (float)(hi), flag, alias, (uint32_t)(pflags), UiKind::ui, help },
 #define PFG_LAYER_END(ID)
 #define PFG_PSEUDO(...)
-#include "layers/layer_table.def"
+#include "control/layer_table.def"
 #undef PFG_LAYER
 #undef PFG_PARAM
 #undef PFG_LAYER_END
@@ -84,7 +84,7 @@ constexpr LayerDesc kLayers[kLayerCount] = {
 #define PFG_PSEUDO(ID, name, stage, rank, text) \
     LayerDesc{ static_cast<uint16_t>(LayerId::ID), name, Stage::stage, (uint16_t)(rank), Kind::X, true, false, \
                0u, false, 0u, 0u, 0u, 0u, ArmId::ALWAYS, "", nullptr, nullptr, nullptr, text, 0, 0 },
-#include "layers/layer_table.def"
+#include "control/layer_table.def"
 #undef PFG_LAYER
 #undef PFG_PARAM
 #undef PFG_LAYER_END

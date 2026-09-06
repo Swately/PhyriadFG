@@ -1,7 +1,7 @@
 // PhyriadFG warp_blend layer. Bodies of the WARP/BLEND/QUALITY factories + CPU stat helpers
 // declared in warp_blend/warp_blend.hpp. The factories take the SPIR-V as a parameter, so this
 // layer pulls no *_spv.hpp shader headers.
-#include "warp_blend/warp_blend.hpp"
+#include "generate/warp_blend.hpp"
 #include <cstddef>    // size_t (matte_mass_count / gme_dispct_from_mask)
 
 // Anchored matte mass — count of dissidence-mask blocks the shader would classify OBJECT.

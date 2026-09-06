@@ -34,7 +34,7 @@
 
 ## R0 — CONTROL: the registry (milestone M-R0)
 
-### X1 — `src/layers/` + the generator + `--layer-dump` / `--layer-model-json` · *mitigates XR2, XR6, DR2, MR-4, XR13*
+### X1 — `src/control/` + the generator + `--layer-dump` / `--layer-model-json` · *mitigates XR2, XR6, DR2, MR-4, XR13*
 
 Unchanged from v1. New files exactly `aap/CANDIDATE_C.md` §1.1's host-side list (`layer_table.def`,
 `layer_abi.hpp`, `layer_table.hpp`, `layer_config.hpp`, `layer_registry.cpp`, `tools/gen_layer_glsl.cmake`);
@@ -42,7 +42,7 @@ the shader-side files are R3's. Modified: `CMakeLists.txt` (the generator `add_c
 its outputs declared as `OUTPUT`s, and R3's `fg_core.spv` command lists them + a `CONFIGURE_DEPENDS` glob
 of `shaders/layers/*.glsl` in `DEPENDS` AND uses `glslc -MD -MF` with `DEPFILE` — the `pfg_spv()` precedent
 at `CMakeLists.txt:30–41` tracks only the top-level `.comp`, the hole `aap/AT2_SCORECARDS.md:623` names);
-`src/cli/cli.hpp` (`Config` gains `LayerConfig layers;` — the OLD layer fields KEPT until R3); `src/cli/cli.cpp`
+`src/control/cli.hpp` (`Config` gains `LayerConfig layers;` — the OLD layer fields KEPT until R3); `src/control/cli.cpp`
 (`if (parse_layer_flag(argv[i], c.layers)) continue;` before the chain; old cases KEPT so both parse);
 `ui/src-tauri/src/lib.rs` (`layer_model()` via `resolve_exe()` at `lib.rs:164`, *to confirm*); `ui/src/main.js`
 (the layer section replaced by the binary's model; the ~150 host entries stay).
@@ -50,7 +50,7 @@ at `CMakeLists.txt:30–41` tracks only the top-level `.comp`, the hole `aap/AT2
 **The parity check (XR2):**
 
 ```cpp
-// src/layers/layer_registry.cpp — startup; a mismatch is a loud abort.
+// src/control/layer_registry.cpp — startup; a mismatch is a loud abort.
 bool layer_config_parity(const Config& c) {
     bool ok = true;
 #define PFG_PARITY(field, layer_field) \

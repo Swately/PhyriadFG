@@ -114,7 +114,7 @@
 
 ### P-004 · The registry's parser chain is at MSVC's nesting limit
 - **class:** recurrence-risk · **date:** 2026-09-06 · **recurrences:** 0 · **status:** accepted
-- **evidence:** adding a second `else if` case to `parse_args`'s chain in `src/cli/cli.cpp` produced
+- **evidence:** adding a second `else if` case to `parse_args`'s chain in `src/control/cli.cpp` produced
   `fatal error C1061: compiler limit: blocks nested too deeply` (R5 step 1, build log).
 - **lesson:** New CLI tokens go in `parse_extra`'s `if(...){ …; return 0; }` matcher, not in the
   long `else if` chain. This is a hard compiler ceiling, not a style preference.
@@ -146,7 +146,7 @@
 - **evidence:** `CONVERGENCE_MASTER_PLAN.md` §R5 said the holon rows would be registered "**off by
   default**", claiming "the shipping default already has `igpu_field=false` cascading them off". The
   code: `cfg.gme`, `bidir`, `ambig`, `objects`, `scene_memory`, `inertia` are all `true`
-  (`src/cli/cli.hpp:413, 489, 581, 600, 621, 675`) and every run log prints them ACTIVE.
+  (`src/control/cli.hpp:413, 489, 581, 600, 621, 675`) and every run log prints them ACTIVE.
 - **lesson:** R5's gate is therefore **byte-identity of the default output**, not a "rows off"
   identity — a different and stronger test. More generally: a plan sentence about what "ships by
   default" is a claim about `cli.hpp`, and is checked there before a step is built on it.

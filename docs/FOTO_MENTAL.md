@@ -323,12 +323,28 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    arneses de `tools/` habrían creído (ahora sale 2). Cada compuerta se rompió a propósito para verla roja; el
    primer intento fue demasiado sutil para cambiar nada y se conserva en el registro, porque un verde tras una
    perturbación casi siempre significa que la perturbación fue invisible, no que la compuerta esté ciega.
-5. **NEXT** — R0–R5 cerrados y aprobados; 4.3 cerrado. Quedan, ninguna empezada: (a) **R6** — etapas 1–2
-   nombradas (`capture/` + `ingest/`), mismo método de extracción por ancla que R4/R5, y ahora con una suite que
-   protege lo movido; (b) **R7** — retirar `--legacy-warp` del default (depende de las líneas base M1: decisión del
-   operador) y retirar los dos oráculos duplicados del código tras una segunda corrida bajo presión con 0
-   discrepancias; (c) una segunda fixture del reloj a otra tasa de fuente (barata, nombrada en el ledger de
-   honestidad de 4.3). No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t), R5 (4u), metacognición (4v), 4.3 (4w).
+4x. **R6 CERRADO Y G-R6 APROBADA (2026-09-06, `records/R6_GATE.md`)** — tres pasos. (1) La etapa 2 es su propio
+   módulo: la cola de convert + publish y el worker de `--ingest-async` salieron de `run_capture` a `src/ingest/`
+   por ancla (225/225 líneas idénticas; la región se verificó balanceada en llaves ANTES de moverla; 32 capturas
+   re-enlazadas con las mismas líneas de alias). Después el compilador nombró 25 alias muertos: `capture.cpp` pasó
+   de 972 a 683 líneas y compila sin advertencias. Hallazgo: la lógica de convert existe DOS veces (cola serial y
+   worker) — no se deduplicó, eso es comportamiento. (2) Los dos anillos de ingesta, y sobre todo **un solo
+   `publish()` que posee el orden** que R6 no puede cambiar (sello antes del `fetch_add`), antes escrito a mano en
+   dos sitios. Las vistas `RawFrame`/`RealFrame` que el plan nombra se escribieron y se BORRARON antes de
+   confirmar: los ocho lectores direccionan por ranura arbitraria, no por secuencia, así que serían una envoltura
+   sin consumidor (regla 1). (3) Los nombres de directorio que el operador adoptó: `warp_blend/`→`generate/`,
+   `cli/`+`layers/`→`control/`. Trampa evitada: `src/layers/` y `shaders/layers/` son cosas distintas; el reescritor
+   se ancló en `layers/layer_` y verifica que el include de los cuerpos sobreviva. Regla aplicada a los documentos:
+   el que DESCRIBE el sistema actual se actualiza; el que REGISTRA lo hecho conserva sus rutas (por eso la foto
+   mental y `aap/` se revirtieron). Compuerta: tasas idénticas al binario pre-R6 dentro del ruido, arranque sin
+   cambios, humo de 120 s limpio, 45 pruebas verdes.
+5. **NEXT** — R0–R6 cerrados y aprobados; 4.2 y 4.3 cerrados. Lo que queda es **R7, y es del operador**:
+   (a) retirar `--legacy-warp` del default depende de las líneas base M1 y es un default de producto — su decisión;
+   (b) retirar los dos oráculos duplicados que R5 dejó en el código a propósito (filas vs condiciones manuales,
+   transporte vs banderas) tras una segunda corrida bajo presión con 0 discrepancias; (c) los residuos nombrados y
+   no hechos: `stats_second()` sigue en el lazo de present (residuo de R4), la lógica de convert está duplicada
+   entre la cola serial y el worker (R6 §1), y el `RawRing` solo posee su contador. No re-derivar: R3 (4q), R4 (4r),
+   R4b (4s), 4.2 (4t), R5 (4u), metacognición (4v), 4.3 (4w), R6 (4x).
 
 **Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
 `fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con

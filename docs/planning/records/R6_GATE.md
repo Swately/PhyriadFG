@@ -1,6 +1,6 @@
 # R6_GATE — Stages 1 and 2 named: the ingest module, the contract types, the directory names (M-R6)
 
-**Status: IN PROGRESS — step 1 of 3 closed (2026-09-06).** Operator's word: *"Continua en el orden que recomiendes"*
+**Status: CLOSED — G-R6 PASSED (2026-09-06).** Operator's word: *"Continua en el orden que recomiendes"*
 after R5 and 4.3 closed, with the standing test *"que el trabajo este bien hecho, no rutas comodas"*. This record
 grows one section per step; the verdict is written when the three steps and G-R6 have run.
 
@@ -102,11 +102,61 @@ only path that reaches the worker's call) at `in` 59.91 / `acq` 60.06 / `uniq` 5
 
 
 
-## 3 · Step 3 — the directory names (pending)
+## 3 · Step 3 — the directory names (2026-09-06) — CLOSED
 
-## 4 · G-R6 (pending)
+The operator adopted them on 2026-09-03 (`STAGE_CONTRACT` §6 decision 2); this is the move:
+`src/warp_blend/` → **`src/generate/`** (stage 5) and `src/cli/` + `src/layers/` → **`src/control/`** (the CONTROL
+plane: the flag surface and the registry are one thing). Ten files moved with `git mv` (history preserved), 25
+reference sites rewritten, `src/` now reads as the contract does: `capture · ingest · flow · clock · generate ·
+present · control · instrument · core · seam`.
 
-## 5 · Honesty ledger (running)
+**The trap the script was built around.** There are **two** `layers/` paths: `src/layers/` (the registry's C++) and
+`shaders/layers/` (the row BODIES). The generator emits `#include "layers/<row>.glsl"` and builds
+`<shaders_dir>/layers/<row>.glsl` at runtime — rewriting either would leave every fused row's body unfindable. The
+rewrite is therefore anchored on **`layers/layer_`**, which only ever names the C++ side, and the script asserts
+before it starts that no row body is called `layer_*` and asserts afterwards that the shader include and the body
+path survived verbatim. Confirmed after the build: `build-release/gen/shaders/layer_includes.glsl` still reads
+`#include "layers/fetch_mv.glsl"`.
+
+**Which documents were rewritten, and which were not.** The rule applied: **a document that DESCRIBES THE CURRENT
+SYSTEM is updated; a document that RECORDS WHAT WAS DONE keeps the paths it recorded.** Updated: `ARCHITECTURE.md`,
+`STAGE_CONTRACT.md`, the three CONVERGENCE plans, the MOTION_TRUTH plans, `MV_EDGE_SNAP_PLAN`,
+`SINGLE_TRACK_MODE_PLAN`, `LEARNING_LOG.md`, `tools/*` — their path mentions are navigational (a scope list points
+at code to edit). Reverted after the sweep touched them: **`docs/FOTO_MENTAL.md`** (a dated journal — entry 4d says
+what was created on 2026-09-03, when the directory was `src/layers/`; rewriting it would make the record claim
+something that was not true on its date) and **`docs/planning/aap/*`** (the design candidates and the two analysis
+records, same class as `records/`, whose citations are evidence of what was read).
+
+**Gate:** build 0 errors; **no new warning** — the warning set is the pre-existing one (the two the step did create,
+`c_seq` and `c_slots` left dead in `ingest.cpp` by step 2's `publish()`, were removed; the worker still needs its
+own pair, so only the serial function's were dead); the 45-test suite green; `grep` for every old path in
+`src/ tools/ tests/ CMakeLists.txt build-release.bat` returns nothing.
+
+## 4 · G-R6 — **PASSED** (2026-09-06)
+
+The whole of R6 against the pre-R6 binary (`706d2ba`, rebuilt for the comparison then HEAD restored), 30 s runs on
+the ball zoo, 2 per side:
+
+| | pre-R6 ×2 | R6 complete ×2 | Δ |
+|---|---|---|---|
+| `in`/s | 59.90 / 59.91 | 59.92 / 59.94 | **+0.025** |
+| `acq`/s | 60.06 / 60.06 | 60.06 / 60.08 | **+0.006** |
+| `uniq`/s (the drop-to-newest observable) | 59.90 / 59.91 | 59.92 / 59.94 | **+0.025** |
+| `arr` | 60.1 / 60.1 | 60.1 / 60.1 | **+0.000** |
+| presents / 30 s | 7,190 / 7,189 | 7,189 / 7,189 | −0.5 |
+| clean exit | yes | yes | — |
+
+Every delta is at or inside these metrics' run-to-run spread (0.01–0.03/s). Plus, per the plan's letter: build ×2
+(many), the **120 s smoke** (clean, 28,768 presents, R5's instruments at 0 mismatches), the **startup log diff**
+(structurally 0 — the raw diff is timings, the OS-allocated MMCSS index and the racing join order, and the
+before-vs-before control produces the same residue), the **`--help` round-trip** (proven by construction in §1.1 and
+run by the suite on every build), and one **`--ingest-async`** run per step, the only path that reaches the moved
+worker.
+
+**Verdict: G-R6 PASSED.** Stages 1 and 2 are two modules; the ingest crossings have their rings and one publish
+that owns the order; the directory names are the contract's.
+
+## 5 · Honesty ledger
 
 - The A/B is 2 runs per side on one content at one rate; the metrics compared are the ingest-side rates, which is
   what this step can affect.
@@ -116,9 +166,18 @@ only path that reaches the worker's call) at `in` 59.91 / `acq` 60.06 / `uniq` 5
   `in` 59.89/s, `acq` 60.05/s, `uniq` 59.89/s, 7,189 presents, clean exit, the same rates as the serial path
   (59.90 / 60.06 / 59.90). One run, not a DI-3 pair: the claim is "the moved worker runs and paces as before",
   not a latency measurement.
-- "The comfortable version" of this step: move the two bodies, watch the build go green, and stop. What that would
+- "The comfortable version" of this arc: move the two bodies, watch the build go green, and stop. What that would
   have missed: the 25 dead aliases (found only by reading the compiler's warnings after the move), the convert
-  duplication (found only because an anchor matched twice), and the startup-log control run (without a
-  before-vs-before diff, the 2-line result would have looked like a real difference).
+  duplication (found only because an anchor matched twice), the startup-log control run (without a before-vs-before
+  diff, the 2-line result would have looked like a real difference), the two view structs that had no consumer
+  (§2), and the two `layers/` paths that a naive rename would have merged (§3).
+- **What R6 did NOT do, named:** the convert logic is still duplicated between the serial tail and the worker (§1);
+  `RawFrame` / `RealFrame` do not exist as types (§2, with the reason); the `RawRing` is declared and **its fields
+  are still addressed through the old aliases** everywhere — only its counter is owned, so it is one step less real
+  than the `FrameRing`, which also owns `publish()`. The rename moved `src/seam/` nowhere: it is the R2 engine and
+  `STAGE_CONTRACT` §6 does not name it.
+- The A/B is 30 s runs on one content at one rate; it measures the ingest-side rates, which is what these steps can
+  affect. Latency and phase were not compared here — R5's gate covers those for the present side and nothing in R6
+  touches them.
 
 *Made with my soul - Swately <3*

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """check_flag_roundtrip.py — the flag-surface round-trip instrument (CONVERGENCE strategy X2, risk XR6/DR2).
 
-Extracts every `--token` the hand parser matches in src/cli/cli.cpp (exact-match string literals),
+Extracts every `--token` the hand parser matches in src/control/cli.cpp (exact-match string literals),
 launches the FG once per token with `--dump-config` (parse -> resolve -> print -> exit; no device is
 created), records per token: the parse status (ok / needs-arg / unknown / parity-fail / other), the
 value used, and the `[old]` / `[new]` / `[hash]` dump lines. Writes a deterministic record file.

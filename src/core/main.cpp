@@ -90,14 +90,14 @@
 #include "capture/wgc_ctx.hpp"
 
 // ─── Config / CLI (cli/cli.{hpp,cpp}) ───
-#include "cli/cli.hpp"
+#include "control/cli.hpp"
 // The vk-utility + device + globals infra.
 #include "core/vk_util.hpp"
 #include "core/device.hpp"
 #include "core/globals.hpp"
 #include "flow/flow.hpp"          // FLOW factories/structs (gme_fit/NvofaProvider/MvSmoothPipe/GmePipe/MedianPipe)
 #include "capture/capture.hpp"     // D3D11/DXGI interop (OutInfo/D3D/d3d_init/find_window/d3d_shutdown/staging) + iGPU ConvPackPipe/UnpackPipe
-#include "warp_blend/warp_blend.hpp" // WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask CPU stat helpers
+#include "generate/warp_blend.hpp" // WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask CPU stat helpers
 #include "present/present.hpp"      // present-side UpPipe upscale (bilinear/lanczos) factory
 #include "instrument/instrument.hpp" // dump_bmp/dump_rgba diagnostic frame-dump helpers
 // FgContext - the shared cross-thread state as references to main()'s locals;

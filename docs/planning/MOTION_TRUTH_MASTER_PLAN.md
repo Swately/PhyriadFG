@@ -59,7 +59,7 @@ the perceptual 2AFC axis (TB-C5); the photonic camera axis (TB-C6); real-game co
 
 | Asset | State | Gap for this plan |
 |---|---|---|
-| `--qdump DIR N` (`src/present/present.cpp:1315–1356`) | writes `q%06d_{prev,live,next}.rgba` + `manifest.txt` with `size W H` and `t=` per triple | fires only when `!ap` — **inert under the shipping default `async_present=true`** (`src/cli/cli.hpp:819`); dumps no MV field, no gme model, no push block |
+| `--qdump DIR N` (`src/present/present.cpp:1315–1356`) | writes `q%06d_{prev,live,next}.rgba` + `manifest.txt` with `size W H` and `t=` per triple | fires only when `!ap` — **inert under the shipping default `async_present=true`** (`src/control/cli.hpp:819`); dumps no MV field, no gme model, no push block |
 | `fg_quality_scorer` | in the container catalog (`F:\Phyriad\catalog\cpp\render\vulkan\bench\fg_quality_scorer`), **builds on this rig** (exit 0, 155,648 B); Modes A/B/T run (T on live triples: 6 rows; A on the zoo: `pan` 99.0 dB, `occlude` 27.5–29.1 dB) | not in the PhyriadFG repo (stripped in `2f47ea9`); Mode A re-runs the CATALOG's flow, which diverged from the vendored one (427/146 diff lines) |
 | `prep_zoo_sequence.py` | numpy-only, deterministic, 7 motion presets, exact closed-form midpoint | markers/positions are not exported; no frame-ID tag; offline files only (no on-screen player) |
 | `tools/ball_zoo.ps1` | live GDI+ source, exact fixed step per frame, up to 480 fps | one ball, no frame index, no analytic export |
