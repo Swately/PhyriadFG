@@ -213,6 +213,7 @@ void run_present(FgContext& ctx){
     auto& use_upscale = ctx.use_upscale;
     auto& uslot = ctx.uslot;
     auto& uslot_val = ctx.uslot_val;
+    uint64_t up_sites=0, up_mismatch=0;   // R5 step 4: the transport's two-oracle instrument (rows vs the former hand flags)
     auto& wapC2A = ctx.wapC2A;
     auto& wapCurA = ctx.wapCurA;
     auto& wapDISA = ctx.wapDISA;
@@ -695,6 +696,18 @@ void run_present(FgContext& ctx){
                     { VkBufferImageCopy cp=full_bic(w,h); vkCmdCopyBufferToImage(cmdBridge,src,dst.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
                     img_barrier(cmdBridge,dst.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                 };
+                // R5 step 4: the per-channel transport is gated by the declared ROWS (cfg.layers.eff), not by the
+                // hand flags; each site keeps its former condition beside it as the second oracle (up_check counts a
+                // disagreement, printed at this loop's exit — the step-3b instrument).
+                const uint32_t up_eff = cfg.layers.eff;
+                auto up_row = [&](pfg::layers::LayerId id){ return (up_eff & (1u << (unsigned)id)) != 0u; };
+                const bool up_bidir  = up_row(pfg::layers::LayerId::BIDIR);
+                const bool up_cand   = up_row(pfg::layers::LayerId::CANDIDATES);
+                const bool up_gme    = up_row(pfg::layers::LayerId::GME) || up_row(pfg::layers::LayerId::GME_GPU);   // the model exists (either variant)
+                const bool up_gmebwd = up_row(pfg::layers::LayerId::GME_BWD);
+                const bool up_per    = up_row(pfg::layers::LayerId::PERSISTENCE);
+                const bool up_vbl    = up_row(pfg::layers::LayerId::VBLEND);
+                auto up_check = [&](bool row, bool hand){ ++up_sites; if(row!=hand) ++up_mismatch; };
                 up_imgA(wapPrevA,hR_a[prev_slot].buf,WW,WH);
                 up_imgA(wapCurA, hR_a[cur_slot].buf, WW,WH);
                 // upload the iGPU contour field (cur_slot — the SAME real slot
@@ -714,23 +727,29 @@ void run_present(FgContext& ctx){
                 // there is no fresher pair → self-target → the shader mix toward self is a no-op, graceful).
                 // Gated on cfg.vblend (the live flag, cleared on a create failure) so off → no upload, wapMVTA
                 // stays in its initial RO state, and the shader never samples it (vblend_on=0).
-                if(cfg.vblend) up_imgA(wapMVTA, hMV_a[target_gen].buf, wap_mvw,wap_mvh);
+                up_check(up_vbl, cfg.vblend);
+                if(up_vbl) up_imgA(wapMVTA, hMV_a[target_gen].buf, wap_mvw,wap_mvh);
                 up_imgA(wapSADA, hSAD_a[gen].buf, wap_mvw,wap_mvh);
-                if(use_bidir) up_imgA(wapMVBA, hMVB_a[gen].buf, wap_mvw,wap_mvh);   // backward MV
-                if(use_ambig) up_imgA(wapC2A,  hC2_a[gen].buf,  wap_mvw,wap_mvh);   // second-best candidate (RGBA16F, binding 10)
+                up_check(up_bidir, use_bidir);
+                if(up_bidir) up_imgA(wapMVBA, hMVB_a[gen].buf, wap_mvw,wap_mvh);   // backward MV
+                up_check(up_cand, use_ambig);
+                if(up_cand) up_imgA(wapC2A,  hC2_a[gen].buf,  wap_mvw,wap_mvh);   // second-best candidate (RGBA16F, binding 10)
                 // upload the dissidence mask (R8, mvw×mvh) into wapDISA. The warp
                 // samples it for the matte. use_gme is the live flag (cleared on any gme alloc failure
                 // above) so wapDISA is guaranteed created when this fires.
-                if(use_gme) up_imgA(wapDISA, hDIS_a[gen].buf, wap_mvw,wap_mvh);
+                up_check(up_gme, use_gme);
+                if(up_gme) up_imgA(wapDISA, hDIS_a[gen].buf, wap_mvw,wap_mvh);
                 // upload the BACKWARD (cur-anchored) dissidence mask into wapDISBA (binding 7).
                 // Same R8 mvw×mvh upload; gated on use_gme AND use_bidir (the bwd field/mask exist only
                 // with --bidir). The dual-anchored matte unions it with wapDISA in the warp.
-                if(use_gme&&use_bidir) up_imgA(wapDISBA, hDISB_a[gen].buf, wap_mvw,wap_mvh);
+                up_check(up_gmebwd, use_gme&&use_bidir);
+                if(up_gmebwd) up_imgA(wapDISBA, hDISB_a[gen].buf, wap_mvw,wap_mvh);
                 // upload the inertia persistence mask (R8, mvw×mvh) into wapPERA (binding 8). F
                 // wrote hPER_a[gen] from its continuous persist[] array after the persistence update. Gated
                 // on use_inertia; off-inertia wapPERA stays in its initial RO state and is never sampled
                 // (inertia_thresh=0). Same DST→RO per-pair upload contract as the dissidence masks.
-                if(use_inertia) up_imgA(wapPERA, hPER_a[gen].buf, wap_mvw,wap_mvh);
+                up_check(up_per, use_inertia);
+                if(up_per) up_imgA(wapPERA, hPER_a[gen].buf, wap_mvw,wap_mvh);
                 // ── in-cmdBridge 3x3 consensus on the just-uploaded MV image(s) ─────
                 // The MV image is RO after up_imgA (the pass samples it); cur_real (wapCurA) was uploaded
                 // above too (RO) — the consensus pass reads it for color membership. Dispatch
@@ -2957,6 +2976,8 @@ void run_present(FgContext& ctx){
                 if(ov_pl_layout) vkDestroyPipelineLayout(A.dev,ov_pl_layout,nullptr);
                 if(ov_pool) vkDestroyDescriptorPool(A.dev,ov_pool,nullptr);   // frees ov_set
                 if(ov_dsl) vkDestroyDescriptorSetLayout(A.dev,ov_dsl,nullptr);
+                std::printf("[layertab] 3->5 transport rows vs the hand flags: %llu site decisions, %llu mismatches\n",
+                            (unsigned long long)up_sites, (unsigned long long)up_mismatch);   // R5 step 4
                 return;   // the output-clock (timer) path is the only present loop
             }
             // The output-clock loop above (the panel-cadence present loop) always returns, so this

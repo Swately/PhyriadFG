@@ -78,6 +78,12 @@ void     layer_resolve_effective(LayerConfig& lc, uint32_t unavailable);
 // Computes the unavailable mask from the facts, resolves, checks, prints the resolved FLOW line once.
 bool     layer_flow_resolve(Config& c, bool use_wap, bool use_gme, bool use_gme_gpu, bool use_objects, bool use_memory,
                             bool use_bidir, bool use_ambig, bool use_inertia, bool use_mv_smooth);
+// R5 step 4: the union of writes_ch over the effectively-on HOST rows (Kind::H) — the channels a CPU pass dirties,
+// so their host copy is authoritative and must be transported back to stage 5. Every other transported channel is
+// GPU-produced and GPU-consumed: a device-resident FlowSet could share it without the round trip. Printing this is
+// the honest form of the plan's "wap_upload conditional" — the measurement that would justify the data-path change.
+uint32_t layer_host_written_channels(const LayerConfig& lc);
+void     layer_transport_report(const LayerConfig& lc, uint32_t transported_ch);
 // Execution order: (stage, rank) ascending; fills out[0..kLayerCount).
 void layer_exec_order(uint16_t out[kLayerCount]);
 

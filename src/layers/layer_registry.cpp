@@ -249,6 +249,41 @@ bool layer_flow_resolve(Config& c, bool use_wap, bool use_gme, bool use_gme_gpu,
     return ok;
 }
 
+// ── R5 step 4: the transport question, answered from the table ─────────────────────────────────
+uint32_t layer_host_written_channels(const LayerConfig& lc) {
+    uint32_t ch = 0;
+    for (uint16_t i = 0; i < kLayerCount; ++i)
+        if (kLayers[i].kind == Kind::H && (lc.eff & (1u << i))) ch |= kLayers[i].writes_ch;
+    return ch;
+}
+static void print_channels(uint32_t m) {
+    static const struct { uint32_t bit; const char* name; } kNames[] = {
+        {CH_MV,"mv"},{CH_MV_RAW_FWD,"mv_raw_fwd"},{CH_MV_SAMPLE,"mv_sample"},{CH_SAD,"sad"},{CH_PREV,"prev"},{CH_CUR,"cur"},
+        {CH_D_PIXEL,"d_pixel"},{CH_STASIS,"stasis"},{CH_A_SAMP,"a_samp"},{CH_B_SAMP,"b_samp"},{CH_WARP_OK,"warp_ok"},
+        {CH_PERSIST,"persist"},{CH_MV_BWD,"mv_bwd"},{CH_CANDIDATES,"candidates"},{CH_DISSIDENCE,"dissidence"},
+        {CH_MV_TARGET,"mv_target"},{CH_GME,"gme"},{CH_BLEND,"blend"},{CH_MV_PREV_GEN,"mv_prev_gen"},{CH_MEM_PRIOR,"mem_prior"},
+        {CH_MEM_ADV,"mem_adv"},{CH_OBJ_STATE,"obj_state"},{CH_WAKE,"wake"},{CH_GME_BWD,"gme_bwd"},{CH_PAIR_STATS,"pair_stats"} };
+    bool first = true;
+    for (const auto& n : kNames) if (m & n.bit) { std::printf("%s%s", first ? "" : ",", n.name); first = false; }
+    if (first) std::printf("-");
+}
+void layer_transport_report(const LayerConfig& lc, uint32_t transported_ch) {
+    const uint32_t host = layer_host_written_channels(lc);
+    const uint32_t dirty = transported_ch & host;          // the CPU is the author: the upload is inherent
+    const uint32_t gpu_only = transported_ch & ~host;      // GPU-produced and GPU-consumed: a device-resident FlowSet could skip it
+    std::printf("[layertab] 3->5 transport: CPU-authored ["); print_channels(dirty);
+    std::printf("] -- a stage-3 host row writes them, so the host copy is authoritative and its upload is inherent. "
+                "Not CPU-authored ["); print_channels(gpu_only);
+    std::printf("] -- of these, the FLOW fields (sad, candidates, mv_target) are GPU-produced and GPU-consumed and a "
+                "device-resident FlowSet could share them without the round trip; prev/cur are stage-2 frames on the "
+                "ingest path, a separate question. Host rows on: ");
+    bool first = true;
+    for (uint16_t i = 0; i < kLayerCount; ++i)
+        if (kLayers[i].kind == Kind::H && (lc.eff & (1u << i))) { std::printf("%s%s", first ? "" : " ", kLayers[i].name); first = false; }
+    if (first) std::printf("none");
+    std::printf("\n");
+}
+
 // ── the contract hash (FNV-1a 64 over the resolved chain, in execution order) ───────────────────
 static void fnv(uint64_t& h, const void* p, size_t n) {
     const unsigned char* b = (const unsigned char*)p;

@@ -537,6 +537,13 @@ int main(int argc, char** argv) {
         std::printf("[layertab] FLOW PARITY FAIL: the registry's resolved rows disagree with the init cascades -- refusing to run (exit 3)\n");
         return 3;
     }
+    // R5 step 4: what the 3->5 transport actually carries, and which half of it the CPU authored. The channels the
+    // upload moves today (wap_upload, present.cpp) minus the ones a host row writes = what a device-resident FlowSet
+    // could share without the round trip. Printed, not promised: the data-path change is a separate project.
+    if(use_wap) pfg::layers::layer_transport_report(cfg.layers,
+        pfg::layers::CH_PREV | pfg::layers::CH_CUR | pfg::layers::CH_MV_RAW_FWD | pfg::layers::CH_SAD |
+        pfg::layers::CH_MV_TARGET | pfg::layers::CH_MV_BWD | pfg::layers::CH_CANDIDATES |
+        pfg::layers::CH_DISSIDENCE | pfg::layers::CH_PERSIST);
 
     // ── Command buffers + fences + semaphores (E1 → core/core_init.cpp) ────────
     init_cmd_sync(cfg,single_gpu,o_dev,FD,o_img,o_flow,o_cs,o_br);
