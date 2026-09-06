@@ -2,6 +2,7 @@
 // ingest.hpp). Both bodies below are the pre-extraction text VERBATIM — nothing was retyped; the reference is
 // r6/capture_pre_extract.cpp and the measure is in records/R6_GATE.md §1. Made with my soul - Swately <3
 #include "ingest/ingest.hpp"
+#include "ingest/frames.hpp"       // R6 step 2: FrameRing::publish — the publish ORDER, in one place
 #include "capture/capture.hpp"
 #include "capture/wgc_ctx.hpp"
 #include "core/fg_context.hpp"
@@ -140,8 +141,7 @@ void convert_and_publish(FgContext& ctx, uint32_t cap_rot180, int s) {
                             std::printf("[ra] igpu-field-verify[slot %d]: %llu/%llu px differ (muestreo step-16), max|d|=%u (CPU Sobel vs GPU)\n",s,(unsigned long long)ndiff,(unsigned long long)npx,dmax);
                     }
                 }
-                if(cfg.latency_trace) c_slots[s].t_pub_ms=now_ms();   // stamp publish instant; the seq_cst fetch_add below orders it for F (publish→consume wake = F's now − this)
-                c_seq.fetch_add(1);
+                ctx.frames.publish(s, cfg.latency_trace ? now_ms() : 0.0);   // R6 step 2: the stamp + the seq_cst bump, in that order (ingest/frames.hpp)
                 c_cv.notify_all();
 }
 
@@ -317,9 +317,8 @@ void run_convert_worker(FgContext& ctx){
             }
         }
         raw_busy.store(-1);             // convert done — release the slot (the acquire may reuse it)
-        if(cfg.latency_trace) c_slots[s].t_pub_ms=now_ms();   // stamp publish instant; the seq_cst fetch_add below orders it for F (parity with the serial publish)
+        ctx.frames.publish(s, cfg.latency_trace ? now_ms() : 0.0);   // R6 step 2: the same publish as the serial path — one function, one order (ingest/frames.hpp)
         total_real.fetch_add(1);        // PROMPT publish
-        c_seq.fetch_add(1);
         c_cv.notify_all();
     }
 }

@@ -74,7 +74,33 @@ the proof). `capture.cpp` 972 → **683 lines** and compiles with **zero warning
 **Not in this step:** the `RawFrame` / `RealFrame` contract types (step 2), the directory renames (step 3), and the
 convert duplication above.
 
-## 2 · Step 2 — `RawFrame` / `RealFrame` (pending)
+## 2 · Step 2 — the ingest rings, and the publish order made structural (2026-09-06) — CLOSED
+
+**Built (`src/ingest/frames.hpp`, new).** `pfg::ingest::FrameRing` (2 → 3, 2 → 4) and `RawRing` (1 → 2), the same
+shape R5 gave the flow side: each OWNS its seq_cst publish counter (`c_seq`, `raw_seq`) and BINDS the slot storage
+by reference, with `main()` keeping the former names as aliases so every consumer reads and writes the same memory.
+
+**The half that has a consumer — `FrameRing::publish(slot, stamp_ms)`.** The invariant R6 must not change
+(`t_pub_ms` stamped BEFORE the `fetch_add`, because that store/load pair is the only thing ordering the slot's
+fields for the reader that observes the new sequence) was written out by hand at **two** sites — the serial tail and
+the `--ingest-async` worker. Both now call one function; the order lives in its body instead of in a comment
+repeated twice. `grep c_seq.fetch_add src/` returns only `frames.hpp`.
+
+**What was deliberately NOT built, and why.** `STAGE_CONTRACT` §1 names `RawFrame` / `RealFrame`, and the plan says
+the structs "replace the loose locals". They were written, then **removed before committing**: the eight readers of
+`c_slots[]` (capture, flow, flow_consume, present ×2) address the ring by an **arbitrary slot** —
+`c_slots[rfp_slot]`, `c_slots[mf_slot]`, `c_slots[s]` for a slot the caller already chose — not by the publish
+sequence. A view keyed on `seq` does not fit them; a view keyed on `slot` would be a struct with one member. Either
+would be a wrapper with no consumer, which the container's rule 1 forbids. The header says this in place, so the
+next session does not re-derive it. **The plan's letter is not met here, deliberately, and this is the record of
+that choice.**
+
+**Gate:** build 0 errors; the 45-test suite green; the ingest rates against step 1's binary — `in` 59.92 vs 59.91,
+`acq` 60.07 vs 60.06, `uniq` 59.92 vs 59.91, `arr` 60.08 both (deltas ≤ 0.013/s, inside these metrics' run-to-run
+spread), presents 7,188–7,190, every run a clean exit; and one `--ingest-async` run (the second publish site, the
+only path that reaches the worker's call) at `in` 59.91 / `acq` 60.06 / `uniq` 59.91, 7,190 presents.
+
+
 
 ## 3 · Step 3 — the directory names (pending)
 

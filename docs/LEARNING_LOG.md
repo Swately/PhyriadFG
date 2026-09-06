@@ -9,6 +9,16 @@
 
 ---
 
+### P-012 · Probing whether a flag exists starts a real run
+- **class:** recurrence-risk · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `phyriad_fg --latency-trace` was run to find out whether the token was accepted. It is accepted, so
+  the binary started a full FG run with no `--exit-after` and no window match, and ran until it was killed by PID
+  (the shell call had to be moved to the background first).
+- **lesson:** Use `--dump-config <flag>`: it parses, runs the registry parity, prints and exits. Since 4.3 it also
+  returns 2 on an unknown option, so the probe answers the question by its exit code alone. A bare invocation is
+  never a probe — every flag that only sets configuration falls through to the run loop.
+- **corrective:** recorded here; the harnesses in `tools/` already pass `--exit-after`.
+
 ### P-011 · A perturbation that changes nothing observable proves nothing
 - **class:** recurrence-risk · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
 - **evidence:** 4.3's first attempt to see the clock oracle red changed `+0.5` to `+0.5000001` inside an `int`

@@ -105,7 +105,8 @@
 #include "core/fg_context.hpp"
 // E1: the init-seq ownership structs (the former hoisted declaration block).
 #include "core/app_init.hpp"
-#include "flow/flow_set.hpp"      // R5: FlowRing / FlowSet (STAGE_CONTRACT §1)
+#include "flow/flow_set.hpp"      // R5: FlowRing / FlowSet (STAGE_CONTRACT §1)
+#include "ingest/frames.hpp"    // R6: FrameRing / RawRing + RealFrame / RawFrame (STAGE_CONTRACT §1)
 // ─── kGenRing lives in flow/flow.{hpp,cpp} ──
 
 // The object-/scene-/shape-field holon constants live in flow/flow.hpp so run_flow can name
@@ -575,7 +576,12 @@ int main(int argc, char** argv) {
         // constant (auto varies it; the cap is cfg.fg_factor).
 
         RealSlot c_slots[kCapSlots]{};
-        std::atomic<uint64_t> c_seq{0};
+        // R6 step 2 — STAGE_CONTRACT §1's FrameRing: the 2 → 3 / 2 → 4 crossing gets its type. The ring OWNS the
+        // publish counter and BINDS the slot storage; `c_seq` and `c_slots` stay as the names everything already
+        // uses (the same storage, so no consumer changes). `ring.at(seq)` is the declared RealFrame view.
+        std::atomic<uint64_t> _c_seq{0};
+        pfg::ingest::FrameRing frames{ _c_seq, c_slots, cap_slots };
+        std::atomic<uint64_t>& c_seq = frames.seq;
         // R5 step 2 — the F→P generation ring is DECLARED: pfg::flow::FlowRing (flow/flow_set.hpp) owns the per-pair
         // scalars that were twelve locals here and the two counters of the ring contract (f_seq, p_presenting), and
         // binds the per-generation host bridges by reference (their allocation stays with o_host / core_init). The
@@ -660,7 +666,13 @@ int main(int argc, char** argv) {
         std::atomic<uint64_t> dd_arr_delta_us{0}, dd_arrived{0}, dd_timeouts{0}, dd_lost{0}, dd_present{0};   // dd_timeouts: DDA WAIT_TIMEOUT/s; dd_lost: re-arm events; dd_present: suma AccumulatedFrames = tasa entregada real (superseded por dd_acq en el readout [ra-cap])
         // INGEST-ASYNC: dd_acq = ACQUIRES/s (serial + async) = the reliable `acq=` readout (dd_present reads 0 on NVIDIA).
         // raw_seq/raw_busy/raw_cv/raw_mtx = the acquire↔worker decoupling state (inert unless cfg.ingest_async).
-        std::atomic<uint64_t> dd_acq{0}, dd_uniq{0}, raw_seq{0};   // dd_uniq: CAPTURE-DEDUP frames únicos reales/s (el `uniq=` readout)
+        std::atomic<uint64_t> dd_acq{0}, dd_uniq{0};   // dd_uniq: CAPTURE-DEDUP frames únicos reales/s (el `uniq=` readout)
+        // R6 step 2 — the RawRing (1 → 2, armed only under --ingest-async): the acquirer publishes with `raw_seq`,
+        // the worker takes `raw_seq - 1` and drops the rest. Same discipline as the FrameRing above; `raw_seq` stays
+        // the name the acquirer and the worker use.
+        std::atomic<uint64_t> _raw_seq{0};
+        pfg::ingest::RawRing raws{ _raw_seq, raw_host, raw_astage_a, raw_astage_g, raw_tcap, raw_lt_submit, raw_lt_compose };
+        std::atomic<uint64_t>& raw_seq = raws.seq;
         std::atomic<int> raw_busy{-1};
         std::condition_variable raw_cv;
         std::mutex raw_mtx;
@@ -790,6 +802,7 @@ int main(int argc, char** argv) {
             .hostR = hostR,
             .c_cv = c_cv,
             // INGEST-ASYNC: the acquire↔convert-worker decoupling state (inert unless cfg.ingest_async).
+            .frames = frames,
             .raw_seq = raw_seq,
             .dd_acq = dd_acq,
             .dd_uniq = dd_uniq,

@@ -35,6 +35,8 @@ struct UpPipe;
 // (--latency-trace only). The seq_cst fetch_add that follows the store orders it for F (no lock needed).
 struct RealSlot { double t_cap_ms=0.0; double t_pub_ms=0.0; };
 
+namespace pfg::ingest { struct FrameRing; }   // R6 step 2: ingest/frames.hpp — the 2→3 / 2→4 ring and its publish()
+
 // --ingest-async (default OFF): the RAW host-buffer ring between the acquire thread (run_capture's
 // DDA acquire-only loop) and the convert worker (run_convert_worker). RAW_N clones of the Astage
 // HBuf; the acquire writes the newest into raw[w%kRawSlots], the worker DROP-TO-NEWEST converts it.
@@ -99,6 +101,7 @@ struct FgContext {
     // --ingest-async (default OFF): the acquire↔convert-worker decoupling state. ALL of these are inert
     // when cfg.ingest_async is false (the worker is never spawned, the async acquire branch is never
     // entered, the raw ring is never allocated → these references/pointers exist but are never touched).
+    pfg::ingest::FrameRing& frames;   // R6 step 2: the FrameRing owns c_seq and the publish ORDER (ingest/frames.hpp)
     std::atomic<uint64_t>& raw_seq;      // monotone "newest published raw frame index + 1"; worker reads (raw_seq-1)%kRawSlots
     std::atomic<uint64_t>& dd_acq;       // TELEMETRY: successful ACQUIREs (serial + async)
     std::atomic<uint64_t>& dd_uniq;      // CAPTURE-DEDUP: frames ÚNICOS reales (no-duplicados de contenido); el `uniq=` readout = la tasa real del juego
@@ -336,3 +339,4 @@ struct FgContext {
     VkFence& fBridge;
     bool& ra_fgprotect_demote_p;
 };
+// Made with my soul - Swately <3
