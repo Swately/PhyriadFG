@@ -89,6 +89,21 @@ public:
     FlipStats flip_stats() const;                                       // the feedback edge (consumed by the CSV row today)
     Decision last_decision() const { return last_decision_; }
 
+    // ── R4b: what the panel actually got. A present is FRESH when the slot it shows holds a warp that
+    //    completed since the previous present (async: a promotion happened; sync: this tick recorded one);
+    //    otherwise it is a RE-SHOW of the previous image. uniq/s counts decisions; this counts frames.
+    bool     last_present_fresh() const { return last_fresh_; }
+    uint64_t fresh_ticks = 0;                                          // fresh presents so far (the stats window it)
+    // ── --warp-timing (R4b, INSTRUMENT, default off): GPU timestamps around the warp batch (top of pipe after
+    //    vkBeginCommandBuffer → bottom of pipe after the blit) and the host-observed submit→completion latency,
+    //    read when the slot is promoted; the tick that PRESENTS that slot carries both numbers.
+    bool   timing_arm();                                                // the query pool + timestampPeriod; false = unavailable
+    void   timing_begin(VkCommandBuffer cmd, int slot);                 // no-op unless armed
+    void   timing_end(VkCommandBuffer cmd, int slot);                   // no-op unless armed
+    double presented_warp_gpu_ms() const { return presented_gpu_ms_; }  // −1 = NA (re-show, or timing off)
+    double presented_warp_lat_ms() const { return presented_lat_ms_; }  // −1 = NA
+    void   timing_line(char* buf, size_t n) const;                      // the stats-line fragment (empty unless armed)
+
     // ── --tdr-test N (G-R4): armed at init; fired ONCE into a tick's command buffer after N s. L3 (SAFETY §5):
     //    never dispatched unless the flag is on the command line; the operator's explicit word is required to run it.
     bool tdr_arm(const std::vector<uint32_t>& spv, int seconds);
@@ -101,6 +116,15 @@ private:
     std::atomic<uint64_t>& total_frames_;
     std::atomic<bool>& g_quit_threads_;   // main()'s clean-exit latch (a main() local despite the g_ name — bound, like FgContext does)
     Decision last_decision_ = Decision::Warp;
+    // R4b: fresh / re-show bookkeeping + the --warp-timing state
+    uint64_t front_seq_ = 0, last_presented_seq_ = 0; bool last_fresh_ = false;
+    bool timing_ = false; VkQueryPool ts_pool_ = VK_NULL_HANDLE; double ts_period_ns_ = 0.0;
+    double submit_ms_[2] = { 0.0, 0.0 };                                // host clock at submit, per slot
+    double last_gpu_ms_ = -1.0, last_lat_ms_ = -1.0;                    // of the slot most recently promoted
+    double presented_gpu_ms_ = -1.0, presented_lat_ms_ = -1.0;          // of the slot presented this tick (NA on a re-show)
+    double gpu_ema_ = 0.0, lat_ema_ = 0.0;
+    void timing_read(int slot);                                         // vkGetQueryPoolResults after the fence completed
+    void on_promoted(int slot);                                         // ++front_seq_ (+ timing_read when armed)
     int tdr_seconds_ = 0; double tdr_t0_ = 0.0; bool tdr_fired_ = false;
     VkDescriptorSetLayout tdr_dsl_ = VK_NULL_HANDLE; VkPipelineLayout tdr_pl_ = VK_NULL_HANDLE; VkPipeline tdr_pipe_ = VK_NULL_HANDLE;
     VkDescriptorPool tdr_pool_ = VK_NULL_HANDLE; VkDescriptorSet tdr_set_ = VK_NULL_HANDLE; HBuf tdr_sink_{};

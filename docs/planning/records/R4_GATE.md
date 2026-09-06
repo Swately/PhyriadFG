@@ -188,6 +188,92 @@ latency) and a per-tick "fresh / re-shown" column in the CSV — both INSTRUMENT
 product change is proposed here; this is the measurement the operator's objective ("la correcta multiplicación
 de frames") needs before anything is tuned.
 
+### 4.6 · R4b — the instruments, and the finding measured (same day; 17 runs)
+
+Three INSTRUMENT-plane additions (`r4b_patch.py`; none touches a presented pixel; the moved bodies of §2 are
+untouched — verbatim still 68/81): (1) the `--exit-after` / `--max-frames` guard HOISTED to the tick boundary
+(grid mode now self-bounds: `--exit-after 10` → `total_presents=2395 (--duration 10s …)`); (2) **`phyriadfg_fresh`**
+per CSV row (1 = this present carries a warp completed since the previous present: async → a promotion happened;
+sync → this tick recorded one), `fresh_count` in `-stats.csv`, and `fresh:N/s` beside `uniq` on the stats line;
+(3) **`--warp-timing`**: `vkCmdWriteTimestamp` top-of-pipe after `vkBeginCommandBuffer` and bottom-of-pipe after
+the blit, read at promotion (`vkGetQueryPoolResults`), plus the host-observed submit→completion latency (the host
+clock at `vkQueueSubmit` to the poll that saw the fence) — per fresh present in the CSV (`phyriadfg_warp_gpu_ms`,
+`_lat_ms`), EMAs on the stats line (`gpu … sub2fence …`). Zero new warnings against the full pre-R4 build's set.
+
+**Measured** (`r4b_measure.ps1` + the probes; the ball zoo 60 fps 1920×1080, 60 s, `--csv --warp-timing`;
+`r4b_parse.py`; "completion" = the submit→fence latency as SEEN by the poll that found it, so it is quantised by
+how often the thread looks):
+
+| configuration | runs | fresh | fresh/s | rdrop/s | GPU p50 / p95 (ms) | completion p50 / p95 (ms) | `MsAddedLatency` |
+|---|---|---|---|---|---|---|---|
+| **async — the shipping default** | 2 | **49.9 %** (7,174 / 7,176 of 14,386) | **119.3** (spread 0.04) | 119.7 / 119.6 | **0.107** / 0.123 | 9.10 / 10.53 — the SECOND poll after submit | 20.86 (spread 0.06) |
+| **sync — `--no-async-present`** | 2 | **100 %** (14,383 / 14,383) | **239.3** (spread 0.01) | 0 | **0.079** / 0.087 | **4.03** / 4.69 (max 6.3–7.4), constant over the run | 21.62 (spread 0.05) |
+| `--shallow-queue` (default budget 350 µs) | 1 | 54.5 % | 130.3 | 106.7 | 0.102 / 0.121 | 6.93 / 10.53 | 20.24 |
+| `--shallow-queue --shallow-queue-budget-us 2000` | 2 | 50.4 / 50.1 % | 120.5 / 119.9 | 118.1 / 118.8 | 0.105 / 0.103 | 9.30 / 9.61 p50 | 20.82 / 21.04 |
+| `--shallow-queue --shallow-queue-budget-us 4000` | 3 | 72.6 / 78.0 / 76.5 % | 173.5 / 186.5 / 183.2 | 44.6 / 35.6 / 38.0 | 0.094 / 0.095 / 0.093 | **1.96–2.58** / 10.67 | 21.00 / 20.20 / 20.42 |
+| the same at 4000 µs, zoo at 61 / 59 fps (the beat test) | 1 + 1 | 71.6 / 74.4 % | — | — | — | 2.68 / 2.53 p50 | — |
+| `--present-waitable` (the mechanism test, below) | 2 (+1 with sq 4000) | **99.85 / 99.84 %** (14,362 / 14,360 of 14,383) | 239.0 stats mean (`fresh:240/s` on every window after the ~4 s start-up ramp) | 0 | 0.088 / 0.092 | 4.16 / 5.62 — the FIRST poll, at the next tick; with the 4000 µs spin on top: **0.25** / 0.66 (max 1.80), 99.8 %, NO 16 s cycle | 21.21 / 21.24 (with the spin 21.16) |
+
+Quoted (sync run 1): `[ra] 239.8 fps (present) | … | uniq 240/s fresh:240/s | … | warp 3.42ms | iter 3.68/worst
+4.40ms | lat 20.1ms | … | gpu 0.08ms sub2fence 3.34ms`; (async run 2): `… uniq 239/s fresh:119/s rdrop:119/s | …
+| gpu 0.11ms sub2fence 8.71ms`; (4000 µs, run 2, first window): `[ra] 135.3 fps (present) | … | uniq 134/s
+fresh:135/s | … | warp 0.52ms | iter 0.80/worst 2.95ms | lat 16.1ms | … | sq:135H/0M gpu 0.10ms sub2fence 0.31ms`.
+
+**The shallow-queue runs are BISTABLE.** The per-second fresh fraction of every 4000 µs run alternates between a
+**≥ 99 % plateau** (hits ≈ 240/s, completion p50 0.49–0.84 ms, p90 2.3–2.6 ms, nothing above 4 ms) and a
+**≈ 62 % floor** (hits ≈ 88/s; completion clustered at [0–0.5) 17–19 %, [2–4) 41–44 %, [4.5–6) 15–16 % — the
+next tick's poll — and [10–12) 16 % — the poll after that). Plateau starts, in seconds: run 2 `0, 22, 39, 56`;
+run 3 `0, 19, 36, 53`; run 1 `9, 25, 41, 58` — a **16–17 s period** (autocorrelation peak 17 / 17 / 16 s, r
+0.47 / 0.59 / 0.65). The 2000 µs runs never enter the plateau (hits 0.6/s → 0.2–0.4/s); the 350 µs run held 185
+hits/s for its first ~4 s and never again (`sq:0H/128M`). Neither the async nor the sync run shows the period
+in `fresh` (119.7 → 119.2 and 229 → 240 flat over 159 windows).
+
+**The 16 s cycle is the loop's own, and the code names it.** The panel flips every **4.17093 ms = 239.755 Hz**
+(CSV `MsBetweenDisplayChange` over 14,379 single-period flips, sync run 1); the output timer ticks at 4.16667 ms
+= 240.000 Hz; the presents are spaced at the PANEL period (median `qpc_present` delta 4.1710 ms) — the loop is
+flip-locked, `Present(0)` blocking on the flip-model swapchain's two buffers (`BufferCount 2`; the waitable
+object and `SetMaximumFrameLatency(1)` are the default-off `--present-waitable`). So the tick's lateness against
+the timer grid — the CSV `slip_ms` — is a SAWTOOTH in every run: it grows **1.02 ms/s** (4.26 µs per tick, the
+two periods' difference) and resets when it exceeds four periods (`present.cpp:1819`: `if(tn-tgt>4.0*tick_period_ms){
+tick_t0=tn; tick_k=0; …}`): 16.67 ms ÷ 1.02 ms/s = **16.3 s**. The shallow-queue plateau is the stretch after
+each re-seat in which the slip is ≈ 0 (4000 µs run 2: slip 0.00 at 2–8 s → 100 % fresh; 1.83 ms at 12 s → 63 %;
+0.00 at 24 s → 100 %; 1.41 at 28 s → 63 %; 0.00 at 40–42 s → 100 %): with the tick starting ON its target the
+spun fence completes at 0.3–0.8 ms; once the loop is flip-locked (the tick starts late, right after the previous
+present returned) the same spin sees 2–4 ms or misses. **The beat test refutes the source as the driver:** the
+zoo at 61 fps (plateaus 11–14, 27–30, 44–47 s) and 59 fps (7–11, 24–27, 40–43, 57–58 s) show the SAME 16 s period
+(autocorrelation r 0.66 / 0.69), where a source/panel beat would have given ≈ 1 s. The sync path is immune to
+the slip (100 % at every phase) and the async path blind to it (50 % at every phase).
+
+**What the numbers establish.** (1) The warp batch (upload barriers + warp + blit) costs **0.08–0.11 ms of GPU
+time**. (2) It CAN complete **0.3–0.6 ms after submit** (the plateau's p50, with the thread spinning on the
+fence). (3) Under the shipping default it is NOT complete at the first poll ~4 ms after submit and is found at
+the second: **half of the presents carry the previous image (fresh 119.3/s of 240)**. (4) The sync path completes
+at a constant 4.03 ms — one panel period — and delivers all 240 at +0.77 ms of added latency, with the present
+thread blocked ~4 ms of every 4.17 ms tick (worst 5.0 ms). (5) Whether a spun fence completes at 0.3 ms or at
+2–4+ ms is decided by the tick's phase against the flip, which cycles every 16.3 s. `uniq/s`, `disp_src` and
+`MsBetweenDisplayChange` cannot see any of this; `fresh` can. §4.5's reading "the device is busy ~1.7 ms of the
+3.9" is SUPERSEDED: the device is busy 0.1 ms; the rest is waiting. A correlate, not a cause: the 4090 sits at
+3,060 MHz / 127 W on the sync path and 2,610 MHz / 83 W on the async one — the load pattern.
+
+**The mechanism — one hypothesis, four predictions matched, then tested.** The VK batch of tick k writes the
+bridge slot the previous present read (`present_front`: `AcquireSync(0) → CopyResource → ReleaseSync(0) →
+Present(0)`); its keyed-mutex acquire therefore waits for that `CopyResource`, and on a flip-model swapchain with
+two buffers the D3D queue runs that copy behind the previous frame's flip. Predicted and matched: the sync
+path's constant one-period completion (the chain VK k+1 ← copy k ← flip k−1 runs everything one vblank behind);
+the async path's exact 50 % (a re-shown slot is copied twice in a row, its next VK acquire waits a flip); the
+plateau's 0.3 ms with the slots alternating every tick (the copy the batch waits for is two presents old); the
+plateau's collapse once the loop is flip-locked. **The test** — the default-off `--present-waitable` makes the
+present pillar wait for the previous frame's consumption BEFORE `Present` (`SetMaximumFrameLatency(1)` + the
+waitable object), so the copy no longer queues behind a flip; if the chain is the cause the shipping async
+path must rise from 49.9 % fresh without any other change: **it does — 99.85 / 99.84 % fresh (14,362 / 14,360 of 14,383; `fresh:240/s` on every window after the start-up ramp; DI-3 spread 0.01 %)**, the fence now found at the FIRST poll (p50 4.16 ms = the tick) and, with the 4000 µs spin on top, at **0.25 ms p50 / 0.66 p95 / 1.80 max** over the whole minute — the 16 s bistability gone while `slip_ms` still sawtooths underneath. The cost: `MsAddedLatency` 21.21 / 21.24 (+0.35 ms over the default's 20.86; the sync path's is 21.62) and the present thread now blocked in the waitable wait instead of the fence wait (`warp 3.61–3.91ms | iter 3.92–4.16/worst 4.10–4.40ms` on the stats line; CSV `iter` p50 4.17, p95 4.22, max 8.1). Quoted (run 1, last window): `[ra] 240.0 fps (present) | wap tick 240/s (arr 59) | … | uniq 240/s fresh:240/s | … | warp 3.61ms | iter 3.92/worst 4.10ms | lat 20.9ms | slip 0.00/max 0.00ms | … | ps 240/s ok=14310 to=0 er=0 gpu(A:39% …) vbhit:61/s gpu 0.09ms sub2fence 4.26ms`.
+
+**Not established:** which link of the chain the waitable cuts — it makes the previous frame's consumption precede BOTH the copy and the batch, so "the copy behind the flip" and "the D3D packet ahead in the WDDM queue" are removed together (the `--no-keyed-mutex` probe would separate them); and the async default's true completion time (the poll cadence quantises it to "before the next tick"; the spun 0.25 ms is the measurement we have). The other named probes remain: a `--no-keyed-mutex` run (the no-KM path exists in
+`present_init.cpp:55`, hardware-gated today; its async safety must be validated first), an ETW / GPUView trace of
+the present packets. **Register: XR15.** The present POLICY is the operator's — a product default with visible
+history — with these numbers: (1) accept ~120 fresh/s (ships today); (2) flip the default to sync: 100 % fresh,
++0.8 ms, the P thread 94 % busy; (3) `--shallow-queue` at 4000 µs: 73–78 % fresh at LOWER latency than the
+default, but bistable on the 16 s cycle — not a product setting; (4) `--present-waitable` — an EXISTING default-off knob (the pillar's FG_PRESENT_PACING_DESIGN option B): 99.85 % fresh on the async path at +0.35 ms `MsAddedLatency`, the P thread blocked in the waitable wait; making it the default is the same product decision, with that design note as its history. The session's recommendation, for his decision: (4) over (2) — the same 240 fresh/s at 0.4 ms less added latency than sync and without the fence wait's overrun exposure — after a DI-3 pair under `gpu_load` and on real game content, neither run here.
+
 ## 5 · `--tdr-test` — built, NOT run
 
 The forced GPU hang resets the device that carries the operator's interactive display: an **L3** operation under
@@ -213,8 +299,10 @@ item is `built, awaiting the operator's word`**; the record will carry the run's
   the slots bound not re-created (CR1); its own TU under LTO, presents/latency inside spread (PR1).
 - **The decision is declared** — `Decision::{Warp, Dup, Drop, Decimated}` — and load-bearing: `begin()` consumes it.
 - **`--tdr-test N`:** built, not run (§5) — the one G-R4 item that waits, for the stated safety reason.
-- **Two findings for the operator (§4.4–4.5), neither R4's to fix:** `--exit-after` is WAP-only; the async
-  present re-shows the front on ~half the ticks — the fresh-frame rate is ~120/s under the shipping default.
+- **Two findings for the operator (§4.4–4.6), neither R4's to fix:** `--exit-after` was WAP-only (fixed by R4b,
+  hoisted); the async present re-shows the front on half the ticks — **49.9 % fresh, 119.3/s**, measured with
+  the R4b instruments against 100 % / 239.3/s on the sync path; the batch executes in 0.1 ms and CAN complete in
+  0.3 ms, so the loss is a wait, not work (register XR15, the operator's present-policy decision).
 
 ## 7 · Honesty ledger
 
@@ -228,5 +316,16 @@ item is `built, awaiting the operator's word`**; the record will carry the run's
   would re-read text a script already diffed.
 - PR1 (de-inlining): the stage lives in its own TU (like R1's clock); LTO/IPO is on; the presents/s and latency
   numbers of §4 are the measurement.
+- **R4b (§4.6):** every number is from one content (the ball zoo, 60 fps, 1920×1080) on this rig, 60 s runs;
+  no `gpu_load` soak and no real game were run with the R4b instruments — the `--present-waitable` result is a
+  mechanism test, not a product qualification. The "completion" latency is what the poll SAW: the async
+  default's 9.1 ms is two poll periods, the waitable's 4.16 ms is one; only a spinning poll (the shallow queue)
+  measures the batch itself (0.25–0.8 ms). The harness (`tools/r4b/`: `r4b_measure.ps1`, `r4b_beat.ps1`,
+  `r4b_waitable.ps1`, `r4b_parse.py`) ran from the session's scratchpad; the tools copy writes under its own
+  directory. A PowerShell-host launch writes the logs as UTF-16 (the parser reads both); the `total_presents`
+  of the waitable runs (14,382 / 14,382 / 14,382) come from that re-read. The 16 s mechanism (the grid re-seat)
+  and the keyed-mutex chain are read from the code (`present.cpp:1819`, `present_stage.cpp` `present_front`)
+  and matched by the data; the chain's individual links were not separated (the `--no-keyed-mutex` probe is
+  the named next step).
 
 *Made with my soul - Swately <3*

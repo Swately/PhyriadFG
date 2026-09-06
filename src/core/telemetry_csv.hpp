@@ -67,6 +67,10 @@ struct CsvRow {
     // Both stay at the <0 sentinel (→ NA) unless the present site populates them (only on the --csv path).
     double    disp_phase  = -1.0;  // displayed interpolation phase t_use ∈ [0,1]
     double    disp_src    = -1.0;  // displayed content-source-time (source-frame units)
+    // ── R4b: what the panel actually got (the fact uniq/s and disp_src cannot see) ──
+    int       fresh       = -1;    // 1 = this present carried a warp completed since the previous present; 0 = a re-show; −1 = NA
+    double    warp_gpu_ms = -1.0;  // --warp-timing: the presented warp batch's GPU time (timestamps top→bottom of pipe); NA on a re-show / off
+    double    warp_lat_ms = -1.0;  // --warp-timing: its submit→completion latency as the host observed it (upper-bounded by the poll cadence)
 };
 
 class TelemetryCsv {
@@ -107,6 +111,7 @@ private:
     std::vector<double>   slice_ms_;        // per-tick FG 4090 slice (warp+present wall, r.warp_ms>0)
     double                src_fps_sum_ = 0.0; uint64_t src_fps_n_ = 0;
     uint64_t              n_present_ = 0, n_freeze_ = 0, n_fdrop_ = 0;   // n_fdrop_ = exact-dup discriminator drops (distinct from freezes)
+    uint64_t              n_fresh_ = 0;                                  // R4b: presents that carried a NEW warp (the panel's fresh-frame count)
     long long             qpc_first_ = 0, qpc_last_ = 0;
 
     // ── WATCHDOG: present-thread stall/freeze/hang detection (drain-thread-side) ──
@@ -276,7 +281,8 @@ inline void TelemetryCsv::write_header() {
         "GPUUtilization_4090,GPUPower_4090,GPUTemperature_4090,GPUFrequency_4090,GPUMemoryFrequency_4090,GPUMemorySizeUsed_4090,"
         "GPUUtilization_1080Ti,GPUPower_1080Ti,GPUTemperature_1080Ti,GPUFrequency_1080Ti,GPUMemoryFrequency_1080Ti,GPUMemorySizeUsed_1080Ti,"
         "GPUUtilization_iGPU,CPUUtilization,"
-        "phyriadfg_disp_phase,phyriadfg_disp_src_frames\n");   // fluidity axis (appended; positions of all prior columns unchanged)
+        "phyriadfg_disp_phase,phyriadfg_disp_src_frames,"
+        "phyriadfg_fresh,phyriadfg_warp_gpu_ms,phyriadfg_warp_lat_ms\n");   // fluidity axis + R4b (appended; positions of all prior columns unchanged)
     // a one-line schema note so a consumer knows the vocabulary (console-style)
     std::fprintf(fp_, "# schema=PhyriadFG; frametime=MsBetweenPresents(console-style); FrameType: Synthesized|Repeated; NA cells are empty; per-device GPU* suffixed; iGPU/CPU telemetry NA this phase; phyriadfg_disp_phase=intra-pair t_use[0,1], phyriadfg_disp_src_frames=content-source-time(source-frame units, the Animation-Error analogue)\n");
 }
@@ -316,6 +322,8 @@ inline void TelemetryCsv::write_row(const CsvRow& r, long long& prev_qpc, bool& 
     //    → NA (the D helper), so a row from a path that didn't populate them stays honest rather
     //    than logging a fake 0.
     D(fp_, r.disp_phase); D(fp_, r.disp_src);
+    if (r.fresh < 0) std::fprintf(fp_, ","); else std::fprintf(fp_, ",%d", r.fresh);   // R4b
+    D(fp_, r.warp_gpu_ms); D(fp_, r.warp_lat_ms);
     std::fprintf(fp_, "\n");
     // accumulate for stats
     if (mbp > 0) ft_.push_back(mbp);
@@ -323,6 +331,7 @@ inline void TelemetryCsv::write_row(const CsvRow& r, long long& prev_qpc, bool& 
     if (r.source_fps > 0) { src_fps_sum_ += r.source_fps; ++src_fps_n_; }
     if (r.frz) ++n_freeze_;
     if (r.fdrop) ++n_fdrop_;   // count discriminator drops distinctly
+    if (r.fresh == 1) ++n_fresh_;   // R4b: presents that carried a NEW warp
     ++n_present_;
     if (qpc_first_ == 0) qpc_first_ = r.qpc_present;
     qpc_last_ = r.qpc_present;
@@ -413,6 +422,7 @@ inline void TelemetryCsv::write_stats() {
     std::fprintf(sf, "frame_count,%llu,presented frames\n", (unsigned long long)n_present_);
     std::fprintf(sf, "freeze_count,%llu,real lap-freezes (re-shows; distinct from fdrop)\n", (unsigned long long)n_freeze_);
     std::fprintf(sf, "fdrop_count,%llu,--fdrop exact-duplicate discriminator drops (elided redundant warps; make-space density)\n", (unsigned long long)n_fdrop_);
+    std::fprintf(sf, "fresh_count,%llu,presents that carried a NEW warp (R4b; frame_count - fresh_count = re-shows of the previous image)\n", (unsigned long long)n_fresh_);
     std::fprintf(sf, "dropped_rows,%llu,ring overflow (telemetry only; not presents)\n", (unsigned long long)drops_.load());
     std::fprintf(sf, "max_stall_ms,%s,watchdog: longest present-thread stall (gap>100ms = freeze/hang)\n", F(max_stall_ms_).c_str());
     std::fprintf(sf, "stall_count,%llu,present stalls/freezes/hangs detected (gap>100ms; see # STALL_ lines in raw csv)\n", (unsigned long long)stall_count_);

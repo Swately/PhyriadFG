@@ -408,12 +408,14 @@ void run_present(FgContext& ctx){
             bool& surface_ready=pres.surface_ready;
             uint64_t& ps_ok=pres.ps_ok; uint64_t& ps_timeout=pres.ps_timeout; uint64_t& ps_err=pres.ps_err; uint64_t last_ps_ok=0;  // submit ok/timeout/err counters (stage-owned; the stats window the deltas)
             uint64_t& rdrop_ticks=pres.rdrop_ticks; uint64_t last_rdrop=0;   // async re-present drops (stage-owned; counted by PresentStage::begin)
+            uint64_t& fresh_ticks=pres.fresh_ticks; uint64_t last_fresh=0;   // R4b: presents that carried a NEW warp (stage-owned; the stats window the delta)
             // (--load-governor, self-keyed floor) the FG's OWN-slice distress latch: TRUE when freshage or
             // the warp fence says WE are starved (not merely "the GPU is busy"). Declared BEFORE the warp
             // lambda so warp_light reads the SAME latched decision the F-thread floor uses (one decision,
             // two arms). Updated once/util-refresh in the publish block below; false unless load_governor.
             bool gov_self_distress=false;   // debounced FG-own-slice distress (freshage OR warp inflation)
             if(!pres.init((void*)wgc_target_hwnd)) return;   // R4 (stage 6): the PresentSurface block, moved verbatim to PresentStage::init (the two bails return false)
+            if(cfg.warp_timing && !pres.timing_arm()) std::printf("[ra] --warp-timing: timestamps unavailable on this device -- running without\n");
             if(cfg.tdr_test_s>0){ const std::vector<uint32_t> spvt(kTdrHangSpv.begin(),kTdrHangSpv.end());
                 if(!pres.tdr_arm(spvt,cfg.tdr_test_s)) std::printf("[ra] --tdr-test: arming FAILED (pipeline/buffer) -- the run proceeds without it\n"); }
             // device-loss bridge: the OwnWindow present site now OWNS the displayed
@@ -904,6 +906,7 @@ void run_present(FgContext& ctx){
                 if(record_this_tick){
                 vkResetCommandBuffer(cmdBridge,0);
                 VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdBridge,&bi);
+                pres.timing_begin(cmdBridge,tk.back);   // --warp-timing (R4b): the GPU timestamp at the top of the warp batch; no-op unless armed
                 // reset the DEVICE-LOCAL mass counter ON-GPU (vkCmdFillBuffer→0), then barrier
                 // TRANSFER_WRITE→SHADER_WRITE so the dispatch's atomicAdds observe the cleared value.
                 // The counter SSBO lives in VRAM (not a host-coherent buffer), so the per-workgroup
@@ -1293,6 +1296,7 @@ void run_present(FgContext& ctx){
                     img_barrier(cmdBridge,wapPrevOutA.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                     img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_WRITE_BIT);
                 }
+                pres.timing_end(cmdBridge,tk.back);   // --warp-timing (R4b): the GPU timestamp after the blit (bottom of pipe); no-op unless armed
                 pres.tdr_maybe(cmdBridge);   // --tdr-test (R4/G-R4): the forced GPU hang, recorded once when armed and due; a no-op otherwise
                 vkEndCommandBuffer(cmdBridge); vkResetFences(A.dev,1,&fBridge);
                 // rec = the CPU cmd-record window just closed (reset→…→end). gpu starts at submit.
@@ -1768,6 +1772,11 @@ void run_present(FgContext& ctx){
                 // inert local with no effect on any presented pixel → byte-identical-off. (.)
                 const double t_run_start = now_ms();
                 while(!g_quit&&!g_quit_threads.load()){
+                    // (FG bounded-run) the deadline guard, HOISTED here (R4b) so every path honours it — its former
+                    // home inside the WAP branch left grid mode (--no-warp-at-presenter) unbounded (R4_GATE.md §4.4).
+                    // Same g_quit, same counters; default-off (run_max_ms/run_max_frames = 0) → byte-identical-off.
+                    if(cfg.run_max_ms && now_ms()-t_run_start >= cfg.run_max_ms) g_quit=true;
+                    if(cfg.run_max_frames && total_frames.load() >= cfg.run_max_frames) g_quit=true;
                     // (own-window) log yield/re-assert TRANSITIONS — the only visible truth of whether
                     // our plane is on the panel (ps-ok counts even while yielded). Cold: prints only on change.
                     if(cfg.present_own_window && surface_ready){
@@ -2540,6 +2549,9 @@ void run_present(FgContext& ctx){
                                 // the Animation-Error animation-time analogue the deterministic source makes valid
                                 // for GENERATED frames. These two assignments are INSIDE `if(tcsv.active())`, which is only
                                 // true when --csv armed tcsv.start(); with no --csv they NEVER execute → byte-identical-off.
+                                row.fresh       = pres.last_present_fresh()?1:0;   // R4b: 1 = the panel got a NEW warp this tick, 0 = a re-show of the previous image
+                                row.warp_gpu_ms = pres.presented_warp_gpu_ms();    // R4b (--warp-timing): the presented warp batch's GPU time (NA on a re-show / off)
+                                row.warp_lat_ms = pres.presented_warp_lat_ms();    // R4b (--warp-timing): its submit->completion latency as the host saw it
                                 row.disp_phase  = t_use;
                                 row.disp_src    = ((double)pair_c - (double)span) + t_use * (double)span;
                                 // ── (fluidity PACING axis) the DISPLAY-FLIP interval for MsBetweenDisplayChange ──
@@ -2569,8 +2581,7 @@ void run_present(FgContext& ctx){
                             // tcsv scope-exit on this thread, so the bounded exit finalizes the CSV like any clean quit.
                             // total_frames is the canonical present counter (the same atomic the done summary prints).
                             // → (reuse the proven g_quit unwind, no present-thread race), (byte-identical-off).
-                            if(cfg.run_max_ms && now_ms()-t_run_start >= cfg.run_max_ms) g_quit=true;
-                            if(cfg.run_max_frames && total_frames.load() >= cfg.run_max_frames) g_quit=true;
+                            // (the deadline guard that lived here moved to the loop top — R4b; see there)
                             // ── update the mass-conservation feedback from the measured mass ──
                             // expected = lerp(m_fwd, m_bwd, t)·64 (block→pixel). err = (presented−expected)/
                             // max(expected,1). err_ema EMA 0.9. Only when matte_active AND mass_k>0 (the
@@ -2656,8 +2667,11 @@ void run_present(FgContext& ctx){
                             // uniq NO los ve). Crónico ≈ tick-rate/2 = la mitad de las posiciones calculadas
                             // nunca llega al panel. Impreso solo cuando ocurre (calma = línea intacta).
                             const double rdrop_fps=dt>0?(double)(rdrop_ticks-last_rdrop)/dt:0; last_rdrop=rdrop_ticks;
-                            char rdrop_buf[24]="";
-                            if(rdrop_fps>0.5) std::snprintf(rdrop_buf,sizeof(rdrop_buf)," rdrop:%.0f/s",rdrop_fps);
+                            char rdrop_buf[64]="";
+                            const double fresh_fps=dt>0?(double)(fresh_ticks-last_fresh)/dt:0; last_fresh=fresh_ticks;   // R4b: NEW warps that reached the panel
+                            if(rdrop_fps>0.5) std::snprintf(rdrop_buf,sizeof(rdrop_buf)," fresh:%.0f/s rdrop:%.0f/s",fresh_fps,rdrop_fps);
+                            else              std::snprintf(rdrop_buf,sizeof(rdrop_buf)," fresh:%.0f/s",fresh_fps);
+                            char tim_buf[48]=""; pres.timing_line(tim_buf,sizeof(tim_buf));   // R4b (--warp-timing): " gpu X.XXms sub2fence Y.YYms" or empty
                             const double frz_fps=dt>0?(double)(wap_freeze-last_wap_freeze)/dt:0; last_wap_freeze=wap_freeze;
                             const double slip_avg=slip_n?slip_sum/(double)slip_n:0.0, slip_mx=slip_max;
                             // --csv: forward-fill the per-second rates for the per-present rows.
@@ -2780,10 +2794,10 @@ void run_present(FgContext& ctx){
                                 // --pace-hard, the per-config evidence). Appended to ph_buf; OFF → unchanged (byte-identical).
                                 if(cfg.pace_vblank && n>0 && (size_t)n<sizeof(ph_buf))
                                     std::snprintf(ph_buf+n,sizeof(ph_buf)-(size_t)n," vbl:%lluL/%lluF",(unsigned long long)pv_locks,(unsigned long long)pv_lock_fails); }
-                            std::printf("[ra] %.1f fps (present) | wap tick %.0f/s%s | cap %.0f/s | cons %.0f/s | uniq %.0f/s%s | frz %.1f/s | warp %.2fms | iter %.2f/worst %.2fms | lat %.1fms | slip %.2f/max %.2fms%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
+                            std::printf("[ra] %.1f fps (present) | wap tick %.0f/s%s | cap %.0f/s | cons %.0f/s | uniq %.0f/s%s | frz %.1f/s | warp %.2fms | iter %.2f/worst %.2fms | lat %.1fms | slip %.2f/max %.2fms%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
                                 fps,src_fps,arr_buf,cap_fps,cons_fps,uniq_fps,rdrop_buf,frz_fps,wap_warp_ema,
                                 sum_iter/(double)(stat_ticks>0?stat_ticks:1),worst,lat_ema_ms,
-                                slip_avg,slip_mx,gme_buf,bwdsk_buf,lap_buf,tier_buf,mass_buf2,obj_buf,ps_buf,wsub_buf,gpu_buf,fsub_buf,vbhit_buf,rfp_buf,sq_buf,mf_buf,ph_buf);
+                                slip_avg,slip_mx,gme_buf,bwdsk_buf,lap_buf,tier_buf,mass_buf2,obj_buf,ps_buf,wsub_buf,gpu_buf,fsub_buf,vbhit_buf,rfp_buf,sq_buf,mf_buf,ph_buf,tim_buf);
                             // --latency-trace: the full pipeline latency decomposition. INVISIBLE =
                             // pre-tcap (compose+copy, NOT in freshage/lat — perceived but uncounted). freshage =
                             // pickup(⊇convert) + build + detect(derived = freshage−fpub). Total ≈ invisible+freshage

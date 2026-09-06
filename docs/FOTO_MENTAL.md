@@ -260,12 +260,27 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    alias a los campos de la etapa. `--tdr-test N` CONSTRUIDO y no ejecutado: es L3 sobre su GPU interactiva
    (SAFETY §5) — requiere su palabra. Residuo declarado: las estadísticas por segundo siguen en el lazo; el drop
    de banda de guarda (S8) no se añadió (no existe equivalente legado; es una decisión medida, no una extracción).
-5. **NEXT** — (a) si el operador da la palabra: correr `--tdr-test 20` una vez sobre el ball zoo y anexar la
-   salida a `R4_GATE.md` §5 (la GPU interactiva se reinicia ~2 s); (b) R5 — `FlowSet` + `FlowRing` declarados,
-   los holones de `flow.cpp` como filas `kind = P` apagadas, el pase de consenso del MV → fila de la etapa 3
-   (donde el default del pase se convierte en el interruptor declarado del operador), `wap_upload` condicional;
-   antes, 4.2 (la mitad de papel: mapear la familia de holones sobre el esquema LAYERTAB — XR3); (c) el segundo
-   paso de R4, `stats_second()`, cuando se vinculen sus ~30 contadores. No re-derivar: R3 (4q) ni R4 (4r).
+4s. **R4b — LOS INSTRUMENTOS DEL HALLAZGO Y SU MECANISMO (2026-09-05, `records/R4_GATE.md` §4.6, registro XR15,
+   17 corridas)** — tres adiciones al plano INSTRUMENT, ninguna toca un píxel: el guardián de `--exit-after` izado
+   al límite del tick (el modo retícula ya termina solo), la columna `phyriadfg_fresh` por tick + `fresh_count` +
+   `fresh:N/s`, y `--warp-timing` (timestamps de GPU alrededor del lote del warp + latencia submit→fence).
+   **Medido (DI-3, 60 s):** asíncrono (default) 49.9 % frescos = 119.3/s de 240 (spread 0.04), GPU p50 0.107 ms,
+   el fence se ve al SEGUNDO sondeo (9.1 ms); síncrono (`--no-async-present`) 100 % = 239.3/s, GPU 0.079 ms,
+   fence a 4.03 ms constante, +0.77 ms de MsAddedLatency, hilo P ocupado ~4 de cada 4.17 ms. **El lote PUEDE
+   completarse en 0.3–0.6 ms** (el giro de `--shallow-queue` a 4000 µs lo ve así en su meseta) — la pérdida es
+   una ESPERA, no trabajo. La cola superficial es biestable (100 % ↔ 62 %) con un ciclo de 16.3 s que es del
+   propio lazo: los presents van clavados al panel (239.755 Hz), el reloj corre a 240.000 → el slip crece 1.02
+   ms/s y la rejilla se re-asienta a los 4 períodos (`present.cpp:1819`); la prueba del batido (zoo a 61 y 59
+   fps, mismo período) descarta la fuente. Mecanismo, cuatro predicciones cumplidas: el acquire del keyed mutex
+   del lote VK espera al `CopyResource` del present anterior, que el swapchain flip de dos búferes ejecuta detrás
+   del flip anterior. Prueba con `--present-waitable` (botón existente, apagado por defecto): 99.85 / 99.84 % frescos en el camino asíncrono (14,362 / 14,360 de 14,383), fence al primer sondeo, 0.25 ms p50 con giro, MsAddedLatency 21.21 vs 20.86 del default — la espera ES la cadena; la opción (4) es ese botón, pendiente de un par DI-3 bajo `gpu_load` y con contenido real. La
+   decisión de política de present (aceptar 120/s, pasar el default a síncrono, o quitar la espera) es del
+   operador — un default de producto con historia visible.
+5. **NEXT** — (a) la decisión del operador sobre XR15 (política de present; las opciones y los números
+   están en `R4_GATE.md` §4.6 y en la secuencia del escritorio, 3.2b); (b) `--tdr-test 20` cuando el operador
+   lo ejecute (bloqueado para la sesión por la política del asistente; la línea está en el informe);
+   (c) R5 — `FlowSet`/`FlowRing`, holones como filas, el pase de consenso como fila de la etapa 3, `wap_upload`
+   condicional — precedido por 4.2 (la mitad de papel). No re-derivar: R3 (4q), R4 (4r), R4b (4s).
 
 **Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
 `fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con

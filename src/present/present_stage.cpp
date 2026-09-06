@@ -146,6 +146,8 @@ void PresentStage::present_front() {
 void PresentStage::poll_inflight(uint32_t* presented_out) {
     const Config& cfg = cfg_; VDev& A = A_; void*& hostMassPtr = hostMassPtr_;
     const bool ap = cfg.async_present;
+    const int i0 = async_inflight;   // R4b: a promotion below clears it — that is a FRESH frame for the next present
+    struct Promoted { PresentStage& s; int i0; ~Promoted(){ if(i0 >= 0 && s.async_inflight < 0) s.on_promoted(i0); } } _p{ *this, i0 };
     if(ap && async_inflight>=0){
         const VkResult fs=vkGetFenceStatus(A.dev, bslot[async_inflight].fence); vk_live(fs);   // DEVICE_LOST -> g_quit (else !=VK_SUCCESS is read as "not ready" -> spins forever, never exits)
         if(fs==VK_SUCCESS){
@@ -189,6 +191,8 @@ Tick PresentStage::begin(Decision d, bool count_drop) {
 // TRANSFORMS: `ap` → `tk.ap`, `fBridge` → `tk.fence`, `back` → `tk.back`.
 void PresentStage::submit(const Tick& tk, VkSubmitInfo& si) {
     VDev& A = A_;
+    if(timing_) submit_ms_[tk.back] = now_ms();   // R4b: the host clock at submit (the latency's start)
+    struct SyncRead { PresentStage& s; const Tick& tk; ~SyncRead(){ if(!tk.ap && s.timing_) s.timing_read(tk.back); } } _r{ *this, tk };   // sync: the fence completed inside
     if(!tk.ap){
         vkQueueSubmit(A.q,1,&si,tk.fence); vk_live(vkWaitForFences(A.dev,1,&tk.fence,VK_TRUE,UINT64_MAX));   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
     } else {
@@ -210,6 +214,8 @@ void PresentStage::submit_sync(VkFence fence, VkSubmitInfo& si) {
 // TRANSFORMS: `ap` → `tk.ap`, `record_this_tick` → `tk.record`, `back` → `tk.back`.
 void PresentStage::shallow_queue(const Tick& tk, uint32_t* presented_out) {
     const Config& cfg = cfg_; VDev& A = A_; void*& hostMassPtr = hostMassPtr_;
+    const int i0 = async_inflight;   // R4b: an early promote below is a FRESH frame for this tick's present
+    struct Promoted { PresentStage& s; int i0; ~Promoted(){ if(i0 >= 0 && s.async_inflight < 0) s.on_promoted(i0); } } _p{ *this, i0 };
     if(tk.ap && cfg.shallow_queue && cfg.sq_budget_us>0 && tk.record && async_inflight==tk.back && tk.back>=0){
         const double sq_cap_ms=(double)cfg.sq_budget_us/1000.0;
         const double sq_t0=now_ms();
@@ -232,6 +238,12 @@ void PresentStage::shallow_queue(const Tick& tk, uint32_t* presented_out) {
 // TRANSFORMS: `ap` → `tk.ap`, `bridge_present()` → `present_front()`, `ps_account(` → `account(`.
 void PresentStage::present_tick(const Tick& tk) {
     pp::PresentSurface& ra_surface = surface; uint32_t& bridge_w = bridge_w_; uint32_t& bridge_h = bridge_h_;
+    // R4b: FRESH = the slot presented now holds a warp completed since the previous present.
+    //   async: a promotion happened since the last present (front_seq_ moved); sync: this tick recorded one.
+    last_fresh_ = tk.ap ? (async_front >= 0 && front_seq_ != last_presented_seq_) : tk.record;
+    last_presented_seq_ = front_seq_;
+    if(last_fresh_){ ++fresh_ticks; presented_gpu_ms_ = last_gpu_ms_; presented_lat_ms_ = last_lat_ms_; }
+    else { presented_gpu_ms_ = -1.0; presented_lat_ms_ = -1.0; }
     if(!tk.ap){
         present_front();   // presents slot-0 (bridge_nt)
     } else if(async_front>=0){
@@ -253,6 +265,52 @@ FlipStats PresentStage::flip_stats() const {
         if(auto fst=surface.last_flip_qpc()){ fs.have_flip = true; fs.sync_qpc = fst->sync_qpc; fs.present_count = fst->present_count; }
     }
     return fs;
+}
+
+// ── R4b: the fresh / re-show bookkeeping + --warp-timing (INSTRUMENT plane; nothing here touches a pixel) ──
+void PresentStage::on_promoted(int slot) {
+    ++front_seq_;
+    if(timing_) timing_read(slot);
+}
+
+bool PresentStage::timing_arm() {
+    VDev& A = A_;
+    VkPhysicalDeviceProperties props{}; vkGetPhysicalDeviceProperties(A.phys, &props);
+    if(props.limits.timestampComputeAndGraphics == VK_FALSE || props.limits.timestampPeriod <= 0.0f) return false;
+    ts_period_ns_ = (double)props.limits.timestampPeriod;
+    VkQueryPoolCreateInfo qi{}; qi.sType=VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO; qi.queryType=VK_QUERY_TYPE_TIMESTAMP; qi.queryCount=4;   // 2 per slot
+    if(vkCreateQueryPool(A.dev,&qi,nullptr,&ts_pool_)!=VK_SUCCESS) return false;
+    timing_ = true;
+    std::printf("[ra] --warp-timing: GPU timestamps around the warp batch armed (timestampPeriod %.3f ns) -- warp_gpu_ms / warp_lat_ms per fresh present in the CSV, EMAs in the stats line\n", ts_period_ns_);
+    return true;
+}
+
+void PresentStage::timing_begin(VkCommandBuffer cmd, int slot) {
+    if(!timing_) return;
+    vkCmdResetQueryPool(cmd, ts_pool_, (uint32_t)slot * 2u, 2u);
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, ts_pool_, (uint32_t)slot * 2u);
+}
+
+void PresentStage::timing_end(VkCommandBuffer cmd, int slot) {
+    if(!timing_) return;
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, ts_pool_, (uint32_t)slot * 2u + 1u);
+}
+
+void PresentStage::timing_read(int slot) {
+    VDev& A = A_;
+    uint64_t ts[2] = { 0, 0 };
+    const VkResult r = vkGetQueryPoolResults(A.dev, ts_pool_, (uint32_t)slot * 2u, 2u, sizeof ts, ts, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+    if(r == VK_SUCCESS && ts[1] >= ts[0]){
+        last_gpu_ms_ = (double)(ts[1] - ts[0]) * ts_period_ns_ / 1.0e6;
+        last_lat_ms_ = now_ms() - submit_ms_[slot];
+        gpu_ema_ = gpu_ema_ > 0.0 ? gpu_ema_ * 0.9 + last_gpu_ms_ * 0.1 : last_gpu_ms_;
+        lat_ema_ = lat_ema_ > 0.0 ? lat_ema_ * 0.9 + last_lat_ms_ * 0.1 : last_lat_ms_;
+    } else { last_gpu_ms_ = -1.0; last_lat_ms_ = -1.0; }   // NOT_READY / DEVICE_LOST → NA (vk_live is the fence poll's business)
+}
+
+void PresentStage::timing_line(char* buf, size_t n) const {
+    if(!timing_ || n == 0){ if(n) buf[0] = 0; return; }
+    std::snprintf(buf, n, " gpu %.2fms sub2fence %.2fms", gpu_ema_, lat_ema_);
 }
 
 // ── --tdr-test N: the forced GPU hang (shaders/tdr_hang.comp), armed here, fired once when due ──────────
@@ -299,6 +357,7 @@ void PresentStage::tdr_maybe(VkCommandBuffer cmd) {
 
 void PresentStage::tdr_destroy() {
     VDev& A = A_;
+    if(ts_pool_){ vkDestroyQueryPool(A.dev,ts_pool_,nullptr); ts_pool_=VK_NULL_HANDLE; timing_=false; }   // R4b: the --warp-timing pool goes with the stage
     if(tdr_pool_) vkDestroyDescriptorPool(A.dev,tdr_pool_,nullptr);
     if(tdr_pipe_) vkDestroyPipeline(A.dev,tdr_pipe_,nullptr);
     if(tdr_pl_)   vkDestroyPipelineLayout(A.dev,tdr_pl_,nullptr);
