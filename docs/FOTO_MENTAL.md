@@ -287,31 +287,15 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    (CONTROL), nvofa (parámetro proveedor). Decisión por la regla A3 §4.2: PROCEDER a R5. El inventario lo hizo un
    agente Sonnet (solo lectura); catorce citas re-leídas de primera mano antes de mapear. El residuo de XR3
    queda descargado. Sin código.
-5. **NEXT** — (a) XR15 DECIDIDO por el operador el 2026-09-06: `--present-waitable` es el default de
-   entrega (`cli.hpp:58`; `--no-present-waitable` = el camino anterior); verificado en la línea por defecto:
-   99.9 % frescos. (b) R5 EN CURSO con su palabra ("adelante, continua segun todas tus recomendaciones") —
-   por pasos con compuerta (`records/R5_GATE.md`): (1) HECHO 2026-09-06 — las catorce filas FLOW en el registro
-   (`Kind::H`, arms PRIOR/HOLON/BWD_HOLON/BIDIR_OK, 7 bits de canal, el consenso con su propio interruptor
-   `--mv-consensus`, default ON), paridad 39/39, superficies sin duplicados, tres caminos de salida limpios; los
-   holones siguen bajo las condiciones manuales hasta el paso 3; registro en 28 de 32 filas. (2) HECHO 2026-09-06 —
-   `flow/flow_set.hpp`: `FlowRing` posee los doce escalares por par y los dos contadores, enlaza los puentes host por
-   referencia; `main()` conserva los nombres como alias (consumidores intactos); corrida por defecto igual a la del
-   paso 1 (fase media 0.5010); (3a) HECHO 2026-09-06 — las cuatro hojas (`object_repair`, `mem_advect/merge/refresh`)
-   extraídas por ancla a `flow/holons.{hpp,cpp}` (339/339 líneas de cuerpo idénticas; `HolonScratch` en `run_flow`
-   como `hs` con alias; envolturas con la misma firma → `consume_wap` intacto); corrida por defecto igual al paso 2;
-   vistos en rojo antes: finales de línea `\r\r\n` (C4335) y un parámetro sin uso (C4100), ambos corregidos; (3b) HECHO
-   2026-09-06 — las filas deciden en F: `avail`/`eff` resueltos en el registro (`needs`/`excludes` + hechos de init:
-   sin WAP, gme_gpu forzado, tubería/puente fallidos), probados contra las cascadas `use_*` en `main()` (salida 3 si
-   difieren); `consume_wap` llena `ArmInputs` por par y nueve sitios actúan sobre `eff ∧ armado` con la condición
-   manual al lado como segundo oráculo: 12 corridas con tokens + 60 s por defecto, todas `== the init cascades`,
-   0 discrepancias en 39,604 decisiones; corrección: las patas hacia atrás NO se diezman hoy → arm `BWD`
-   (`BWD_HOLON` eliminado); no ejercitado: la escalera de tiers (el zoo no presiona a F);
-   (3) los holones extraídos por ancla y sus arms consumidos en F; (4) `wap_upload` condicional; compuerta G-R5 =
-   A/B 2 corridas/lado como R4 + `--layer-dump`. Decisión de entrada corregida: las filas van ON por defecto (el
-   "off" del plan era viejo); la compuerta es identidad byte del default. La palabra para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con
-   `Kind::H`, el pase de consenso con su propio interruptor, `wap_upload` condicional — compuerta G-R5: CSV
-   byte-idéntico del default con las filas apagadas); (c) 4.3 (cablear las pruebas: hoy 0 `add_test`) puede
-   ir antes o en paralelo. No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t).
+5. **NEXT** — R5 en CHECKPOINT (2026-09-06, `records/R5_GATE.md` §5): pasos 1, 2, 3a, 3b cerrados y confirmados
+   (`8a2b585`, `bcc7eb3`, `74b925a`, `29320b5`); XR15 decidido (`3bf654b`). Esperan la palabra del operador:
+   (3c) extraer `consume_wap` (el orquestador: 444 líneas, 61 capturas, 8 lambdas; estructura sin comportamiento);
+   (4) `wap_upload` condicional — premisa del plan corregida: los holones de CPU leen Y escriben las copias host de
+   los campos de flujo en el set por defecto, así que la descarga y la subida son inherentes; lo ahorrable son los
+   campos que ningún paso host escribe (SAD, candidatos), un diseño por canal con ganancia pequeña en el default;
+   para cerrar G-R5 formalmente: A/B 2 corridas/lado contra el binario pre-R5 (`3bf654b`), humo de 120 s, y una
+   corrida `--load-governor` bajo presión real (la rama de 3b que el zoo no ejercitó). Después: R6 (ingest) o 4.3
+   (cablear las pruebas). No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t), R5 (`R5_GATE.md`).
 
 **Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
 `fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con

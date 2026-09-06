@@ -1,6 +1,6 @@
 # R5_GATE — Stage 3 FLOW: the rows declared, `FlowSet`/`FlowRing`, the holons bound, `wap_upload` conditional (M-R5)
 
-**Status: IN PROGRESS — steps 1, 2, 3a and 3b of 4 closed (2026-09-06).** The operator's word: "adelante, continua segun todas tus
+**Status: CHECKPOINT (2026-09-06) — steps 1, 2, 3a, 3b closed; 3c and 4 stopped at the operator's decision (§5).** The operator's word: "adelante, continua segun todas tus
 recomendaciones" (2026-09-06), after 4.2's map (`aap/FLOW_ROW_MAP.md`, 0 new columns → PROCEED). This record grows
 one section per step; the verdict (§6) is written when the four steps and G-R5 have run.
 
@@ -174,13 +174,52 @@ CONTROL inputs are wired, their shedding branches were not exercised; a `--load-
 is the named test); `bwd_skipping` likewise (never latched here). The hand conditions stay in the code as the second
 oracle — they are the instrument, not dead code; step 3c or R7 may retire them once a pressured run has counted 0.
 
-### 3c · `consume_wap` extracted (pending)
+### 3c · `consume_wap` extracted — NOT started; the scope, measured
 
-### 3c · `consume_wap` (pending)
+`consume_wap` is 444 lines (`flow.cpp:964–1407` after 3a/3b), captures 61 `run_flow` locals (the delegated scan's
+count, re-checked by the session's own scan: the host bridges, the FlowRing scalars, the devices / queues / fences,
+the stats atomics, the `use_*` facts, `ofp`, `gmePipe`, `cmdB_bwd`, `fB2`, …) and calls eight `run_flow` lambdas
+(`flow_downsample`, `flow_submit_nowait`, the four leaf wrappers, `mv_audit_stat`, `objdump_grid` — a generic
+lambda). Its extraction is the same by-anchor method with a context struct of ~61 references + 8 callables; its
+gate is the same two-oracle instrument. It is the stage's ORCHESTRATOR (the per-pair tail: the inertia update, the
+tier ladder, the row decisions, the publish) — the leaves it orchestrates are already out (3a), which is what E6's
+CPU-kernel testbench needs. Moving the orchestrator gains structure, no behaviour; it is not required for G-R5's
+"the holons as rows" (they ARE rows, deciding — 3b). Deferred to the operator's word (§5).
 
-## 4 · Step 4 — `wap_upload` conditional (pending)
+## 4 · Step 4 — `wap_upload` conditional — NOT started; its premise CORRECTED from the code
 
-## 5 · G-R5 (pending)
+The plan (`CONVERGENCE_MASTER_PLAN.md` §R5): "`wap_upload` is made conditional: `FlowSet` device == `GenFrame` device
+⇒ no copy (single-GPU = the rig)". Read against the code after 3a: under the shipping default the CPU holons READ AND
+WRITE the host copies of the flow fields — `object_repair` repairs the MV field in place (`hostMV[gen]`, written
+back via `float_to_half`), rewrites the dissidence mask (`hostDIS`), resets the persistence field (`hostPER`);
+`mem_merge` rewrites the masks; the gme CPU fit writes `hostDIS` / `hostDISB`; `persistence` writes `hostPER`. So on
+the default set the image→host download exists because the CPU needs the fields, and the host→image upload
+(`wap_upload`, `present.cpp:668–791`) exists because the REPAIRED fields must reach the warp — neither is a
+two-device artefact; single-GPU removes nothing. The plan's premise ("the holons off by default") was the same stale
+line entry decision 1 corrected. What a conditional upload CAN save: the fields no host pass writes — the registry
+knows exactly which (the `writes_ch` of the `Kind::H` rows that are effectively on: with objects / memory /
+persistence / the CPU gme off, `MV_RAW_FWD`, `SAD`, `MV_BWD`, `CANDIDATES` are GPU-resident and could be sampled
+from F's images directly (cross-queue: A.q2 → A.q semaphores), and `SAD` / `CANDIDATES` are never host-written even on
+the default). That is a per-channel data-path design — device images shared between two queues, its own barriers,
+its own byte-identity and latency gate — and its gain on the DEFAULT set is small (SAD + candidates). It is a
+product/latency project the operator frames, not a mechanical step of R5; stopped here with the premise on record.
+
+## 5 · G-R5 — what is proven, what would close it, the decision returned to the operator
+
+**Proven at this checkpoint:** the FLOW stage is DECLARED (14 rows; `Kind::H`; the consensus with its own switch),
+`FlowSet` / `FlowRing` exist as the contract types, the four leaf holons are functions over a declared scratch
+(339 / 339 lines verbatim), and **the rows decide on F** — proven two ways: the resolved effective-ON equals the init
+cascades on every token set tried (13 checks × 12 runs), and the rows' per-pair decisions equal the former hand
+conditions on 0 of 39,604 site decisions (default, 60 s) and 0 across eleven other runs. The default output after
+each step matched the step before (n = 1 per side, the placement metrics inside R4's spread). Two oracles are still
+in the code by design (the hand conditions beside the rows): the instrument, not dead code.
+
+**What would close G-R5 formally (the plan's letter):** the 2-runs-per-side A/B of the default run against the
+pre-R5 binary (`3bf654b`, before step 1) on the placement metrics — the R4 shape; `--layer-dump` (done); the 120 s
+smoke; a `--load-governor` run under real pressure to exercise the `HOLON` / `BIDIR_OK` shedding legs the zoo never
+reached (the one uncovered branch of 3b); and the two stopped items, 3c and 4, either done or re-scoped by the
+operator. **The session stops here:** 3c is structure without behaviour, 4's premise changed under it — both are
+his to frame ("notify before structural decisions").
 
 ## 7 · Honesty ledger (running)
 
