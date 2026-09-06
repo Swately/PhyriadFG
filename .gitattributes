@@ -1,0 +1,3 @@
+# 4.3: the PhaseClock replay fixture is the INPUT to a bit-parity oracle. Git must not touch a byte of it -- an
+# end-of-line conversion would alter the file the oracle replays. Treated as binary for that reason alone.
+*.alog -text

@@ -1003,6 +1003,10 @@ struct Config {
     bool  sg_dump=false;            // --sg-dump: print the compiled stage-5 graph + its warnings once.
     bool  no_sync2=false;           // --no-sync2: force the Vulkan-1.2 instance + the hand-written barriers
                                     // even where 1.3 is available (the R2 A/B reference arm).
+    bool  parse_failed=false;       // 4.3: set by parse_args on a USER ERROR only (an unknown option, or a flag
+                                    // whose required value is missing) — never by --help or any informational stop.
+                                    // main() exits 2 when it is set; before 4.3 every parse failure exited 0, so a
+                                    // typo'd flag ran with the DEFAULT config and reported success (LEARNING_LOG P-009).
     char  arrival_log[260]={};      // --arrival-log FILE: R1 (X14) — per-tick CLOCK INPUTS+OUTPUTS in exact
                                     // hex-float, the replay oracle of the PhaseClock extraction (XR14).
                                     // Default off (empty) -> no FILE opened, no write, byte-identical.

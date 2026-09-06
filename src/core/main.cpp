@@ -203,7 +203,8 @@ int main(int argc, char** argv) {
         }
     }
 #endif
-    Config cfg; if (!parse_args(argc, argv, cfg)) return 0;
+    // 4.3: a parse ERROR (unknown option / missing value) exits 2; --help and the other informational stops keep 0.
+    Config cfg; if (!parse_args(argc, argv, cfg)) return cfg.parse_failed ? 2 : 0;
     // R0 (CONVERGENCE): the registry SHADOW must agree with the hand parser on every effective value —
     // a mismatch is a loud abort (exit 3), never a log line (risk XR2). Then the three CONTROL-plane
     // diagnostics act and exit before any device exists.

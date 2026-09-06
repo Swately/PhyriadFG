@@ -164,6 +164,77 @@ add_custom_command(OUTPUT ${_layer_gen_out}
     DEPENDS pfg_layer_gen "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.def" ${_layer_bodies}
             "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_table.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/layers/layer_abi.hpp"
     COMMENT "layer_gen: registry -> generated GLSL/offsets" VERBATIM)
+# ── 4.3 — THE TESTS ARE WIRED (2026-09-06) ────────────────────────────────────────────────────────
+# Before this block `enable_testing()`/`add_test()` appeared ZERO times: R2's seam checks and R1's clock oracle were
+# built by every build and run by nothing. `ctest --test-dir build-release` runs them now.
+#
+# The discipline this block follows (EMPIRICAL_TEST §3.3 — a gate must be seen red): every positive test that CAN
+# have a negative twin has one, and each twin was confirmed to fail before being committed. A test whose failure
+# mode has never been observed is a claim, not a gate.
+enable_testing()
+
+# 1. R2's seam graph — 148 self-contained checks (mock handles; no device).
+add_test(NAME seam_graph COMMAND pfg_seam_test)
+set_tests_properties(seam_graph PROPERTIES PASS_REGULAR_EXPRESSION "OK: all [0-9]+ checks passed")
+
+# 2. R1's PhaseClock bit-parity oracle, over a RECORDED arrival log (tests/clock/fixtures/, produced by
+#    `phyriad_fg --arrival-log FILE` on the ball zoo). This is the check that had never run: the binary existed,
+#    the oracle worked, and nothing ever handed it a log.
+add_test(NAME clock_replay_oracle COMMAND pfg_clock_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/clock/fixtures/ball_zoo_60fps_240hz.alog")
+# ASCII only in the regex: the RESULT line carries an em-dash, which no single-byte regex atom matches.
+set_tests_properties(clock_replay_oracle PROPERTIES PASS_REGULAR_EXPRESSION "replay oracle over [0-9]+ ticks")
+
+# 3. The synthetic half alone — legitimate, and it must SAY that the oracle did not run (the pre-4.3 build printed
+#    "all checks passed (0)" here, which is the false green this step removed).
+add_test(NAME clock_synthetic COMMAND pfg_clock_test)
+set_tests_properties(clock_synthetic PROPERTIES PASS_REGULAR_EXPRESSION "THE REPLAY ORACLE DID NOT RUN")
+
+# 4. NEGATIVE: told to replay a log it cannot open, the clock test must FAIL. Pre-4.3 it printed SKIP and exited 0 —
+#    a missing or renamed fixture would have reported success forever.
+add_test(NAME clock_replay_missing_log_fails COMMAND pfg_clock_test "${CMAKE_CURRENT_BINARY_DIR}/no_such_arrival.log")
+set_tests_properties(clock_replay_missing_log_fails PROPERTIES WILL_FAIL TRUE)
+
+# 5. The registry's parity oracle over a token corpus. `--dump-config` parses, runs layer_config_parity() and exits
+#    (exit 3 on a mismatch) before any device is created — a pure CPU test. These are the combinations that broke
+#    the shadow parser during R5 step 1 (the --gme-gpu-verify ordering) plus one eight-token line.
+set(_parity_cases
+    "" "--no-gme" "--no-objects" "--no-memory" "--no-bidir" "--no-ambig" "--no-inertia"
+    "--mv-median" "--no-mv-guided|--mv-median" "--mv-smooth|0.6" "--mv-smooth|2" "--mv-smooth|-1"
+    "--nvofa" "--gme-irls2" "--no-gme-gpu" "--gme-gpu-verify"
+    "--gme-gpu-verify|--no-gme-gpu" "--no-gme-gpu|--gme-gpu-verify"
+    "--no-shapefield" "--no-obj-fill-rim" "--obj-fill-rim" "--no-expire" "--no-persist-reset"
+    "--no-mv-consensus" "--mv-consensus" "--no-mv-consensus|--mv-consensus"
+    "--no-inertia|--inertia" "--no-ambig|--ambig" "--no-objects|--objects" "--no-memory|--memory"
+    "--no-bidir|--bidir" "--no-gme|--gme" "--no-shapefield|--shapefield"
+    "--no-gme|--no-objects|--no-memory|--no-bidir|--no-ambig|--no-inertia|--no-mv-consensus|--mv-smooth|0.3")
+set(_pc 0)
+foreach(_case IN LISTS _parity_cases)
+    math(EXPR _pc "${_pc}+1")
+    string(REPLACE "|" ";" _argv "${_case}")   # '|' separates tokens INSIDE a case; ';' would end the case (CMake list semantics)
+    add_test(NAME "layer_parity_${_pc}" COMMAND phyriad_fg --dump-config ${_argv})
+    set_tests_properties("layer_parity_${_pc}" PROPERTIES FAIL_REGULAR_EXPRESSION "PARITY FAIL")
+endforeach()
+
+# 6. The contract hash of the DEFAULT resolved chain. Pinned deliberately: any edit to layer_table.def / the ABI
+#    that changes the chain fails this test, and updating the pin in the same commit is the point (touchpoints move
+#    together). The value below was read from this build's own `--layer-dump`.
+add_test(NAME layer_contract_hash COMMAND phyriad_fg --layer-dump)
+set_tests_properties(layer_contract_hash PROPERTIES PASS_REGULAR_EXPRESSION "contract=0x9517AE73A530EAFE")
+
+# 7. The CLI's exit codes (4.3's own fix): an unknown option and a missing value are ERRORS (2); --help is not.
+add_test(NAME cli_unknown_option_exits_2 COMMAND phyriad_fg --no-such-flag)
+set_tests_properties(cli_unknown_option_exits_2 PROPERTIES WILL_FAIL TRUE)
+add_test(NAME cli_missing_value_exits_2 COMMAND phyriad_fg --mv-smooth)
+set_tests_properties(cli_missing_value_exits_2 PROPERTIES WILL_FAIL TRUE)
+add_test(NAME cli_help_exits_0 COMMAND phyriad_fg --help)
+set_tests_properties(cli_help_exits_0 PROPERTIES PASS_REGULAR_EXPRESSION "LAYERS \\(the registry")
+
+# 8. NEGATIVE: the layer generator's body checks (R3) must REFUSE to generate from a malformed row body. The script
+#    copies the shader tree, breaks one body, and asserts the generator exits 3 — the check R3 saw red by hand.
+add_test(NAME layer_gen_rejects_bad_body COMMAND ${CMAKE_COMMAND}
+    "-DGEN=$<TARGET_FILE:pfg_layer_gen>" "-DSHADERS=${_sh}" "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/test_layergen"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/layers/negative_body.cmake")
+
 add_custom_target(pfg_layer_glsl DEPENDS ${_layer_gen_out})
 add_dependencies(phyriad_fg pfg_layer_glsl)
 

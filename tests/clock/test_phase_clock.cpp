@@ -75,7 +75,9 @@ static bool parse_cfg(const std::string& line, Cfg& k, int& NS) {
 
 static int replay(const char* path) {
     std::FILE* f = std::fopen(path, "rb");
-    if (!f) { std::printf("  SKIP  replay: cannot open %s\n", path); return 0; }
+    // 4.3: a test that was TOLD to replay a log and cannot is a FAILURE, not a skip. Returning 0 here (the
+    // pre-4.3 behaviour) let a missing or renamed fixture report success.
+    if (!f) { std::printf("  FAIL  replay: cannot open %s\n", path); return -1; }
     Cfg k{}; int NS = 3; bool have_cfg = false;
     std::vector<Rec> recs;
     char buf[4096];
@@ -100,7 +102,7 @@ static int replay(const char* path) {
         recs.push_back(std::move(r));
     }
     std::fclose(f);
-    if (!have_cfg || recs.empty()) { std::printf("  SKIP  replay: no cfg header or no ticks in %s\n", path); return 0; }
+    if (!have_cfg || recs.empty()) { std::printf("  FAIL  replay: no cfg header or no ticks in %s\n", path); return -1; }   // 4.3: see above
 
     PhaseClock clk(k);
     size_t bad_D = 0, bad_disp = 0, bad_cc = 0, bad_tr = 0, bad_sel = 0, bad_phase = 0, bad_tuse = 0, bad_k = 0;
@@ -246,11 +248,21 @@ static void synthetic() {
 int main(int argc, char** argv) {
     std::printf("pfg_clock_test — STAGE 4 (CLOCK), R1\n");
     std::printf("[1] replay (bit-parity oracle)\n");
-    const int n = (argc > 1) ? replay(argv[1]) : (std::printf("  SKIP  no arrival-log given\n"), 0);
+    // 4.3 — three states, told apart in the wording AND the exit code:
+    //   asked + replayed  : n > 0   -> the bit-parity oracle ran over n ticks
+    //   not asked         : n == 0  -> the oracle did NOT run; the synthetic checks still do. Never call that
+    //                                 "all checks passed": the pre-4.3 line did, and it is the reason this test
+    //                                 sat in the tree for a month proving nothing (docs/LEARNING_LOG.md P-009).
+    //   asked + could not : n < 0   -> a failure, not a skip.
+    const bool asked = (argc > 1);
+    const int n = asked ? replay(argv[1]) : (std::printf("  NOT RUN  replay: no arrival-log given (pass one to run the bit-parity oracle)\n"), 0);
+    if (n < 0) ++g_fail;
     g_trace = (argc > 2);
     std::printf("[2] synthetic arrivals\n");
     synthetic();
-    std::printf(g_fail ? "RESULT: %d CHECK(S) FAILED\n" : "RESULT: all checks passed (%d)\n", g_fail ? g_fail : n);
+    if (g_fail)      std::printf("RESULT: %d CHECK(S) FAILED\n", g_fail);
+    else if (n > 0)  std::printf("RESULT: PASS — replay oracle over %d ticks + the synthetic checks\n", n);
+    else             std::printf("RESULT: PASS (synthetic checks only) — THE REPLAY ORACLE DID NOT RUN\n");
     return g_fail ? 1 : 0;
 }
 

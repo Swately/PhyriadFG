@@ -312,14 +312,23 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    forma de mayor riesgo. Entradas fundacionales L-001 (lo holónico), L-002 (la captura de aprendizaje murió por un
    acoplamiento a git), L-003 (la mudanza `G:`→`F:` barrió los documentos, no los scripts). PhyriadFG lleva su
    propio `docs/LEARNING_LOG.md` (8 entradas).
-5. **NEXT** — la espina llega a R6/R7 con R0–R5 cerrados y aprobados. Opciones, ninguna empezada:
-   (a) **4.3 — cablear las pruebas**: hoy `enable_testing`/`add_test` = 0, así que las 148 comprobaciones de la
-   costura de R2 y el oráculo de paridad de bits de R1 se compilan y nunca corren; es la deuda más barata y la que
-   más protege lo ya construido. (b) **R6 — etapas 1–2 nombradas** (`capture/` + `ingest/`), el mismo método de
-   extracción por ancla que R4/R5. (c) **R7** — retirar `--legacy-warp` del default, que depende de las líneas base
-   M1 y es decisión suya. (d) Los dos oráculos duplicados en el código (filas vs condiciones manuales) se retiran en
-   R7 tras una segunda corrida bajo presión con 0 discrepancias. No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2
-   (4t), R5 (4u), metacognición (4v).
+4w. **4.3 CERRADO — LAS PRUEBAS ESTÁN CABLEADAS Y CADA UNA SE VIO EN ROJO (2026-09-06,
+   `records/S4_3_GATE.md`)** — 43 pruebas, ~1.5 s, sin GPU: las 148 comprobaciones de la costura (R2), el oráculo
+   de bit-paridad del reloj (R1) sobre un registro grabado de 2,877 ticks (`tests/clock/fixtures/`), el corpus de
+   paridad del registro (34 combinaciones de tokens), el hash de contrato fijado, los códigos de salida del CLI y
+   dos pruebas negativas. `build-release.bat` las corre y falla si hay rojo; `tools/run_tests.bat` es la entrada
+   suelta. **Dos falsos verdes destapados y corregidos:** la prueba del reloj imprimía "all checks passed (0)" sin
+   haber reproducido un solo tick, y con un registro ilegible imprimía SKIP y salía 0; y **un error de parseo salía
+   con 0** — una bandera mal escrita corría con la configuración POR DEFECTO y reportaba éxito, cosa que todos los
+   arneses de `tools/` habrían creído (ahora sale 2). Cada compuerta se rompió a propósito para verla roja; el
+   primer intento fue demasiado sutil para cambiar nada y se conserva en el registro, porque un verde tras una
+   perturbación casi siempre significa que la perturbación fue invisible, no que la compuerta esté ciega.
+5. **NEXT** — R0–R5 cerrados y aprobados; 4.3 cerrado. Quedan, ninguna empezada: (a) **R6** — etapas 1–2
+   nombradas (`capture/` + `ingest/`), mismo método de extracción por ancla que R4/R5, y ahora con una suite que
+   protege lo movido; (b) **R7** — retirar `--legacy-warp` del default (depende de las líneas base M1: decisión del
+   operador) y retirar los dos oráculos duplicados del código tras una segunda corrida bajo presión con 0
+   discrepancias; (c) una segunda fixture del reloj a otra tasa de fuente (barata, nombrada en el ledger de
+   honestidad de 4.3). No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t), R5 (4u), metacognición (4v), 4.3 (4w).
 
 **Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
 `fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con

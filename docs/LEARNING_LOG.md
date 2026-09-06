@@ -9,6 +9,42 @@
 
 ---
 
+### P-011 · A perturbation that changes nothing observable proves nothing
+- **class:** recurrence-risk · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
+- **evidence:** 4.3's first attempt to see the clock oracle red changed `+0.5` to `+0.5000001` inside an `int`
+  truncation (`phase_clock.cpp`, the phase-quantisation key). The suite stayed **43/43 green** over 2,877 ticks: the
+  nudge only changes the truncated value when the operand sits within 1e-7 of an integer boundary, which never
+  happened. The second attempt moved `t_use` by one ulp — the quantity the oracle compares with `memcmp` — and
+  produced a mismatch on **every** tick (`t_use=2877` of 2,877).
+- **lesson:** When proving a gate can fail, perturb the exact quantity the gate compares, by an amount that quantity
+  can carry. A green run after a perturbation has two readings — "the gate is blind" and "the perturbation was
+  invisible" — and only the second is usually true. Stopping at the first would have retired a working oracle.
+- **corrective:** `records/S4_3_GATE.md` §3 keeps the failed attempt (row A₀) in the table on purpose.
+
+### P-010 · A parse error exited 0 for the life of the project
+- **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `main.cpp:206` was `if (!parse_args(argc, argv, cfg)) return 0;` and `parse_args` returns false both
+  for `--help` and for a user error, so `phyriad_fg --no-such-flag` and `phyriad_fg --mv-smooth` (missing value)
+  printed a message and exited **0** — measured directly before the fix.
+- **lesson:** Every harness in `tools/` checks `$LASTEXITCODE` / `rc`. A typo'd flag ran the DEFAULT configuration
+  and reported success, which means any measurement taken with a misspelled flag was silently a default-config
+  measurement. No such case is known to have occurred; none could have been detected either.
+- **corrective:** `Config::parse_failed` set at the two error sites, `main` exits 2; three ctest cases pin both
+  directions (`cli_unknown_option_exits_2`, `cli_missing_value_exits_2`, `cli_help_exits_0`).
+
+### P-009 · A test that cannot fail is not a test
+- **class:** dormancy · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `pfg_clock_test` with no argument printed `RESULT: all checks passed (0)` and exited 0 having
+  replayed zero ticks; given an unopenable path it printed `SKIP` and still exited 0. Meanwhile `enable_testing()`
+  and `add_test()` appeared zero times in `CMakeLists.txt`, so neither test binary had ever run outside a hand
+  invocation. R1's bit-parity oracle — which works, and catches a one-ulp change on every tick — had never once been
+  handed a log.
+- **lesson:** Two failure modes travelled together here and both are the same shape: a check that exists and does
+  not run, and a check that runs and cannot fail. Wiring the first exposes the second; neither is visible from
+  reading the code, only from asking "what does this print when it is wrong?".
+- **corrective:** 43 tests wired (`records/S4_3_GATE.md`), each seen red under a deliberate perturbation; the build
+  script runs them and fails on red; the clock test now tells its three states apart in wording and exit code.
+
 ### P-008 · GPU saturation does not move the FG's pressure ladder; the source rate does
 - **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
 - **evidence:** 45 s at `escalera_arbiter --profile heavy` (96–100 % GPU) with a 60 fps source: the FG held

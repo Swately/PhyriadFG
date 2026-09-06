@@ -50,4 +50,15 @@ cmake --build "%~dp0build-release" || exit /b 1
 
 echo.
 echo === build OK: %~dp0build-release\phyriad_fg.exe ===
+
+rem 4.3 (2026-09-06): the tests run here. Before 4.3 there was no enable_testing()/add_test() at all and the two
+rem test binaries were built by every build and run by nothing. They cost ~1.5 s. The binary above is already
+rem written, so a red suite blocks nothing -- it withdraws the claim that this build is good.
+ctest --test-dir "%~dp0build-release" --output-on-failure
+if errorlevel 1 (
+    echo.
+    echo === TESTS FAILED -- the binary was built, but do not trust it. Run: tools\run_tests.bat ===
+    exit /b 1
+)
+echo === tests OK ===
 rem Made with my soul - Swately <3

@@ -268,7 +268,7 @@ bool parse_args(int argc, char** argv, Config& c) {
     for (int i=1;i<argc;++i) {
         const char* a=argv[i];
         pfg::layers::layer_shadow_parse(argc, argv, i, c.layers);   // R0: the registry parses as a SHADOW (peeks, never consumes; parity checks it)
-        auto next=[&](const char* o)->const char*{ return (i+1<argc)?argv[++i]:(std::printf("[ra] %s needs arg\n",o),nullptr); };
+        auto next=[&](const char* o)->const char*{ return (i+1<argc)?argv[++i]:(std::printf("[ra] %s needs arg\n",o),c.parse_failed=true,nullptr); };   // 4.3: the whole missing-value class, in one place
         // These flags live in this SEPARATE matcher (called from the terminal else below) rather than as
         // more `else if` links — the main arg chain is near MSVC's C1061 nested-block limit, and a lambda
         // BODY is a fresh scope (nesting restarts at 0), so this adds ZERO depth to the chain. Returns
@@ -772,7 +772,7 @@ bool parse_args(int argc, char** argv, Config& c) {
             std::printf("[ra] --no-memory: scene-holon silhouette memory off — the mask is the fresh pair only\n");
             c.scene_memory=false; c.no_memory=true;
         }
-        else { int r=parse_extra(a); if(r>0) return false; if(r<0){ std::printf("[ra] unknown option: %s\n",a); return false; } }   // try the parse_extra matcher; r==0 matched OK, r==1 missing-arg, r<0 truly unknown
+        else { int r=parse_extra(a); if(r>0) return false; if(r<0){ std::printf("[ra] unknown option: %s\n",a); c.parse_failed=true; return false; } }   // 4.3: a typo is an error, not a silent default run   // try the parse_extra matcher; r==0 matched OK, r==1 missing-arg, r<0 truly unknown
     }
     // WGC es la ruta de captura PRIMARIA (flip 2026-07): --window = captura SOLO-de-la-ventana vía
     // WGC (con --dedup default-ON el MinUpdateInterval se deriva del panel → entrega a tasa de
