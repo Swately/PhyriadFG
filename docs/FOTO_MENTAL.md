@@ -276,19 +276,23 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    del flip anterior. Prueba con `--present-waitable` (botón existente, apagado por defecto): 99.85 / 99.84 % frescos en el camino asíncrono (14,362 / 14,360 de 14,383), fence al primer sondeo, 0.25 ms p50 con giro, MsAddedLatency 21.21 vs 20.86 del default — la espera ES la cadena; la opción (4) es ese botón, pendiente de un par DI-3 bajo `gpu_load` y con contenido real. La
    decisión de política de present (aceptar 120/s, pasar el default a síncrono, o quitar la espera) es del
    operador — un default de producto con historia visible.
-5. **NEXT** — (a) la decisión del operador sobre XR15 (política de present; las opciones y los números
-   están en `R4_GATE.md` §4.6 y en la secuencia del escritorio, 3.2b); (b) el operador YA corrió `--tdr-test 15` (R4c, `R4_GATE.md` §5): la detección
-   quedó probada (`VK_ERROR_DEVICE_LOST` capturado e impreso) y el desmontaje se colgó en esperas
-   `vkWaitForFences(UINT64_MAX)` sobre fences que ya no señalizan → `vk_wait_live` (20 ms por rebanada, abandona
-   con dispositivo perdido) en los 14 sitios; su SEGUNDA corrida: P quedó atorado dentro de una llamada del
-   driver/DXGI desde el tick del hang (F: "P pinned on gen 902") y la ventana propia quedó en pantalla con el
-   último cuadro — el watchdog del pilar no puede ocultar la ventana de un hilo atorado (ShowWindow desde otro
-   hilo espera su bucle de mensajes) → los joins llevan plazo de 3 s bajo pérdida, nombran al sobreviviente y
-   `TerminateProcess`; caminos sanos re-verificados tras cada arreglo; SU TERCERA corrida (2026-09-06) CERRÓ el
-   punto: `-- P(present) --` nombrado, proceso terminado, panel devuelto (el desmontaje limpio no corre en ese
-   camino: P nunca regresa; dicho en §5);
-   (c) R5 — `FlowSet`/`FlowRing`, holones como filas, el pase de consenso como fila de la etapa 3, `wap_upload`
-   condicional — precedido por 4.2 (la mitad de papel). No re-derivar: R3 (4q), R4 (4r), R4b (4s).
+4t. **4.2 CERRADO — LA MITAD DE PAPEL DE R5 (2026-09-06, `docs/planning/aap/FLOW_ROW_MAP.md`)** — la familia de
+   holones de `flow.cpp` (fuente de flujo, mv_smooth, ambig, bidir, persistencia, gme fwd/bwd, memoria
+   fwd/bwd/refresh, objetos fwd/bwd) más el pase de consenso de MV que hoy corre en P (`present.cpp:734–765`)
+   mapeados sobre el esquema LAYERTAB como trece filas FLOW: **0 columnas nuevas** (1 valor de Kind `H` = pase
+   en host; 3 valores de arm `HAS_PREV`/`PRESSURE_LT4`/`PRESSURE_LT5` + 4 campos de `ArmInputs`; 7 bits de
+   canal; 1 relajación de invariante: `--inertia` arma dos filas). Un candidato a columna con nombre (la
+   lectura temporal gen−1, `reads_prev_ch`), juzgado innecesario y dicho. Cinco cosas NO son filas: el publish
+   (el anillo), `wap_upload` (transporte 3→5), `fwd_pipeline` (modo de la etapa leído por el arm), el gobernador
+   (CONTROL), nvofa (parámetro proveedor). Decisión por la regla A3 §4.2: PROCEDER a R5. El inventario lo hizo un
+   agente Sonnet (solo lectura); catorce citas re-leídas de primera mano antes de mapear. El residuo de XR3
+   queda descargado. Sin código.
+5. **NEXT** — (a) la palabra del operador sobre XR15 (política de present; la recomendación es un default
+   FIJO, `--present-waitable`, validado sin carga y bajo `gpu_load`; la secuencia 3.2b tiene los números);
+   (b) la palabra del operador para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con
+   `Kind::H`, el pase de consenso con su propio interruptor, `wap_upload` condicional — compuerta G-R5: CSV
+   byte-idéntico del default con las filas apagadas); (c) 4.3 (cablear las pruebas: hoy 0 `add_test`) puede
+   ir antes o en paralelo. No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t).
 
 **Auto-prompt (post-compactación):** soy la sesión que construye R3 de PhyriadFG (el núcleo puro
 `fg_core.comp` que reemplaza `wap_warp.comp` bajo `--fg-core`, byte-idéntico por construcción y medido con
