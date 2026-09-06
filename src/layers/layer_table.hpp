@@ -128,6 +128,9 @@ constexpr bool stage_writes_legal() {
         if (L.stage == Stage::SAMPLE  && (L.writes_ch & ~CH_MV_SAMPLE)) return false;
         if (L.stage == Stage::WEIGHT  && L.writes_ch != CH_NONE) return false;   // its return value (wa) only
         if (L.stage == Stage::COMPOSE && (L.writes_ch & ~CH_BLEND)) return false;   // its return value, plus CH_BLEND (COLUMN_CLOSURE §2.2)
+        // R5: a FLOW row produces flow-class fields only — never stage 5's conditioned MV, its samples, its
+        // accumulator or its per-pixel evidence (STAGE_CONTRACT §2: "stage 5 never computes a flow-class field", and the converse)
+        if (L.stage == Stage::FLOW && (L.writes_ch & (CH_MV | CH_MV_SAMPLE | CH_BLEND | CH_A_SAMP | CH_B_SAMP | CH_WARP_OK | CH_D_PIXEL | CH_STASIS))) return false;
     }
     return true;
 }
@@ -151,10 +154,12 @@ constexpr const char* stage_name(Stage s) {
 }
 constexpr const char* arm_name(ArmId a) {
     switch (a) { case ArmId::ALWAYS: return "ALWAYS"; case ArmId::GME: return "GME"; case ArmId::BWD: return "BWD";
-                 case ArmId::GME_AND_BWD: return "GME+BWD"; case ArmId::COMMIT: return "COMMIT"; }
+                 case ArmId::GME_AND_BWD: return "GME+BWD"; case ArmId::COMMIT: return "COMMIT";
+                 case ArmId::PRIOR: return "PRIOR"; case ArmId::HOLON: return "HOLON"; case ArmId::BWD_HOLON: return "BWD+HOL";
+                 case ArmId::BIDIR_OK: return "BIDIR"; }
     return "?";
 }
-constexpr char kind_char(Kind k) { return k == Kind::F ? 'F' : (k == Kind::P ? 'P' : 'X'); }
+constexpr char kind_char(Kind k) { return k == Kind::F ? 'F' : (k == Kind::P ? 'P' : (k == Kind::H ? 'H' : 'X')); }
 
 }  // namespace pfg::layers
 

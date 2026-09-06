@@ -290,9 +290,13 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
 5. **NEXT** — (a) XR15 DECIDIDO por el operador el 2026-09-06: `--present-waitable` es el default de
    entrega (`cli.hpp:58`; `--no-present-waitable` = el camino anterior); verificado en la línea por defecto:
    99.9 % frescos. (b) R5 EN CURSO con su palabra ("adelante, continua segun todas tus recomendaciones") —
-   por pasos con compuerta: (1) las trece filas FLOW en el registro con `Kind::H`, los arms nuevos y el token
-   propio del consenso; (2) `FlowSet`/`FlowRing`; (3) los holones extraídos por ancla; (4) `wap_upload`
-   condicional; compuerta G-R5 = A/B 2 corridas/lado como R4 + `--layer-dump`. La palabra para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con
+   por pasos con compuerta (`records/R5_GATE.md`): (1) HECHO 2026-09-06 — las catorce filas FLOW en el registro
+   (`Kind::H`, arms PRIOR/HOLON/BWD_HOLON/BIDIR_OK, 7 bits de canal, el consenso con su propio interruptor
+   `--mv-consensus`, default ON), paridad 39/39, superficies sin duplicados, tres caminos de salida limpios; los
+   holones siguen bajo las condiciones manuales hasta el paso 3; registro en 28 de 32 filas. (2) `FlowSet`/`FlowRing`;
+   (3) los holones extraídos por ancla y sus arms consumidos en F; (4) `wap_upload` condicional; compuerta G-R5 =
+   A/B 2 corridas/lado como R4 + `--layer-dump`. Decisión de entrada corregida: las filas van ON por defecto (el
+   "off" del plan era viejo); la compuerta es identidad byte del default. La palabra para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con
    `Kind::H`, el pase de consenso con su propio interruptor, `wap_upload` condicional — compuerta G-R5: CSV
    byte-idéntico del default con las filas apagadas); (c) 4.3 (cablear las pruebas: hoy 0 `add_test`) puede
    ir antes o en paralelo. No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t).

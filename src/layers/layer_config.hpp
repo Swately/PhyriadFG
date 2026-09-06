@@ -32,6 +32,11 @@ struct LayerOldShadow {
     bool  vblend = false;      float vblend_t0 = 0.f, vblend_strength = 0.f; bool vblend_exact = false;
     bool  stasis = false;      float stasis_thresh = 0.f;
     bool  single_track = false; bool st_no_stasis = false;
+    // R5: the FLOW rows' hand fields
+    bool  gme = false, gme_gpu = false, gme_gpu_verify = false, gme_irls2 = false;
+    bool  objects = false, shapefield = false, obj_fill_rim = false, expire = false, persist_reset = false;
+    bool  scene_memory = false, bidir = false, mv_median = false, nvofa = false, mv_consensus = false;
+    float mv_smooth = 0.f;
 };
 
 // Called at the top of parse_args()'s loop for argv[i]. Peeks argv[i+1] when the token takes a

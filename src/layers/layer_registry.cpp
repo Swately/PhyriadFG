@@ -69,16 +69,26 @@ static void apply_param_value(LayerConfig& lc, size_t p, float raw) {
 
 bool layer_shadow_parse(int argc, char** argv, int i, LayerConfig& lc) {
     const char* a = argv[i];
-    // row on/off tokens
+    // row on/off tokens. R5 (FLOW_ROW_MAP §2.2): a token may drive SEVERAL rows (--no-inertia: the MVCOND consumer
+    // and the FLOW producer; --no-memory: the three memory rows; --no-ambig / --no-objects likewise) — every row
+    // that carries the token takes it, exactly as the hand parser's single field cascades to all of them.
+    bool matched = false;
     for (uint16_t L = 0; L < kLayerCount; ++L) {
-        if (kLayers[L].on_flag  && !std::strcmp(a, kLayers[L].on_flag))  { lc.on[L] = true;  return true; }
+        if (kLayers[L].on_flag  && !std::strcmp(a, kLayers[L].on_flag))  { lc.on[L] = true;  matched = true; }
         if (kLayers[L].off_flag && !std::strcmp(a, kLayers[L].off_flag)) {
-            lc.on[L] = false;
+            lc.on[L] = false; matched = true;
             // the hand parser also zeroes the strength of a PF_ZERO_OFF param on --no-X (cli.cpp:338-341)
             for (size_t p = kLayers[L].param_first; p < (size_t)kLayers[L].param_first + kLayers[L].param_count; ++p)
                 if (kParams[p].pflags & PF_ZERO_OFF) lc.val[p] = 0.f;
-            return true;
         }
+    }
+    if (matched) return true;
+    // R5: the derived negative form of a PF_NO_FORM BOOL ("--no-" + flag[2:]) sets it to 0
+    for (size_t p = 0; p < kParamCount; ++p) {
+        const ParamDesc& P = kParams[p];
+        if (!(P.pflags & PF_NO_FORM) || !P.flag || std::strncmp(P.flag, "--", 2) != 0) continue;
+        char noform[80]; std::snprintf(noform, sizeof noform, "--no-%s", P.flag + 2);
+        if (!std::strcmp(a, noform)) { apply_param_value(lc, p, 0.f); return true; }
     }
     // param tokens (flag or alias)
     for (size_t p = 0; p < kParamCount; ++p) {
@@ -88,8 +98,8 @@ bool layer_shadow_parse(int argc, char** argv, int i, LayerConfig& lc) {
         if (!is_flag && !is_alias) continue;
         const char* next = (i + 1 < argc) ? argv[i + 1] : nullptr;
         if (P.type == ParamType::BOOL && !(P.pflags & PF_OPTIONAL_VALUE)) {
-            // a bare switch (--vblend-exact, --st-no-stasis)
-            apply_param_value(lc, p, 1.f);
+            // a bare switch (--vblend-exact, --st-no-stasis); R5: a PF_NEGATED flag is the negative token (--no-shapefield → 0)
+            apply_param_value(lc, p, (P.pflags & PF_NEGATED) ? 0.f : 1.f);
             return true;
         }
         if (is_flag && (P.pflags & PF_OPTIONAL_VALUE)) {
@@ -118,6 +128,11 @@ LayerOldShadow capture_layer_old(const Config& c) {
     s.vblend = c.vblend;               s.vblend_t0 = c.vblend_t0; s.vblend_strength = c.vblend_strength; s.vblend_exact = c.vblend_exact;
     s.stasis = c.stasis;               s.stasis_thresh = c.stasis_thresh;
     s.single_track = c.single_track;   s.st_no_stasis = c.st_no_stasis;
+    // R5: the FLOW rows' hand fields (pre-cascade)
+    s.gme = c.gme; s.gme_gpu = c.gme_gpu; s.gme_gpu_verify = c.gme_gpu_verify; s.gme_irls2 = c.gme_irls2;
+    s.objects = c.objects; s.shapefield = c.shapefield; s.obj_fill_rim = c.obj_fill_rim; s.expire = c.expire; s.persist_reset = c.persist_reset;
+    s.scene_memory = c.scene_memory; s.bidir = c.bidir; s.mv_median = c.mv_median; s.mv_smooth = c.mv_smooth; s.nvofa = c.nvofa;
+    s.mv_consensus = c.mv_consensus;
     return s;
 }
 
@@ -157,6 +172,28 @@ bool layer_config_parity(const Config& c) {
     chk_f("stasis.thresh (eff)",   o.stasis ? o.stasis_thresh : 0.f, PFG_ON(STASIS) ? PFG_V(STASIS, thresh) : 0.f);
     chk_b("single_track.on",       o.single_track,              PFG_ON(SINGLE_TRACK));
     chk_b("single_track.no_stasis",o.st_no_stasis,              PFG_V(SINGLE_TRACK, no_stasis) != 0.f);
+    // R5: the FLOW rows. Raw pre-cascade values on both sides; "(eff)" where the hand field is meaningless alone.
+    chk_b("flow_source.nvofa",     o.nvofa,                     PFG_V(FLOW_SOURCE, nvofa) != 0.f);
+    chk_b("mv_smooth.on",          o.mv_smooth > 0.f,           PFG_ON(MV_SMOOTH));
+    chk_f("mv_smooth.alpha",       o.mv_smooth,                 PFG_V(MV_SMOOTH, alpha));
+    chk_b("candidates.on",         o.ambig,                     PFG_ON(CANDIDATES));
+    chk_b("bidir.on",              o.bidir,                     PFG_ON(BIDIR));
+    chk_b("persistence.on",        o.inertia,                   PFG_ON(PERSISTENCE));
+    chk_b("gme.on",                o.gme,                       PFG_ON(GME));
+    chk_b("gme.irls2",             o.gme_irls2,                 PFG_V(GME, irls2) != 0.f);
+    chk_b("gme_gpu.on",            o.gme_gpu,                   PFG_ON(GME_GPU));
+    chk_b("gme_gpu.verify (eff)",  o.gme_gpu && o.gme_gpu_verify, PFG_ON(GME_GPU) && PFG_V(GME_GPU, verify) != 0.f);
+    chk_b("mem_fwd.on",            o.scene_memory,              PFG_ON(MEM_FWD));
+    chk_b("mem_bwd.on",            o.scene_memory,              PFG_ON(MEM_BWD));
+    chk_b("mem_refresh.on",        o.scene_memory,              PFG_ON(MEM_REFRESH));
+    chk_b("objects.on",            o.objects,                   PFG_ON(OBJECTS));
+    chk_b("objects_bwd.on",        o.objects,                   PFG_ON(OBJECTS_BWD));
+    chk_b("objects.shapefield",    o.shapefield,                PFG_V(OBJECTS, shapefield) != 0.f);
+    chk_b("objects.fill_rim",      o.obj_fill_rim,              PFG_V(OBJECTS, fill_rim) != 0.f);
+    chk_b("objects.expire",        o.expire,                    PFG_V(OBJECTS, expire) != 0.f);
+    chk_b("objects.persist_reset", o.persist_reset,             PFG_V(OBJECTS, persist_reset) != 0.f);
+    chk_b("mv_consensus.on (eff)", o.mv_consensus && (o.mv_guided || o.mv_median), PFG_ON(MV_CONSENSUS) && (PFG_ON(MV_GUIDED) || PFG_V(MV_CONSENSUS, blind) != 0.f));
+    chk_b("mv_consensus.blind",    o.mv_median,                 PFG_V(MV_CONSENSUS, blind) != 0.f);
     return ok;
 }
 
@@ -208,6 +245,10 @@ uint32_t layer_arm_mask(const ArmInputs& in) {
             case ArmId::BWD:         ok = in.bwd_ok; break;
             case ArmId::GME_AND_BWD: ok = in.gme_ok && in.bwd_ok; break;
             case ArmId::COMMIT:      ok = in.commit_ok; break;
+            case ArmId::PRIOR:       ok = in.has_prev; break;
+            case ArmId::HOLON:       ok = in.has_prev && in.tier < 4 && !in.holon_skip; break;
+            case ArmId::BWD_HOLON:   ok = in.bwd_ok && in.tier < 4 && !in.holon_skip; break;
+            case ArmId::BIDIR_OK:    ok = in.has_prev && in.tier < 5 && !in.pipelined && !in.bwd_skipping; break;
         }
         if (ok) m |= (1u << i);
     }
@@ -267,12 +308,22 @@ void dump_config(const Config& c) {
                 (int)o.mv_guided, (double)o.mv_sim, o.mv_edge_snap, (double)o.mv_edge_snap_sim, (int)o.inertia, (double)o.inertia_thresh, (double)o.bg_reclaim,
                 (int)o.phase_anchor, (int)o.ambig, (int)o.vblend, (double)o.vblend_t0, (double)o.vblend_strength, (int)o.vblend_exact,
                 (int)o.stasis, (double)o.stasis_thresh, (int)o.single_track, (int)o.st_no_stasis);
+    std::printf("[old2] gme=%d gme_gpu=%d gme_gpu_verify=%d gme_irls2=%d objects=%d shapefield=%d obj_fill_rim=%d expire=%d persist_reset=%d scene_memory=%d bidir=%d mv_median=%d mv_smooth=%.9g nvofa=%d mv_consensus=%d\n",
+                (int)o.gme, (int)o.gme_gpu, (int)o.gme_gpu_verify, (int)o.gme_irls2, (int)o.objects, (int)o.shapefield, (int)o.obj_fill_rim, (int)o.expire, (int)o.persist_reset,
+                (int)o.scene_memory, (int)o.bidir, (int)o.mv_median, (double)o.mv_smooth, (int)o.nvofa, (int)o.mv_consensus);
     std::printf("[new]");
     for (uint16_t i = 0; i < kLayerCount; ++i) if (kLayers[i].kind != Kind::X) std::printf(" %s=%d", kLayers[i].name, (int)c.layers.on[i]);
     for (size_t p = 0; p < kParamCount; ++p) std::printf(" %s.%s=%.9g", kLayers[kParams[p].layer].name, kParams[p].name, (double)c.layers.val[p]);
     std::printf("\n[hash] contract=0x%016llX\n", (unsigned long long)layer_contract_hash(c));
 }
 
+// R5: a token may drive several rows (FLOW_ROW_MAP §2.2); the help and the UI model show it once — on the first row
+// in execution order that carries it (the dump still lists every row).
+static bool first_carrier(const uint16_t* order, uint16_t k, const char* tok) {
+    if (!tok) return false;
+    for (uint16_t j = 0; j < k; ++j) { const LayerDesc& O = kLayers[order[j]]; if (O.off_flag && !std::strcmp(O.off_flag, tok)) return false; }
+    return true;
+}
 // ── --help section ──────────────────────────────────────────────────────────────────────────────
 void print_layer_help() {
     std::printf("\nLAYERS (the registry: src/layers/layer_table.def is the single declaration site; --layer-dump prints the resolved chain,\n"
@@ -281,7 +332,10 @@ void print_layer_help() {
     for (uint16_t k = 0; k < kLayerCount; ++k) {
         const LayerDesc& L = kLayers[order[k]];
         if (L.kind == Kind::X) continue;
-        if (L.off_flag) std::printf("  %-24s %s OFF (%s rank %u; default %s). %s\n", L.off_flag, L.name, stage_name(L.stage), (unsigned)L.rank, L.default_on ? "ON" : "OFF", L.help);
+        if (L.off_flag && first_carrier(order, k, L.off_flag)) {
+            std::printf("  %-24s %s OFF (%s rank %u; default %s). %s\n", L.off_flag, L.name, stage_name(L.stage), (unsigned)L.rank, L.default_on ? "ON" : "OFF", L.help);
+            for (uint16_t j = (uint16_t)(k + 1); j < kLayerCount; ++j) { const LayerDesc& O = kLayers[order[j]]; if (O.off_flag && !std::strcmp(O.off_flag, L.off_flag)) std::printf("  %-24s (also turns %s OFF)\n", "", O.name); }
+        }
         if (L.on_flag)  std::printf("  %-24s %s ON.\n", L.on_flag, L.name);
         for (size_t p = L.param_first; p < (size_t)L.param_first + L.param_count; ++p) {
             const ParamDesc& P = kParams[p];
@@ -321,7 +375,7 @@ void emit_layer_model_json(const Config& c) {
     for (uint16_t k = 0; k < kLayerCount; ++k) {
         const LayerDesc& L = kLayers[order[k]];
         if (L.kind == Kind::X) continue;
-        if (L.off_flag) {
+        if (L.off_flag && first_carrier(order, k, L.off_flag)) {
             std::printf("%s{\"flag\":", first ? "" : ","); json_str(L.off_flag); first = false;
             std::printf(",\"type\":\"switch-off\",\"default\":true,\"group\":"); json_str(L.group);
             std::printf(",\"name\":"); json_str(L.name);
@@ -332,12 +386,16 @@ void emit_layer_model_json(const Config& c) {
             const ParamDesc& P = kParams[p];
             if (!P.flag || P.ui == UiKind::HIDDEN) continue;
             const char* flag = (P.pflags & PF_OPTIONAL_VALUE) && P.flag_alias ? P.flag_alias : P.flag;   // the UI always sends a value
+            char noform[80] = {0};   // R5: a PF_NO_FORM BOOL is rendered as its negative token (a "switch-off"), like a row's off_flag
+            if ((P.pflags & PF_NO_FORM) && P.flag && !std::strncmp(P.flag, "--", 2)) { std::snprintf(noform, sizeof noform, "--no-%s", P.flag + 2); flag = noform; }
             std::printf("%s{\"flag\":", first ? "" : ","); json_str(flag); first = false;
             std::printf(",\"group\":"); json_str(L.group);
             char nm[96]; std::snprintf(nm, sizeof nm, "%s: %s", L.name, P.name);
             std::printf(",\"name\":"); json_str(nm);
             std::printf(",\"desc\":"); json_str(P.help);
-            if (P.type == ParamType::BOOL) {
+            if (P.type == ParamType::BOOL && (P.pflags & (PF_NEGATED | PF_NO_FORM))) {
+                std::printf(",\"type\":\"switch-off\",\"default\":true}");   // R5: the token turns the BOOL OFF; the UI's off-switch semantics
+            } else if (P.type == ParamType::BOOL) {
                 std::printf(",\"type\":\"switch\",\"default\":%s}", P.dflt != 0.f ? "true" : "false");
             } else {
                 const double step = (P.type == ParamType::I32) ? 1.0 : ((P.hi - P.lo) >= 2.f ? 0.5 : ((P.hi - P.lo) >= 0.5f ? 0.05 : 0.01));

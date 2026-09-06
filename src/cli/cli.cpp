@@ -21,22 +21,15 @@ void print_help(const char* a0) {
         "  --no-soft-gate          Binary per-block keep/freeze (byte-identical)\n"
         "  --no-commit             commit_thresh=0 + commit_real=false; also disables rescue + appearance\n"
         "  --no-appearance         No appearance-band temporal re-blend on committed pixels (byte-identical)\n"
-        "  --no-bidir              No bidirectional flow; also disables fill-div and matte\n"
         "  --no-fill-div           No divergence-directed disocclusion pick\n"
         "  --no-rescue             No neighbor-MV candidate rescue\n"
-        "  --no-gme                No global affine motion model; also disables matte\n"
         "  --no-matte              No fluid-matte compositing\n"
-        "  --no-objects            No object-holon clustering + motion-inheritance repair\n"
-        "  --no-shapefield         No contour shape-field; rigid single-MV inheritance\n"
         "  --no-crescent           No crescent-directed background fetch (matte bg blend reverts to (1-t,t))\n"
         "  --no-travel             No traveling-silhouette occupancy (matte occupancy uses the full-testimony lerp)\n"
         "  --no-contour            No contour marriage (matte composition reverts to the binary !matte_object decision)\n"
         "  --no-obj-crescent       No object-crescent side weighting (object A/B blend reverts to (1-t,t) + time-nearest commit)\n"
         "  --no-member-commit      No membership-beats-the-blend (warp-vs-blend selection unchanged; the cross-fade ghost-step; child of matte)\n"
-        "  --no-expire             No stigmergy expiration (cross-pair EMAs decay through contradictions)\n"
-        "  --no-persist-reset      No membership-beats-inertia (HUD shield blocks mover interiors)\n"
         "  --no-change-gate        No changed-content requirement on the dissidence masks (raw halo masks)\n"
-        "  --no-memory             No scene-holon silhouette memory (mask is the fresh pair only; child of --objects)\n"
         "  --no-tiers              No pressure tiers (bwd-skip only; objects/memory every pair under all load)\n"
         "  --load-governor         A util-driven GRADUATED tier FLOOR for the combat multiplier collapse,\n"
         "                          decoupled from the t_pair_ema>budget gate. The live 4090\n"
@@ -93,14 +86,12 @@ void print_help(const char* a0) {
         "  --no-upscale          Present at working resolution (bridge blit scales)\n"
         "  --upscale-lanczos     Lanczos-2 upscale (sharper, slower)\n"
         "  --assist-gpu NAME     GPU name fragment for frame-gen\n"
-        "  --mv-smooth A         Temporal MV EMA alpha (0=off; ~0.6 damps tile jitter)\n"
         "  --mv-prior            Temporal MV prior on OFP matcher (dual-centre, self-heals on cuts)\n"
         "  --mv-subpel / --no-mv-subpel  Sub-pixel MV (parabolic SAD-peak) — cuts flow-error/crossfade. DEFAULT ON\n"
         "  --mv-candsel          Ambiguous interior tiles adopt the coarse region MV — kills aperture crossfade. DEFAULT OFF\n"
         "  --matte / --no-matte  Fluid-matte two-layer compositing. DEFAULT OFF (the composite can\n"
         "                        double the figure into a crossfade).\n"
         "                        --matte re-enables it (cascades its sub-stack on; needs --gme + --bidir).\n"
-        "  --mv-median           3x3 blind vector-median on WAP MV field\n"
         "  --dump N              Dump next N presented frames to frames\\ as BMP (diagnostic)\n"
         "  --qdump DIR N         FG-quality test-field tap: write ~N triples (real N / live FG /\n"
         "                        real N+1) to DIR\\ as raw RGBA8 .rgba + a truth-less manifest.txt for\n"
@@ -111,11 +102,9 @@ void print_help(const char* a0) {
         "  --no-sync-clock       Disable the cadence fix (per-pair phase pacing)\n"
         "                        (kills the per-pair start-phase JUMP at real-frame boundaries on low-fps jittery\n"
         "                        sources). --no-sync-clock = the per-pair phase (byte-identical). Scale-invariant (240/500Hz)\n"
-        "  --gme-gpu / --no-gme-gpu  Offload the affine fit (gme_fit_affine, ~2.7ms/pair) onto device B\n"
         "                        (the 1080 Ti where MV/SAD live) — frees the game's CPU. DEFAULT ON, bit-identical\n"
         "                        (rel-diff ~1e-6, 0/32400 dis-mask flips). Auto CPU-gme fallback\n"
         "                        if device B / the B-side pipeline is unavailable. --no-gme-gpu forces the CPU path.\n"
-        "  --gme-gpu-verify      Run BOTH GPU+CPU gme, print model rel-diff + dis-mask flips. Implies --gme-gpu\n"
         "  --output-clock MODE   timer ONLY\n\n"
         "LEGACY NO-OP FLAGS (accepted, already default):\n"
         "  --warp-at-presenter, --soft-gate, --commit-warp, --commit-real, --bidir,\n"
@@ -428,6 +417,8 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--force-single-gpu")){ c.force_single_gpu=true; std::printf("[ra] --force-single-gpu: drive the SINGLE-GPU path (suppress the 2nd discrete + iGPU; all FG roles on device A). DEFAULT OFF.\n"); return 0; }   // single-GPU path
             if(!std::strcmp(arg,"--present-waitable")){ c.present_waitable=true; std::printf("[ra] --present-waitable: waitable swapchain (SetMaximumFrameLatency(1) + wait-before-present): the previous frame's consumption precedes the present, so the warp batch no longer waits a panel period behind the copy -- every tick's frame reaches the panel (99.8 %% fresh vs 49.9 %% without; +0.35-0.72 ms MsAddedLatency). DEFAULT ON since 2026-09-06 (XR15). --no-present-waitable restores the former path.\n"); return 0; }   // waitable swapchain (the shipping default since 2026-09-06)
             if(!std::strcmp(arg,"--no-present-waitable")){ c.present_waitable=false; std::printf("[ra] --no-present-waitable: waitable swapchain OFF -> the former present path (Present(0) on the two-buffer flip swapchain; the warp batch waits ~one panel period behind the previous present's copy: ~50 %% fresh frames under async present). Kept for A/B against the 2026-09-06 default.\n"); return 0; }   // the former default, opt-in
+            if(!std::strcmp(arg,"--mv-consensus")){ c.mv_consensus=true; return 0; }   // R5: the consensus pass's own switch (default ON) -- in parse_extra, not the else-if chain (MSVC C1061: that chain is at its nesting limit)
+            if(!std::strcmp(arg,"--no-mv-consensus")){ c.mv_consensus=false; std::printf("[ra] --no-mv-consensus: the 3x3 MV consensus pass before the warp is OFF (the raw MV field reaches the warp; mv_guided's per-pixel fetch is unaffected). DEFAULT ON. R5: the pass's own switch -- it used to be a second effect of --mv-guided.\n"); return 0; }
             if(!std::strcmp(arg,"--present-sync")){ if(auto v=next(arg)){ int n=std::atoi(v); c.present_sync=(uint32_t)(n<0?0:(n>4?4:n)); std::printf("[ra] --present-sync %u: Present(sync_interval) — 0 = present-immediately (over-presents past refresh); 1 = pace to the compositor (stops over-presenting). DEFAULT 0.\n",c.present_sync); return 0; } return 1; }   // Present(sync_interval)
             if(!std::strcmp(arg,"--present-colorspace")){ if(auto v=next(arg)){ c.present_colorspace=(!std::strcmp(v,"off"))?0u:1u; std::printf("[ra] --present-colorspace %s: declare the overlay colorspace (sRGB) so an HDR/Advanced-Color desktop composites the SDR overlay WITHOUT washout (soft: skipped if IDXGISwapChain3/CheckColorSpaceSupport unavailable). DEFAULT off.\n",v); return 0; } return 1; }   // overlay colorspace
             if(!std::strcmp(arg,"--present-fp16")||!std::strcmp(arg,"--hdr")){ c.present_format=1; std::printf("[ra] %s: present an FP16 scRGB swapchain (R16G16B16A16_FLOAT + DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709) so an HDR display receives HDR, AND widen the VK->D3D11 bridge texture to FP16 so the one CopyResource into the backbuffer stays format-compatible. SOFT: if the FP16 swapchain create fails the surface falls back to BGRA8 and a producer/consumer format disagreement is a NAMED clean quit (no in-thread rebuild). HONEST: HDR is INERT unless you run an HDR display + HDR content. DEFAULT off (byte-identical).\n",arg); return 0; }   // FP16 scRGB present
@@ -489,7 +480,7 @@ bool parse_args(int argc, char** argv, Config& c) {
             // clamp to the interp-buffer depth (past it the alloc loop would overrun).
             if(c.fg_factor>kMaxInterp+1){ std::printf("[ra] --fg-factor %d clamped to %d (interp-buffer depth)\n",c.fg_factor,kMaxInterp+1); c.fg_factor=kMaxInterp+1; }
             if(c.fg_factor<1) c.fg_factor=1; } } else return false; }
-        else if (!std::strcmp(a,"--mv-smooth"))       { if(auto v=next(a)) c.mv_smooth=(float)std::atof(v); else return false; }
+        else if (!std::strcmp(a,"--mv-smooth"))       { if(auto v=next(a)){ float al=(float)std::atof(v); c.mv_smooth = al<0.f?0.f:(al>1.f?1.f:al); } else return false; }   // R5: clamped to [0,1] (an EMA weight; the registry row's range)
         else if (!std::strcmp(a,"--mv-prior"))        { c.mv_prior=true; }
         else if (!std::strcmp(a,"--dump"))            { if(auto v=next(a)) c.dump_n=std::atoi(v); else return false; }
         else if (!std::strcmp(a,"--assist-gpu"))      { if(auto v=next(a)) std::snprintf(c.assist_gpu,sizeof(c.assist_gpu),"%s",v); else return false; }

@@ -11,7 +11,7 @@
 
 ## ▶ CURRENT POSITION (read this first)
 
-**`P → S4.R5 (FlowSet + FlowRing; the holons as rows; the MV median → a stage-3 row — where the consensus-pass default becomes the operator's declared switch) · next — 4.2, R5's paper half, done 2026-09-06 (`aap/FLOW_ROW_MAP.md`: 13 FLOW rows, **0 new columns** → PROCEED; XR3's residual discharged); R4 done 2026-09-05 (records/R4_GATE.md); A0/M1 is R7's`**
+**`P → S4.R5 (FlowSet + FlowRing; the holons as rows; the MV median → a stage-3 row — where the consensus-pass default becomes the operator's declared switch) · R5 IN PROGRESS (operator's word 2026-09-06; `records/R5_GATE.md`): step 1 done — the FLOW stage declared (14 rows, `Kind::H`, the consensus switch), parity 39/39; steps 2–4 pending · 4.2, R5's paper half, done 2026-09-06 (`aap/FLOW_ROW_MAP.md`: 13 FLOW rows, **0 new columns** → PROCEED; XR3's residual discharged); R4 done 2026-09-05 (records/R4_GATE.md); A0/M1 is R7's`**
 > **The deadzone is closed** (2026-09-04, `records/S2_T6_GATE.md` §6): it was the periodic test
 > background, not the shader. On aperiodic content the matcher's spurious sub-pixel MV collapses from
 > a median of 0.500 px to 0.034 px and the deadzone population from 138,696 pixels to 67.

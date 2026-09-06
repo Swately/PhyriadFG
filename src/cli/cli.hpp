@@ -424,6 +424,9 @@ struct Config {
                                     // trigger first tries the 8 NEIGHBOR block MVs (3x3 fwd field) and, if the best
                                     // scores ≤ commit_thresh, USES that candidate's average and SKIPS commit. Requires
                                     // the commit trigger (commit_thresh>0). --no-rescue = byte-identical.
+    bool  mv_consensus=true;        // --mv-consensus / --no-mv-consensus (R5): the 3x3 MV consensus pass before the warp
+                                    // (present.cpp wap_upload: medPipe) — its OWN switch since R5; it used to be a second
+                                    // effect of --mv-guided. DEFAULT ON (byte-identical). Effective = on && (mv_guided || mv_median).
     bool  mv_median=false;          // 3x3 component-wise vector-median on the uploaded MV field(s) before the warp
                                     // (A-side, in wap_upload). OFF (default) = the field is uploaded unchanged → byte-
                                     // identical. ON = a stray vector that disagrees with its 8 neighbours is replaced

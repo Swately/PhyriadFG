@@ -744,7 +744,7 @@ void run_present(FgContext& ctx){
                 // pipe-create failure — which clears BOTH bools and destroys medPipe — correctly skips
                 // the dispatch (the const would be stale-true → use-after-destroy). median_sim is the
                 // SAME live value (cfg.mv_sim under guided, else 0).
-                if(use_mv_median||use_mv_guided){
+                if(cfg.mv_consensus && (use_mv_median||use_mv_guided)){   // R5: the consensus row's own switch (--no-mv-consensus); default ON = the former condition
                     const float sim_push = use_mv_guided ? cfg.mv_sim : 0.f;
                     auto median_filter=[&](VkDescriptorSet set,Img& mv){
                         vkCmdBindPipeline(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,medPipe.pipe);

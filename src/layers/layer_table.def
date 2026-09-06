@@ -167,4 +167,148 @@ PFG_LAYER(SINGLE_TRACK, "single_track", COMPOSE, 290, F, true, true, 0u, false, 
             "Variant v3.0: pure B_samp at the pre-store site (no stasis/screen-static term).")
 PFG_LAYER_END(SINGLE_TRACK)
 
+// ── FLOW (stage 3, thread F) — R5 step 1: DECLARED (docs/planning/aap/FLOW_ROW_MAP.md §1). ────────
+// Kind H = a host pass (CPU, over FlowSet fields); P = an SG pass on F's queue. Ranks preserve today's
+// execution order in flow.cpp (source → smooth → candidates → bidir → persistence → gme → memory → objects
+// → the backward legs → mem_refresh → the consensus). In this step the rows are the registry's truth
+// (dump, help, UI model, parity, hash); the bodies still run under flow.cpp's hand-written conditions —
+// step 3 binds them. Source lines are flow.cpp unless noted.
+
+// rank 0 — the motion source (the OFP fwd match, record sites :1963–2000 / :2103–2117). Not toggleable:
+// it IS the flow-class source (the FLOW twin of fetch_mv). --nvofa = the hardware provider (PARAM).
+PFG_LAYER(FLOW_SOURCE, "flow_source", FLOW, 0, P, true, false, 0u, false, 0u,
+          CH_PREV | CH_CUR, CH_MV_RAW_FWD | CH_SAD, SH_NONE, ALWAYS, "Flow",
+          nullptr, nullptr, nullptr,
+          "The motion source: the pyramid block-match (OpticalFlowPipeline) on the pair, MV + SAD at W/8. "
+          "Not user-toggleable; --nvofa selects the NVIDIA hardware provider (auto-fallback if absent).")
+  PFG_PARAM(FLOW_SOURCE, nvofa, BOOL, 0.f, 0.f, 1.f, "--nvofa", nullptr, PF_NONE, SWITCH,
+            "Provider: 0 = the classical block-match, 1 = the NVIDIA Optical Flow Accelerator (single-GPU, flow_div=1, hardware-gated).")
+PFG_LAYER_END(FLOW_SOURCE)
+
+// rank 10 — --mv-smooth F (:269–291, dispatch :1991–2000). DEFAULT OFF (alpha 0). Reads its own gen−1 store.
+PFG_LAYER(MV_SMOOTH, "mv_smooth", FLOW, 10, P, false, false, PFG_BIT(FLOW_SOURCE), false, 0u,
+          CH_MV_RAW_FWD | CH_MV_PREV_GEN, CH_MV_RAW_FWD, SH_NONE, ALWAYS, "Flow",
+          nullptr, nullptr, nullptr,
+          "Temporal EMA of the MV field against the previous generation (velocity-space, cut-guarded). 0 = off.")
+  PFG_PARAM(MV_SMOOTH, alpha, F32, 0.f, 0.f, 1.f, "--mv-smooth", nullptr, PF_IMPLIES_ON | PF_ZERO_OFF, NUMBER,
+            "EMA alpha [0,1]; 0 = off; ~0.6 damps tile jitter.")
+PFG_LAYER_END(MV_SMOOTH)
+
+// rank 20 — the second-best candidate emission (:2035–2039; emit_second_best at flow_init.cpp:40). DEFAULT ON.
+// Shares --no-ambig with the MVCOND ambig row (the consumer): one hand field, two rows (FLOW_ROW_MAP §2.2).
+PFG_LAYER(CANDIDATES, "candidates", FLOW, 20, P, true, false, PFG_BIT(GME), false, 0u,
+          CH_MV_RAW_FWD, CH_CANDIDATES, SH_NONE, PRIOR, "Flow",
+          nullptr, "--no-ambig", nullptr,
+          "Emit the matcher's runner-up per block (the AMBIGUITY channel's producer); the MVCOND ambig row arbitrates it "
+          "against the gme model. Needs gme (the referee).")
+PFG_LAYER_END(CANDIDATES)
+
+// rank 30 — --bidir (:1488–1532). DEFAULT ON. Armed per pair by CONTROL: not under tier 5, not pipelined, not bwd-skipping.
+PFG_LAYER(BIDIR, "bidir", FLOW, 30, P, true, false, PFG_BIT(FLOW_SOURCE), false, 0u,
+          CH_PREV | CH_CUR, CH_MV_BWD | CH_SAD, SH_NONE, BIDIR_OK, "Flow",
+          nullptr, "--no-bidir", nullptr,
+          "The backward match (cur→prev) on the same pair: MV bwd + its SAD; the occlusion classification and the "
+          "backward legs of gme/memory/objects need it.")
+PFG_LAYER_END(BIDIR)
+
+// rank 35 — the inertia field producer (consume_wap :1411–1426 → hostPER). DEFAULT ON. Shares --no-inertia with
+// the MVCOND inertia row (the consumer) — FLOW_ROW_MAP §2.2.
+PFG_LAYER(PERSISTENCE, "persistence", FLOW, 35, H, true, false, PFG_BIT(FLOW_SOURCE), false, 0u,
+          CH_MV_RAW_FWD | CH_SAD | CH_PERSIST, CH_PERSIST, SH_NONE, ALWAYS, "Flow",
+          nullptr, "--no-inertia", nullptr,
+          "Per-block motion-state persistence (the inertia prior's field): updated from MV + SAD against its own "
+          "previous generation. The MVCOND inertia row reads it.")
+PFG_LAYER_END(PERSISTENCE)
+
+// rank 40 — --gme, the CPU affine fit (:44–134, :1535–1590). DEFAULT ON. Not called when gme_gpu is on (excludes).
+PFG_LAYER(GME, "gme", FLOW, 40, H, true, false, PFG_BIT(FLOW_SOURCE), false, PFG_BIT(GME_GPU),
+          CH_MV_RAW_FWD | CH_SAD, CH_GME | CH_DISSIDENCE, SH_NONE, PRIOR, "Flow",
+          nullptr, "--no-gme", nullptr,
+          "The frame-holon: a global affine model fitted per pair (IRLS on MV + SAD) and the dissidence mask of the "
+          "blocks that disagree with it. CPU variant; gme_gpu replaces it when on.")
+  PFG_PARAM(GME, irls2, BOOL, 0.f, 0.f, 1.f, "--gme-irls2", nullptr, PF_NONE, SWITCH,
+            "2 IRLS passes (OLS + 1 reweight) instead of 3.")
+PFG_LAYER_END(GME)
+
+// rank 41 — --gme-gpu, the device-B variant (:303–372, :398–439, record :2008–2019). DEFAULT ON (forced off on
+// single-GPU by the create-time cascade, flow_init.cpp:177–180).
+PFG_LAYER(GME_GPU, "gme_gpu", FLOW, 41, P, true, false, PFG_BIT(GME), false, 0u,
+          CH_MV_RAW_FWD | CH_SAD, CH_GME | CH_DISSIDENCE, SH_NONE, PRIOR, "Flow",
+          "--gme-gpu", "--no-gme-gpu", nullptr,
+          "The affine fit as a compute pass on device B (reduce→solve→mask); byte-equivalent to the CPU fit "
+          "(--gme-gpu-verify cross-checks). Single-GPU rigs run the CPU row.")
+  PFG_PARAM(GME_GPU, verify, BOOL, 0.f, 0.f, 1.f, "--gme-gpu-verify", nullptr, PF_IMPLIES_ON, SWITCH,
+            "Run BOTH fits on the same pair and print the model / mask differences.")
+PFG_LAYER_END(GME_GPU)
+
+// rank 50 — the scene-holon, forward: advect + merge (:1259–1274, :1290–1310; call :1590–1595). DEFAULT ON.
+// Shares --no-memory with mem_bwd / mem_refresh. Must precede objects (merge, then cluster the merged mask).
+PFG_LAYER(MEM_FWD, "mem_fwd", FLOW, 50, H, true, false, PFG_BIT(OBJECTS), false, 0u,
+          CH_MV_RAW_FWD | CH_DISSIDENCE | CH_MEM_PRIOR, CH_DISSIDENCE | CH_MEM_ADV, SH_NONE, HOLON, "Flow",
+          nullptr, "--no-memory", nullptr,
+          "Advect the persistent silhouette prior by the fwd MV field and merge it into the fresh dissidence mask "
+          "(max(fresh, 0.55*prior)) before clustering.")
+PFG_LAYER_END(MEM_FWD)
+
+// rank 60 — the object-holon, forward (:885–1245; call :1604–1614). DEFAULT ON. Shares --no-objects with objects_bwd.
+PFG_LAYER(OBJECTS, "objects", FLOW, 60, H, true, false, PFG_BIT(GME), false, 0u,
+          CH_MV_RAW_FWD | CH_DISSIDENCE | CH_GME | CH_PERSIST | CH_OBJ_STATE,
+          CH_MV_RAW_FWD | CH_DISSIDENCE | CH_PERSIST | CH_OBJ_STATE | CH_PAIR_STATS, SH_NONE, HOLON, "Flow",
+          nullptr, "--no-objects", nullptr,
+          "Connected-component clustering of the dissidence mask + 16-slot temporal identity + contour shape-field "
+          "motion-inheritance repair of the MV field + the HUD shield; writes the matte mass.")
+  PFG_PARAM(OBJECTS, shapefield, BOOL, 1.f, 0.f, 1.f, "--no-shapefield", nullptr, PF_NEGATED, SWITCH,
+            "The contour shape-field repair (on) vs rigid single-MV inheritance (off).")
+  PFG_PARAM(OBJECTS, fill_rim, BOOL, 1.f, 0.f, 1.f, "--obj-fill-rim", nullptr, PF_NO_FORM, SWITCH,
+            "Coherent-MV interior infill: stamp the rigid slot MV across the whole silhouette including the rim.")
+  PFG_PARAM(OBJECTS, expire, BOOL, 1.f, 0.f, 1.f, "--no-expire", nullptr, PF_NEGATED, SWITCH,
+            "Stigmergy expiration of the slot MV on contradiction (on) vs pure EMA decay (off).")
+  PFG_PARAM(OBJECTS, persist_reset, BOOL, 1.f, 0.f, 1.f, "--no-persist-reset", nullptr, PF_NEGATED, SWITCH,
+            "Membership beats inertia: reset the persistence field inside an armed moving silhouette (fwd only).")
+PFG_LAYER_END(OBJECTS)
+
+// rank 70 — the backward affine fit (GPU :1515–1528, CPU :1697–1711). DEFAULT ON; runs when the bwd match did.
+PFG_LAYER(GME_BWD, "gme_bwd", FLOW, 70, H, true, false, PFG_BIT(GME) | PFG_BIT(BIDIR), false, 0u,
+          CH_MV_BWD | CH_SAD, CH_GME_BWD | CH_DISSIDENCE, SH_NONE, BWD, "Flow",
+          nullptr, nullptr, nullptr,
+          "The affine model + dissidence mask of the backward field (the CPU or the device-B variant, per gme_gpu).")
+PFG_LAYER_END(GME_BWD)
+
+// rank 71 — the scene-holon, backward merge (:1290–1310; call :1712–1716).
+PFG_LAYER(MEM_BWD, "mem_bwd", FLOW, 71, H, true, false, PFG_BIT(MEM_FWD) | PFG_BIT(BIDIR), false, 0u,
+          CH_DISSIDENCE | CH_MEM_ADV, CH_DISSIDENCE, SH_NONE, BWD_HOLON, "Flow",
+          nullptr, "--no-memory", nullptr,
+          "Merge the advected prior into the backward dissidence mask before the backward clustering.")
+PFG_LAYER_END(MEM_BWD)
+
+// rank 72 — the object-holon, backward (call :1717–1729). Leaves the label scratch + the wake records mem_refresh reads.
+PFG_LAYER(OBJECTS_BWD, "objects_bwd", FLOW, 72, H, true, false, PFG_BIT(OBJECTS) | PFG_BIT(BIDIR), false, 0u,
+          CH_MV_BWD | CH_DISSIDENCE | CH_GME_BWD | CH_OBJ_STATE,
+          CH_MV_BWD | CH_DISSIDENCE | CH_OBJ_STATE | CH_WAKE | CH_PAIR_STATS, SH_NONE, BWD_HOLON, "Flow",
+          nullptr, "--no-objects", nullptr,
+          "The clustering + identity + repair over the backward field; emits the wake records (the object takes its "
+          "silhouette with it) and the backward matte mass.")
+PFG_LAYER_END(OBJECTS_BWD)
+
+// rank 80 — the scene-holon refresh + wake evaporation (:1324–1380; call :1734–1739). The LAST holon.
+PFG_LAYER(MEM_REFRESH, "mem_refresh", FLOW, 80, H, true, false, PFG_BIT(MEM_FWD), false, 0u,
+          CH_MEM_ADV | CH_DISSIDENCE | CH_OBJ_STATE | CH_WAKE | CH_MV_RAW_FWD, CH_MEM_PRIOR, SH_NONE, HOLON, "Flow",
+          nullptr, "--no-memory", nullptr,
+          "Refresh / decay the persistent silhouette prior from the merged masks; evaporate the wakes the backward "
+          "repair left (only when the backward legs ran).")
+PFG_LAYER_END(MEM_REFRESH)
+
+// rank 90 — the MV consensus pass (today present.cpp:734–765, medPipe, on P inside wap_upload; factory flow.cpp:442–469).
+// DEFAULT ON. R5 gives it its OWN switch — the operator's declared default (the 1.7 px low-phase finding): today the
+// pass was a second effect of --mv-guided. blind = the 3×3 vector median (--mv-median); otherwise the color-weighted
+// consensus with mv_guided's band. Effective ON = on && (mv_guided on || blind).
+PFG_LAYER(MV_CONSENSUS, "mv_consensus", FLOW, 90, P, true, false, PFG_BIT(FLOW_SOURCE), false, 0u,
+          CH_MV_RAW_FWD | CH_MV_BWD | CH_CUR, CH_MV_RAW_FWD | CH_MV_BWD, SH_NONE, ALWAYS, "Flow",
+          "--mv-consensus", "--no-mv-consensus", nullptr,
+          "The 3x3 consensus over the MV field(s) before the warp: color-weighted (mv_guided's band) or the blind vector "
+          "median (--mv-median). Its default is the operator's declared switch; --no-mv-consensus = the raw field.")
+  PFG_PARAM(MV_CONSENSUS, blind, BOOL, 0.f, 0.f, 1.f, "--mv-median", nullptr, PF_IMPLIES_ON, SWITCH,
+            "Blind 3x3 component-wise vector median (no color weighting).")
+PFG_LAYER_END(MV_CONSENSUS)
+
 // Made with my soul - Swately <3
