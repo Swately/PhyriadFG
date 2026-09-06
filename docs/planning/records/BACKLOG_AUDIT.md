@@ -16,6 +16,21 @@
 >
 > **State at the audit.** HEAD `99dd28d`, branch `analysis/0.3.0-quality-push`, tree clean before this
 > audit's own doc edits.
+>
+> ## ⚠ STALENESS BANNER (added 2026-09-06) — this is a SNAPSHOT, not a live tracker
+>
+> **This document was true on the morning of 2026-09-04 and parts of it stopped being true the same
+> afternoon.** MOTION_TRUTH **T2, T3, T4 and T5 all CLOSED on 2026-09-04**, hours after the audit was
+> written, each with a gate record in THIS directory (`S2_T2_GATE.md`, `S2_T3_GATE.md`, `S2_T4_GATE.md`,
+> `S2_T5_GATE.md`) and with the tools committed at `tools/motion_truth/`. **M1 IS MEASURED** for the
+> shipping default, with `r`, at [`../../evidence/MOTION_TRUTH_BASELINE.md`](../../evidence/MOTION_TRUTH_BASELINE.md).
+> Rows A0′, A6 and the S2.T2–T5 lines below say the opposite and are **superseded** — they are kept as
+> the record of what was true when the sweep ran, per the container's never-delete rule.
+>
+> A session on 2026-09-06 read those rows, believed them over the gate records in the same folder, and
+> wrote "MOTION_TRUTH T2–T5 have no code" into five live documents and a commit message
+> (`docs/LEARNING_LOG.md` P-018). **The live state is the ACTION_PLAN node states and the gate records;
+> this file is dated evidence and must be read with its date.**
 
 ---
 
@@ -55,13 +70,13 @@ the zoo that may be causing it.
 | # | Item | State | Blocked by | Scale |
 |---|---|---|---|---|
 | A0 | **S2.T6 — close the sub-pixel deadzone** | built, gate NOT passed | nothing; this is the live work | medium as an investigation, unbounded as a fix |
-| A0′ | **S2.T2 — the non-periodic marker zoo** | `designed`, zero code | nothing | medium |
+| A0′ | ~~**S2.T2 — the non-periodic marker zoo**~~ **SUPERSEDED 2026-09-04** — built and gated (`S2_T2_GATE.md`) | `designed`, zero code | nothing | medium |
 | A1 | **S4.R3 — `fg_core.comp` + the fused rows** | not started | A0 (its M4 gate needs a trustworthy oracle) | large |
 | A2 | **S4.R4 — stage 6 PRESENT extracted** | not started | **not blocked** — sequencing preference only | medium–large |
 | A3 | **S4.R5 — `FlowSet`/`FlowRing`, holons as rows** | not started | **not blocked** — but its scope overlaps R4's | large |
 | A4 | **S4.R6 — stages 1–2 named (`capture/`+`ingest/`)** | not started | R5 | medium |
 | A5 | **S4.R7 — `--legacy-warp` out of the default** | not available | a four-deep chain, none of it lifted | medium |
-| A6 | **M1 — the motion baseline** | never measured, any path | T2 → T3 → T4 → T5 | large |
+| A6 | ~~**M1 — the motion baseline**~~ **SUPERSEDED 2026-09-04** — T2–T5 built; M1 MEASURED with `r` on the shipping default (`evidence/MOTION_TRUTH_BASELINE.md`). What remains is M1 on the `--fg-core` path: a RUN, not a build. | never measured, any path | T2 → T3 → T4 → T5 | large |
 
 **Corrections this audit made to the path itself:**
 
@@ -93,10 +108,10 @@ the zoo that may be causing it.
 | Item | State | Blocks |
 |---|---|---|
 | **S2.T6 deadzone** | built, gate NOT passed | R3's M4 veto |
-| **S2.T2** `marker_zoo.py` + `positions.csv` + the 16-bit frame-ID barcode | `designed`, zero code | T4/T5 → M1 → R7, **and T6's generality question** |
-| **S2.T3** the on-screen player at a fixed 60/120 fps | `designed`, zero code | T4/T5 |
-| **S2.T4** `marker_extract.py` + its two self-tests | `designed`, zero code | M1 |
-| **S2.T5** `motion_report.py` + the DI-3 two-run baseline | `designed`, zero code | M1 |
+| **S2.T2** `marker_zoo.py` + `positions.csv` + the 16-bit frame-ID barcode | ~~`designed`, zero code~~ **BUILT + GATED 2026-09-04 — `S2_T2_GATE.md`** | T4/T5 → M1 → R7, **and T6's generality question** |
+| **S2.T3** the on-screen player at a fixed 60/120 fps | ~~`designed`, zero code~~ **BUILT + GATED 2026-09-04 — `S2_T3_GATE.md`** | T4/T5 |
+| **S2.T4** `marker_extract.py` + its two self-tests | ~~`designed`, zero code~~ **BUILT + GATED 2026-09-04 — `S2_T4_GATE.md`** | M1 |
+| **S2.T5** `motion_report.py` + the DI-3 two-run baseline | ~~`designed`, zero code~~ **BUILT + GATED 2026-09-04 — `S2_T5_GATE.md`** | M1 |
 
 `tools/motion_truth/` does not exist. **Do not mistake the existing zoos for T2:** `A0_FROZEN_OBJECTIVE`
 forecloses it — `prep_zoo_sequence.py`'s presets "are NOT that zoo and are not extended to become it",

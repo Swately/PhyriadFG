@@ -14,6 +14,9 @@ cmake_minimum_required(VERSION 3.20)
 project(phyriad_fg LANGUAGES CXX)
 
 find_package(Vulkan REQUIRED)
+# R7: the doc/gate parity check is a Python script; the interpreter is resolved once here so the test
+# names it explicitly instead of trusting whatever "python" is first on PATH.
+find_package(Python3 COMPONENTS Interpreter)
 
 find_program(PFG_GLSLC glslc
     HINTS
@@ -217,6 +220,13 @@ set_tests_properties(clock_replay_missing_log_fails PROPERTIES WILL_FAIL TRUE)
 #     ran bwd-skip:100%, which is exactly when the four `if(do_bwd)` sites stop being exercised.
 add_test(NAME layer_arm_parity COMMAND pfg_arm_test)
 set_tests_properties(layer_arm_parity PROPERTIES PASS_REGULAR_EXPRESSION "OK: all [0-9]+ checks passed")
+
+# 4c. R7: a LIVE document may not say a gated phase is unbuilt. On 2026-09-06 a session wrote
+#     "MOTION_TRUTH T2-T5 have no code" into five live documents; all four phases had closed two days
+#     earlier with gate records in the same folder it was reading. A note had already been written about
+#     that exact mistake and did not stop it, so this is the mechanical form (LEARNING_LOG P-018).
+add_test(NAME docs_gate_parity COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/doc_gate_parity.py")
+set_tests_properties(docs_gate_parity PROPERTIES PASS_REGULAR_EXPRESSION "no live document contradicts a gate record")
 
 # 5. The registry's parity oracle over a token corpus. `--dump-config` parses, runs layer_config_parity() and exits
 #    (exit 3 on a mismatch) before any device is created — a pure CPU test. These are the combinations that broke

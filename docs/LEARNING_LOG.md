@@ -181,6 +181,52 @@
   `records/R5_GATE.md` §1 as a finding for E4 (the flag-surface single-source stage).
 - **accepted by:** the session — the chain is not restructured here; E4 owns that.
 
+### P-019 · A zoo from an earlier session is not interchangeable with one from today
+- **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** corrected
+- **evidence:** R7(a)'s panning half was going to reuse `zoo_noise` (2026-09-04, `bg noise pan 120`) rather
+  than regenerate it — same generator, same seed, no reason to doubt it. `marker_extract.py` died on it with
+  `KeyError: 'patterns'`. The two files' key sets differ: `zoo_static` has
+  `['background','barcode','fps','frames','height','markers','patterns','seed','width']`, `zoo_noise` has the
+  same list **without `patterns`**. Both were written on 2026-09-04; the generator grew the field between them,
+  and the extractor now requires it.
+- **lesson:** A generated corpus is only as reusable as the CONTRACT between the generator and its readers,
+  and that contract moves silently — nothing in the file says which version wrote it. Reusing an old zoo is a
+  premise, not a saving: check the reader accepts it (or regenerate, which for a seeded generator costs
+  seconds and removes the question). `zoo_static` worked only because it happened to be written after the
+  field was added.
+- **corrective:** the panning zoo was regenerated with today's `marker_zoo.py` at the same parameters
+  (1280×720, 60 fps, 2 s, `--bg noise --bg-pan 120 --markers 18 --sizes 6,12,24 --seed 20260904`), and the
+  capture harness now takes a full path so a regenerated corpus can be pointed at without editing it. A
+  version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
+  is an input to a bit-parity chain and changing its shape is its own change.
+
+### P-018 · A dated audit read as a live tracker — "T2–T5 have no code" was false and shipped everywhere
+- **class:** recurrence · **date:** 2026-09-06 · **recurrences:** 1 · **status:** corrected
+- **evidence:** the session reported R7(a) as blocked because *"MOTION_TRUTH T2–T5 have no code"*, citing
+  `records/BACKLOG_AUDIT.md` rows A6 / S2.T2–T5 (`designed`, zero code). **T2, T3, T4 and T5 all closed on
+  2026-09-04**, hours after that audit was written: `S2_T2_GATE.md`, `S2_T3_GATE.md`, `S2_T4_GATE.md`,
+  `S2_T5_GATE.md` sit in the SAME directory, the tools are committed at `tools/motion_truth/`, and M1 was
+  already measured with `r` at `docs/evidence/MOTION_TRUTH_BASELINE.md`. The false claim reached
+  `R7_GATE.md`, `ACTION_PLAN.md`, `FOTO_MENTAL.md`, the operator's desktop sequence, the durable memory,
+  commit `693b02c` and a report to the operator. The session had listed that records directory earlier in
+  the same session and had read the sequence log entries that closed T2–T5.
+- **why it is a RECURRENCE:** `docs/FOTO_MENTAL.md` §4 already carried, in writing, *"An earlier version of
+  this very paragraph said 'Nothing under CONVERGENCE or MOTION_TRUTH is built' — that was false and cost is
+  the reason this warning is here."* The warning was read and the same mistake was made anyway. That is what
+  distinguishes a note from a gate.
+- **lesson:** `BACKLOG_AUDIT.md` is a **dated snapshot**, not a tracker; it went stale the same day it was
+  written. The live state is the ACTION_PLAN's node states and, above them, the GATE RECORDS on disk — a
+  file in `docs/planning/records/` is evidence that a phase closed, and it outranks any prose that says
+  otherwise. Before writing "X is not built", list that directory.
+- **corrective (mechanical, not a note — METACOGNITION §7):** `tools/doc_gate_parity.py`, wired as the ctest
+  case `docs_gate_parity` and therefore part of `build-release.bat`. It fails the build when a LIVE planning
+  document says a phase is unbuilt while a gate record for that phase exists, and when a record says it
+  without carrying a staleness marker. Its first run found **three more** stale claims nobody had noticed:
+  `FOTO_MENTAL.md` §2 ("everything downstream R3→R7 is unbuilt") and §4 ("NOT BUILT: R3…R7; T2…T5"), and
+  `CONVERGENCE_RISK_REGISTER.md` MR-5 ("the drop-model half is R4 code and is genuinely unbuilt"). The audit
+  itself now opens with a staleness banner and its six affected rows are struck as SUPERSEDED — kept, per
+  the container's never-delete rule.
+
 ### P-017 · A stray `\r\r\n` suppresses git's CRLF normalisation — removing it renormalises the whole file
 - **class:** refuted-premise · **date:** 2026-09-06 · **recurrences:** 0 · **status:** accepted
 - **evidence:** `src/core/main.cpp` carries one `\r\r\n` at line 108, left by R6 step 2's patch script (P-003).

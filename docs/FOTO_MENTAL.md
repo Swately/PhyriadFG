@@ -14,10 +14,11 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
 1. **OBJECTIVE** — P: perfect PhyriadFG as ONE final FG = the clean minimal core (`apps/minimal_fg`, the
    SG seam) + the layers that earn their place, on the LAYERTAB contract; exact motion measured as DATA
    (S2 MOTION_TRUTH), perceptual quality parked (S5).
-2. **FOCUS** — execution is UNDER WAY, not pending a green light. R0, R1, R2 of the in-place
-   restructure and T0/T1/T1b/T1c of the instrument are done and gated; T6 is built and its gate does
-   NOT pass. The live work is closing T6's sub-pixel deadzone, because R3's M4 veto rests on that
-   oracle. Everything downstream (R3→R7) is unbuilt.
+2. **FOCUS (rewritten 2026-09-06 — the 2026-09-04 text below the line was stale and is kept as the note
+   in §4)** — the in-place restructure is COMPLETE: R0–R6 closed and gated, and R7's code half closed
+   (`records/R7_GATE.md`). The MOTION_TRUTH instrument is complete too: T0–T5 gated, T6's gate PASSES since
+   1c.7 (`records/S2_T6_GATE.md`). The live question is no longer construction — it is R7(a), the
+   `--legacy-warp` default, which now has its M1 table on both paths and is the operator's call.
 3. **METHOD** — Phyriad protocols: CONDUCT (verify-before-claim, calibrated, zero praise), PLAN_TIER T2
    (no commit with an `open` risk), AAP (closed: A0 frozen sha256 `670687d0…6933`, 3 candidates, 9
    scorecards, ATG 2 lenses, A3 = C + G1–G5, AT3/AT4/ATF approved — `docs/planning/aap/`), DI-3 two runs
@@ -31,8 +32,12 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    said the whole working tree was uncommitted (`git status --short` returns 0 lines).
    **BUILT AND GATED:** E1 thin `main()`; R0 (layer registry), R1 (PhaseClock), R2 (seam engine);
    T0 (scorer port), T1 (`--qdump+`), T1b (coverage sampler), T1c (record completeness). Each has a
-   record in `planning/records/`. **BUILT, GATE NOT PASSED:** T6 (`tools/ref_warp.py`).
-   **NOT BUILT:** R3, R4, R5, R6, R7; T2, T3, T4, T5.
+   record in `planning/records/`.
+   **THE 2026-09-04 STATE, kept as the note this section is:** "BUILT, GATE NOT PASSED: T6"; "NOT BUILT:
+   R3, R4, R5, R6, R7; T2, T3, T4, T5". **Both sentences are now false and were false within a day.**
+   T2–T5 closed 2026-09-04 (`records/S2_T*_GATE.md`, `tools/motion_truth/`), T6's gate PASSES (1c.7),
+   R3–R6 closed 2026-09-05/06 and R7's code half on 2026-09-06. `tools/doc_gate_parity.py` now fails the
+   build if a live document says a gated phase is unbuilt (P-018).
    **Verified defect still to honour:** bg-reclaim dead under the shipping default
    (`wap_warp.comp:344/394/410`) — reproduced bug-for-bug by design (XR7), its fix an operator call.
    **GIT (measured 2026-09-04, at HEAD `99dd28d` before this audit's own edits):** the tree was clean
@@ -339,9 +344,12 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    mental y `aap/` se revirtieron). Compuerta: tasas idénticas al binario pre-R6 dentro del ruido, arranque sin
    cambios, humo de 120 s limpio, 45 pruebas verdes.
 4y. **R7 (la mitad de código) HECHO 2026-09-06 — `records/R7_GATE.md`.** R7 tiene dos mitades y no son la misma
-   clase de cosa. (a) `--legacy-warp` fuera del default sigue **BLOQUEADO**, y ahora con el bloqueo nombrado: la
-   tabla M1 tiene que existir en las DOS rutas y MOTION_TRUTH T2–T5 son `designed` con cero código; ningún proxy
-   cierra una compuerta M1. Además es un default de producto — suyo. (b) Los residuos de código que R5 y R6
+   clase de cosa. (a) `--legacy-warp` fuera del default sigue ABIERTO. **CORREGIDO EL MISMO DíA:** este párrafo decía que
+   MOTION_TRUTH T2–T5 son "`designed` con cero código" — es FALSO. T2–T5 cerraron el 2026-09-04 con sus
+   compuertas en `records/S2_T*_GATE.md`, las herramientas están en `tools/motion_truth/`, y M1 YA estaba
+   medido con `r` para el default (`docs/evidence/MOTION_TRUTH_BASELINE.md`). Lo que faltaba era la CORRIDA
+   en la ruta `--fg-core`, no el instrumento (P-018; el aviso de esta misma foto sobre este error exacto ya
+   estaba escrito). Ningún proxy cierra una compuerta M1, y el default es suyo. (b) Los residuos de código que R5 y R6
    dejaron nombrados, cerrados: **el instrumento de dos oráculos retirado** (la condición de R5 era "una segunda
    corrida bajo presión con 0"; se corrió dos veces más, la segunda CON `--fwd-pipeline` — la combinación que R5
    declaró nunca probada y el único productor del arm-input `pipelined` — 107,867 decisiones, 0 desacuerdos);
@@ -355,9 +363,10 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    referencias compartidas — el doble de lo que necesitó `consume_wap`) y con el método que sí lo cerraría.
 
 5. **NEXT** — R0–R6 cerrados y aprobados; 4.2, 4.3 y la mitad de código de R7 cerrados. Lo que queda:
-   (a) **R7(a), del operador y bloqueado por medición**: `--legacy-warp` fuera del default necesita la tabla M1 en
-   la ruta `--fg-core` también, y eso significa construir MOTION_TRUTH T2–T5 (`records/BACKLOG_AUDIT.md` A6,
-   "large"). Es el único camino: ningún proxy cierra M1.
+   (a) **R7(a), del operador**: `--legacy-warp` fuera del default necesitaba la tabla M1 en la ruta `--fg-core`.
+   El instrumento existía desde el 2026-09-04 (T2–T5 gateadas); la corrida es `records/R7_GATE.md` §7.
+   `records/BACKLOG_AUDIT.md` es una foto del 2026-09-04 por la mañana y sus filas A6 / S2.T2–T5 quedaron
+   obsoletas esa misma tarde — lleva banner desde el 2026-09-06.
    (b) **`stats_second()`**: abierto, medido, método especificado (`R7_GATE.md` §6). No es una mudanza sino un
    paso de diseño del plano INSTRUMENT: los ~25 acumuladores por ventana deben ser de un tipo que los posea.
    (c) Sin residuos ocultos: la lista que esta foto traía (oráculos, convert duplicado, RawRing) está cerrada.
@@ -368,9 +377,10 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
 convert unificado y el RawRing con sus reglas. Releer primero CONDUCT, esta foto (4y + NEXT) y
 `records/R7_GATE.md` §0 — que dice qué mitad de R7 NO se cerró y por qué. Luego `git status`: si el árbol está
 limpio en `analysis/0.3.0-quality-push`, el trabajo está confirmado (push NO autorizado, sin upstream). Lo
-siguiente NO es "seguir con R7": R7(a) es del operador y está bloqueado por una medición que no existe (M1 en la
-ruta `--fg-core` → MOTION_TRUTH T2–T5, sin código). Reportarle con números y la línea de evidencia; no pedirle
-decisiones que ya delegó.
+siguiente es la DECISIÓN de R7(a), que es suya y ahora tiene sus dos tablas M1 (`records/R7_GATE.md` §7).
+**Antes de creer que algo "no está construido", abrir `docs/planning/records/` y mirar si hay compuerta** —
+`BACKLOG_AUDIT.md` es una foto fechada, no un rastreador vivo (P-018). Reportarle con números y la línea de
+evidencia; no pedirle decisiones que ya delegó.
 
 6. **CONSTRAINTS in play** — child projects relocated by the operator only; never delete invested work
    (the donor stays behind `--legacy-*`); byte-identical-off on every new path; M4 is a veto with T6 as

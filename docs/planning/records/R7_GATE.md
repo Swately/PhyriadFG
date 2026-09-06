@@ -11,7 +11,21 @@ reported to him as *"lo que queda es R7, y es del operador"*.
 
 | | what it is | state |
 |---|---|---|
-| **(a)** `--legacy-warp` retired from the default build | a **product default**, gated on the M1 baseline table on both paths (`≤ 0.10 px` mean shift, p95 within spread, `r ≥ 0.5`) | **BLOCKED, not deferred.** M1 needs MOTION_TRUTH T2–T5, which are `designed` with zero code (`records/BACKLOG_AUDIT.md` rows A6, S2.T2–T5). No proxy closes an M1 gate — the plan says so and this record does not reinterpret it. |
+| **(a)** `--legacy-warp` retired from the default build | a **product default**, gated on the M1 baseline table on both paths (`≤ 0.10 px` mean shift, p95 within spread, `r ≥ 0.5`) | **OPEN, and the blocker is a RUN, not a build** — see the correction below. |
+
+> ### ⚠ Correction (2026-09-06, same day): what (a) needs was stated wrongly here
+>
+> The row above originally read *"M1 needs MOTION_TRUTH T2–T5, which are `designed` with zero code"*,
+> citing `records/BACKLOG_AUDIT.md`. **That was false.** T2, T3, T4 and T5 all closed on 2026-09-04 —
+> `S2_T2_GATE.md`, `S2_T3_GATE.md`, `S2_T4_GATE.md`, `S2_T5_GATE.md` sit in this same directory, the
+> tools are committed at `tools/motion_truth/`, and **M1 is measured with `r`** for the shipping default
+> at `docs/evidence/MOTION_TRUTH_BASELINE.md`. The audit is a dated snapshot that went stale hours after
+> it was written; the session read it and believed it over the gate records beside it
+> (`docs/LEARNING_LOG.md` P-018 — a recurrence: the foto mental already carries a warning about this
+> exact mistake).
+>
+> **What R7(a) actually lacks:** the same M1 table on the **`--fg-core` path**. The instrument exists and
+> runs; this is a measurement, not a build. It is measured in §7 of this record.
 | **(b)** the two duplicated oracles retired | a **code residual** R5 left deliberately, gated on *"a second pressured run has counted 0 again"* (`R5_GATE.md:307-309`) | closed here, §1–§3. |
 
 Two more residuals were named and not done by their own gates; they are closed here as §4 (`R6_GATE.md:174`,
@@ -262,7 +276,194 @@ stats line is a product surface: its shape is compared in every gate in this dir
 
 **Status:** open, measured, method specified. Not closed here, and not closed quietly.
 
-## 7 · Verdict
+## 7 · R7(a) MEASURED — M1 on both paths, and the question it turned out to be
+
+The instrument existed all along (§0's correction). This section runs it, and then runs the three things
+M1 alone could never answer.
+
+**Method.** The SAME zoo the 2026-09-04 baseline used (`zoo_static`, seed 20260904, noise background, pan 0,
+1280×720 @ 60 fps), played by `tools/motion_truth/play_frames.ps1`, captured with `--qdump+`, extracted and
+reported by the committed `tools/motion_truth/` chain. **Both sides re-captured the same day, alternated** —
+a path-vs-path question wants one set of conditions, not a table from another day. Two sampling levels,
+because the first could not resolve the criterion: 2 runs × 16 triples per path, then 2 runs × 48 triples.
+
+**The capture chain's own floor** (`marker_extract.py` checks itself on the REAL plane first), all four
+48-triple runs: **0.095 / 0.097 / 0.096 / 0.097 px** mean against its 0.25 px bar — the same on both paths,
+which is what says the two sides were photographed the same way. Full tables:
+[`../../evidence/M1_R7_DEFAULT.md`](../../evidence/M1_R7_DEFAULT.md),
+[`../../evidence/M1_R7_FGCORE.md`](../../evidence/M1_R7_FGCORE.md),
+[`../../evidence/M1_R7_COMPARISON.md`](../../evidence/M1_R7_COMPARISON.md).
+
+### 7.1 · Placement: no difference the instrument can resolve
+
+`spread` is the larger of the two within-side ranges — the resolution actually available (P-014).
+
+| class | default | `--fg-core` | within-side spread | shift | vs the 0.10 px criterion |
+|---|---|---|---|---|---|
+| linear | 0.617 | 0.624 | 0.048 | **+0.007** | inside the bar **and resolved** |
+| circular | 0.821 | 0.842 | 0.078 | **+0.021** | inside the bar **and resolved** |
+| accel | 0.749 | 0.785 | 0.128 | **+0.036** | inside the bar; spread marginally above it |
+| fast (control) | 5.981 | 5.895 | 0.587 | −0.086 | inside the bar, not resolved |
+| crossing | 1.289 | 1.160 | 0.182 | **−0.129** | over the bar, under its own spread |
+
+p95: every between-path delta inside the within-side spread. And the one class over the bar **reverses sign
+with sampling** — +0.171 at 16 triples, −0.129 at 48. A systematic difference does not change sign when the
+sample grows.
+
+### 7.2 · The criterion's `r ≥ 0.5` clause fails — for the SHIPPING DEFAULT
+
+With 48 triples the report has the population to use **exact** `(k_prev, marker)` matching instead of the
+`(marker, phase-bin)` MEANS fallback the 2026-09-04 baseline used on most classes:
+
+| class | `r` default | `r` --fg-core |
+|---|---|---|
+| linear | 0.16 | 0.17 |
+| accel | 0.32 | 0.42 |
+| circular | 0.58 | −0.17 |
+| crossing | 0.75 | −0.07 |
+| fast | 0.27 | 0.21 |
+
+The baseline's `r` 0.76–1.00 came from averaging each marker's detections inside a phase bin — which removes
+exactly the run-to-run variation `r` exists to detect. Per detection, the error is largely **not** reproducible
+run to run, on either path. **A gate the incumbent fails cannot judge the challenger.** The criterion needs
+restating, and picking the sampling that flatters it instead is the comfortable route this record declines.
+
+### 7.3 · The sharper instrument — and the 86 % of loaded ticks it cannot see
+
+`--fg-core-ab` runs BOTH kernels every tick from the same inputs and counts differing output pixels. On the
+marker zoo, unloaded:
+
+```
+[fg-core-ab] TOTAL compared=14382 diff_px=257 max_delta=16 sum_delta=340   light_skips=0
+```
+
+14,382 × 921,600 = **13,254,451,200 pixel comparisons, 257 differ = 1.9×10⁻⁸**, mean 1.32 levels of 255.
+**`max_delta = 16` is stated, not smoothed:** R3's record says "one level", and here the tail reaches 16 on a
+single pixel — the mechanism R3 named (a rounding difference flipping a discrete decision at a gate's
+knife-edge, where it measured max 13). R3's decisive run stands: with `PFG_NOCONTRACT=ON` on both modules,
+**0 differing pixels over 24,227 ticks**. The residual is FMA contraction, not algebra.
+
+**Then the same instrument under the load governor** (arbiter `--profile chaos`, source 120 fps, `tier:5`
+engaged three times):
+
+```
+[fg-core-ab] TOTAL compared=967 diff_px=11 max_delta=1 sum_delta=11   light_skips=5993
+```
+
+**5,993 ticks skipped against 967 compared — 86 % of the warp ticks are OUTSIDE the comparison envelope.**
+The reason is in the source (`present.cpp`): *"the governor shed vblend/band-xfade in the legacy push this
+tick; fg_core cannot shed a spec constant -> not compared (declared deviation)"*. Under the exact conditions
+the product exists for, the legacy path spends most of its ticks in `warp_light`, and the pure core has no
+such mode. **The byte-diff does not find a difference there; it cannot look.** That is the single most
+important fact in this section, and no amount of M1 would have surfaced it.
+
+### 7.4 · So what does the missing shed COST? Measured, not argued
+
+If the two cannot be compared byte-wise under load, the question becomes behavioural. Same load, same source
+rate, same content, **2 runs per side, alternated**:
+
+| metric | legacy [1, 2] | `--fg-core` [1, 2] | within-side range | Δ |
+|---|---|---|---|---|
+| presents | 10353, 10144 | 10100, 10371 | 271 | −13 |
+| fresh presents | 7361, 7095 | 7137, 7318 | 266 | −0.5 |
+| present fps | 230.14, 225.48 | 224.52, 230.54 | 6.02 | −0.28 |
+| **fg_multiplier** | 2.009, 1.948 | 1.940, 2.010 | 0.070 | **−0.003** |
+| P99 frametime (ms) | 7.444, 7.492 | 7.774, 7.430 | 0.344 | +0.134 |
+| FG GPU slice (ms) | 2.603, 2.668 | 2.679, 2.587 | 0.092 | −0.003 |
+| freezes | 0, 0 | 0, 0 | 0 | 0 |
+
+**Every delta is far inside the within-side range.** The governor engaged `tier:5` on all four runs. On this
+rig, at this load, **not being able to shed costs nothing measurable** — the fresh fraction is 70.6–71.1 % on
+both sides. (`1pct_low_fps_integral` returned 118.86 on two runs and 0.998 on two others; it is a broken
+column here and is not cited.)
+
+### 7.5 · The panning scene — measured, and the n=2 answer that was wrong
+
+Every M1 number this project has produced, the 2026-09-04 baseline included, is on a STATIC background.
+Panning is where a warp path is most likely to differ, so it is measured here rather than named as an open
+question. The 2026-09-04 `zoo_noise` could NOT be reused — it predates the `patterns` key the current
+extractor reads and dies on it (`LEARNING_LOG` P-019) — so the zoo was regenerated with today's generator at
+the same parameters (`--bg noise --bg-pan 120 --markers 18 --sizes 6,12,24 --seed 20260904`, 1280×720, 2 s
+@ 60 fps). **Four runs × 48 triples per path**, alternated.
+
+**At two runs per side this section said something else, and it was wrong.** The first pass put three of six
+classes OUTSIDE their own within-side spread — `accel` +0.174 (spread 0.113), `circular` −0.218 (0.146),
+`fast` −0.559 (0.239) — with mixed signs. Two more runs per side dissolved it: the spreads grew to 0.378,
+0.196 and 1.038 and now cover every delta. That is P-014 a third time, and it is left visible here rather
+than replaced quietly, because the wrong version is the one a reader would otherwise have believed.
+
+| class | default mean [min..max] | `--fg-core` mean [min..max] | spread | shift | vs the criterion |
+|---|---|---|---|---|---|
+| hud (static control) | 0.228 [0.224..0.231] | 0.223 [0.213..0.232] | 0.019 | **−0.005** | inside the 0.10 px bar |
+| linear | 1.326 [1.218..1.388] | 1.298 [1.169..1.377] | 0.208 | **−0.027** | inside the bar |
+| crossing | 1.420 [1.305..1.513] | 1.353 [1.316..1.394] | 0.208 | **−0.067** | inside the bar |
+| fast (control) | 3.774 [3.421..3.987] | 3.677 [3.166..4.204] | 1.038 | **−0.097** | inside the bar |
+| circular | 0.766 [0.672..0.868] | 0.612 [0.554..0.700] | 0.196 | **−0.154** | over the bar, inside its spread |
+| accel | 1.204 [0.971..1.348] | 1.445 [1.212..1.575] | 0.378 | **+0.241** | over the bar, inside its spread |
+
+**Every class is inside its own within-side spread at n = 4**, and two facts say how to read the two that
+remain over the 0.10 px bar:
+
+- **The static control is exact.** `hud` markers do not move, and the two paths place them at 0.228 vs 0.223
+  px — a shift of −0.005 at a spread of 0.019, with `r = 1.00` over n = 48 in the report. Where there is no
+  displacement, the two paths agree.
+- **The pixel byte-diff was run on THIS content**, not inferred from the static run:
+  `compared=14375 diff_px=3577 max_delta=5 sum_delta=3617` — **3,577 of 13,248,000,000 pixel comparisons
+  differ, 2.7×10⁻⁷, essentially all by one level of 255** (mean 1.011, max 5). Panning is ~14× noisier for the
+  byte-diff than the static scene (1.9×10⁻⁸) and its capture floor is higher too (0.118–0.124 px vs
+  0.095–0.097) — both properties of the content, identical on both paths. One differing pixel in ~3.7 million
+  at ±1/255 cannot move an NCC centroid by tenths of a pixel.
+
+The residual M1 shift on a moving class is therefore the sampling, not the kernel. That is an inference, and
+the two observations it rests on are above it.
+
+Tables: [`../../evidence/M1_R7_PAN_DEFAULT.md`](../../evidence/M1_R7_PAN_DEFAULT.md) and
+[`../../evidence/M1_R7_PAN_FGCORE.md`](../../evidence/M1_R7_PAN_FGCORE.md).
+
+### 7.6 · Recommendation on R7(a)
+
+**What is established.**
+
+| question | instrument | answer |
+|---|---|---|
+| are the two kernels the same function? | `--fg-core-ab`, static content | 257 of 13,254,451,200 pixels differ = **1.9×10⁻⁸**; **0** over 24,227 ticks when FMA contraction is forbidden (R3) |
+| … on panning content? | `--fg-core-ab`, panning | 3,577 of 13,248,000,000 = **2.7×10⁻⁷**, essentially all ±1 level |
+| do they place motion differently? | M1, static, 2×48 triples/side | no — shifts +0.007…−0.129 px, every one inside its within-side spread; the one over the bar reverses sign with sampling |
+| … on panning content? | M1, panning, 4×48 triples/side | no — every class inside its spread; the static-marker control agrees to −0.005 px |
+| does the pure core cost anything under load? | pressured A/B, 2 runs/side | no — presents Δ13, fresh Δ0.5, multiplier Δ0.003, p99 Δ0.134, GPU slice Δ0.003, all far inside range |
+
+**What is NOT established, and travels with any decision.**
+
+1. **The M1 criterion as written is unmeetable by either path** (§7.2): `r ≥ 0.5` fails for the SHIPPING
+   DEFAULT at honest per-detection matching. It must be restated before it can gate anything — a plan
+   change, and the operator's.
+2. **`warp_light` equivalence is unmeasurable by construction** (§7.3): under the load governor the legacy
+   path spends 86 % of its warp ticks in a mode the pure core cannot enter, and the byte-diff skips them.
+   §7.4 substitutes a behavioural equivalence for a byte one. **That substitution is a judgement, not a
+   measurement**, and it should be made explicitly rather than absorbed.
+3. **R3's other declared deviations stay outside the envelope**: `extrap`/`cam_lead` have no row, three of
+   `single_track`'s four shadows are not reproduced, `mv_edge_snap`'s variant is per-tick dynamic in the
+   legacy and static in the port. The envelope is **the shipping default set with `single_track ON`**.
+
+**The recommendation, in order.**
+
+1. **Restate the criterion first, and restate it because the incumbent fails it** — not because a looser one
+   is convenient. The honest replacement for *"≤ 0.10 px mean shift, p95 within spread, r ≥ 0.5"* is
+   **"the between-path shift is smaller than the within-side spread, the spread is reported, and n ≥ 4 runs
+   per side at ≥ 48 triples"**, which §7.1 and §7.5 satisfy on every class of both scenes. Two sections of
+   this record exist only because n = 2 gave a different answer than n = 4 on the same data-generating
+   process; the run count belongs in the criterion.
+2. **Then flip, staged.** `--fg-core` becomes the default for the measured envelope; `--legacy-warp` stays as
+   the fallback and the legacy shader stays in the tree, never deleted. The basis is the two byte-diffs and
+   the behaviour under load — **not M1**, which is 6–8 orders of magnitude coarser than the question and
+   whose job here was only to catch a placement difference the pixel comparison had already excluded.
+3. **MR-8 — the operator's eye — is untouched**, and so is the flip: a product default with visible history.
+
+**In one line:** the kernel question is answered and the answer is *they are the same*; what stands between
+here and the default moving is a criterion that must be rewritten because the incumbent fails it, and one
+judgement about accepting behavioural equivalence in the one mode the pure core cannot enter.
+
+## 8 · Verdict
 
 **G-R7(b) PASSED (2026-09-06).** The code residuals R5 and R6 named are closed, each with its own measurement:
 
@@ -274,13 +475,14 @@ stats line is a product surface: its shape is compared in every gate in this dir
 | `stats_second()` | §6 | **not closed** — 193 lines, 60 genuinely shared references, method specified |
 
 Unchanged by all of it, checked directly: `--help` differs only in `argv[0]`; `--dump-config` and `--layer-dump`
-are byte-identical, so the contract hash did not move; 46/46 ctest.
+are byte-identical, so the contract hash did not move; **47/47 ctest** (the suite gained `docs_gate_parity`,
+the mechanical corrective for P-018 — §0).
 
-**R7 IS NOT CLOSED.** Its other half, `--legacy-warp` out of the default, is blocked before it is even a
-decision: no M1 table exists for the `--fg-core` path, MOTION_TRUTH T2–T5 have no code, and the plan's own rule
-is that no proxy closes an M1 gate. Building T2–T5 is the only route, and it is a large arc of its own
-(`records/BACKLOG_AUDIT.md` A6). When it exists, the flip is still the operator's: a product default with
-visible history.
+**R7(a) is MEASURED, and R7 is still not CLOSED, for a different reason than §0 first gave.** The M1 table on
+the `--fg-core` path did not exist; the instrument that produces it did, and had since 2026-09-04. §7 runs it,
+on two scenes, alongside the two byte-diffs and a pressured A/B — and the answer to "are these the same" is
+yes at every resolution available. What is left is not a measurement: it is **a criterion the incumbent itself
+fails and that only the operator can restate**, and **his eye (MR-8)**. §7.6 is the recommendation.
 
 **What this record does not claim.** Nothing here says the generated frames are more correct than they were.
 Every measurement in it is a NON-difference — the point of the work was to remove duplicated decision logic
