@@ -298,6 +298,21 @@ are named, neither measured. **The default is NOT flipped by the session**: the 
 under the reading "a load-dependent policy", which is not the recommendation (a fixed default); the decision
 returns to him with the corrected wording — see the sequence, 3.2b.
 
+#### 4.6.2 · The decision (the operator, 2026-09-06): `--present-waitable` is the shipping default
+
+His words: "adelante, continua segun todas tus recomendaciones", given after the recommendation was restated as a
+FIXED default (his first reading had been "a load-dependent policy"; corrected the same day). Applied
+(`xr15_flip.py`): `cli.hpp:58` `present_waitable=true` with the reason in its comment; `--present-waitable` keeps
+its token (now a no-op ON, its message rewritten to the measured facts); **`--no-present-waitable`** added — the
+former path, kept for A/B; the UI model's default (`ui/src/main.js:263`) flipped. Build 0 errors (35 warnings, none
+in `cli.*`). **Verified on the new default command line** (no present flag, ball zoo, 60 s, `--csv
+--warp-timing`): **99.9 % fresh** (14,365 / 14,386), 239.1/s, rdrop 0, completion p50 4.15 ms (the first poll),
+`MsAddedLatency` 20.58, `iter 4.17/worst 4.22ms`; the opt-out (`--no-present-waitable`, 20 s): 49.9 % (2,391 /
+4,794), rdrop 119/s, `sub2fence 8.45ms` — the former numbers, reproduced. The three exit paths re-verified 3 / 3.
+`docs/BENCHMARKS.md` §14 (the 2026-08 pacing table that first measured the waitable) is history and stays.
+**Register XR15: `decided`.** What remains open, named: a saturated GPU and a real game were not measured before
+the flip; the operator can revert with one token if either shows a cost.
+
 ## 5 · `--tdr-test` — run three times by the operator: the detection PASSED, the teardown hung twice, bounded twice, CLOSED
 
 The forced GPU hang resets the device that carries the operator's interactive display: an **L3** operation under

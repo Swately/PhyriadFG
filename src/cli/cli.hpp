@@ -55,9 +55,12 @@ struct Config {
                                     // it INERT (A=primary/present, B=flow/gme, G=convert are architecture-forced; the
                                     // offload AI≈2.5 ≪ crossover ⇒ decline always). DEFAULT OFF, byte-identical (it
                                     // only prints; it changes no A/B/G behaviour).
-    bool  present_waitable=false;   // --present-waitable: waitable swapchain (SetMaximumFrameLatency(1) + wait-before-
-                                    // present) = composed-overlay jitter reduction (partial; does not reach
-                                    // Independent Flip). DEFAULT OFF (byte-identical).
+    bool  present_waitable=true;    // --present-waitable / --no-present-waitable: waitable swapchain (SetMaximumFrameLatency(1)
+                                    // + wait-before-present). DEFAULT ON since 2026-09-06 (the operator's decision, register
+                                    // XR15, records/R4_GATE.md s4.6): under the former default the warp batch waited ~one
+                                    // panel period behind the previous present's copy and only 49.9 % of the presents
+                                    // carried a new frame; with the wait BEFORE the present 99.8 % do, at +0.35-0.72 ms
+                                    // MsAddedLatency and a more regular tick. --no-present-waitable restores the old path.
     uint32_t present_sync=0;        // --present-sync N: present sync interval (0 = present-immediately; 1 = pace to
                                     // the compositor, stops over-presenting). DEFAULT 0 (byte-identical).
     uint32_t present_colorspace=0;  // --present-colorspace srgb: declare the overlay colorspace (sRGB) so an HDR

@@ -260,7 +260,7 @@ const GROUPS = [
         desc: "Present(sync_interval): 0 = present-immediately (default, over-presents); 1 = pace to the compositor.",
       },
       {
-        flag: "--present-waitable", type: "switch", default: false, name: "Swapchain waitable",
+        flag: "--present-waitable", type: "switch", default: true, name: "Swapchain waitable",
         desc: "SetMaximumFrameLatency(1) + wait-before-present: reduces jitter WITHIN DWM composition (PARTIAL; doesn't reach Independent Flip).",
       },
       {

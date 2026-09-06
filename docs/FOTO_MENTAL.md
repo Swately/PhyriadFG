@@ -287,9 +287,12 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    (CONTROL), nvofa (parámetro proveedor). Decisión por la regla A3 §4.2: PROCEDER a R5. El inventario lo hizo un
    agente Sonnet (solo lectura); catorce citas re-leídas de primera mano antes de mapear. El residuo de XR3
    queda descargado. Sin código.
-5. **NEXT** — (a) la palabra del operador sobre XR15 (política de present; la recomendación es un default
-   FIJO, `--present-waitable`, validado sin carga y bajo `gpu_load`; la secuencia 3.2b tiene los números);
-   (b) la palabra del operador para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con
+5. **NEXT** — (a) XR15 DECIDIDO por el operador el 2026-09-06: `--present-waitable` es el default de
+   entrega (`cli.hpp:58`; `--no-present-waitable` = el camino anterior); verificado en la línea por defecto:
+   99.9 % frescos. (b) R5 EN CURSO con su palabra ("adelante, continua segun todas tus recomendaciones") —
+   por pasos con compuerta: (1) las trece filas FLOW en el registro con `Kind::H`, los arms nuevos y el token
+   propio del consenso; (2) `FlowSet`/`FlowRing`; (3) los holones extraídos por ancla; (4) `wap_upload`
+   condicional; compuerta G-R5 = A/B 2 corridas/lado como R4 + `--layer-dump`. La palabra para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con
    `Kind::H`, el pase de consenso con su propio interruptor, `wap_upload` condicional — compuerta G-R5: CSV
    byte-idéntico del default con las filas apagadas); (c) 4.3 (cablear las pruebas: hoy 0 `add_test`) puede
    ir antes o en paralelo. No re-derivar: R3 (4q), R4 (4r), R4b (4s), 4.2 (4t).
