@@ -111,6 +111,7 @@ add_executable(phyriad_fg
     src/core/globals.cpp                       # g_quit/device-lost/util+overlay atomics + vk_live + console Ctrl handler
     src/flow/flow.cpp                          # the FLOW factories (gme_fit_affine / NvofaProvider / MvSmoothPipe / GmePipe+gme_record / MedianPipe)
     src/flow/flow_init.cpp                     # E1: flow-side init sections (gme-gpu pipes + use_* re-finalization), verbatim from main.cpp
+    src/flow/holons.cpp                        # R5 step 3a: the holon leaves (object_repair, mem_advect/merge/refresh), moved by anchor from run_flow
     src/capture/capture.cpp                    # D3D11/DXGI interop (D3D/d3d_init/find_window/staging) + iGPU ConvPackPipe/UnpackPipe
     src/capture/capture_init.cpp               # E1: capture-side init sections (convert pipe + iGPU pipes + WGC backend), verbatim from main.cpp
     src/warp_blend/warp_blend.cpp              # WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask

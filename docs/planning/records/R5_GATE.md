@@ -1,6 +1,6 @@
 # R5_GATE — Stage 3 FLOW: the rows declared, `FlowSet`/`FlowRing`, the holons bound, `wap_upload` conditional (M-R5)
 
-**Status: IN PROGRESS — steps 1 and 2 of 4 closed (2026-09-06).** The operator's word: "adelante, continua segun todas tus
+**Status: IN PROGRESS — steps 1, 2 and 3a of 4 closed (2026-09-06).** The operator's word: "adelante, continua segun todas tus
 recomendaciones" (2026-09-06), after 4.2's map (`aap/FLOW_ROW_MAP.md`, 0 new columns → PROCEED). This record grows
 one section per step; the verdict (§6) is written when the four steps and G-R5 have run.
 
@@ -105,7 +105,40 @@ content; the latency difference (0.22 ms) is inside the 0.6 ms window the R4b DI
 `c_seq` (the capture ring's counter) stays a `main()` local — it is the FrameRing's, R6's; `g_seq` (the GPU-record
 counter under `--fwd-pipeline`) stays F-local — it is not a ring field.
 
-## 3 · Step 3 — the holons bound (pending)
+## 3 · Step 3 — the holons bound
+
+### 3a · The four leaves extracted by anchor (2026-09-06) — CLOSED
+
+**Built (`r5s3a_patch.py`; `flow/holons.{hpp,cpp}` new):** `object_repair` (361 lines), `mem_advect` (16), `mem_merge`
+(21), `mem_refresh` (57) — lambdas of `run_flow` — are functions of `pfg::flow` now. The script located each lambda
+by its `auto NAME=[&](` anchor and its closing `};` at the same indent, kept the parameter list verbatim, and moved the
+body text untouched: **339 of 339 moved body lines (100.00 %) are byte-identical (whitespace-trimmed) to the
+pre-extraction `flow.cpp`** (`r5s3/flow_pre_extract.cpp` is the reference). The captured scratch (`obj_label, obj_bfs,
+obj_clusters, obj_used, obj_rowmin/max, obj_chamf, obj_feat, obj_slots_fwd/bwd, mem_prior, mem_adv, wake_rec, wake_n,
+obj_nblk`) is `pfg::flow::HolonScratch`, owned by `run_flow` as `hs`, bound inside each function by reference only
+for the names that body uses (the script scanned each body); the captured `cfg` / `mvw_f` / `mvh_f` are parameters,
+passed only where used (`mem_merge` takes no scratch, `mem_advect` / `mem_refresh` no `cfg`). The three struct types
+(`ObjCluster`, `ObjSlot`, `WakeRec`) moved to the header; `run_flow` keeps them as `using` aliases, keeps every
+scratch name as `auto& X = hs.X;` on the former declaration line (its comment intact), and keeps the four lambdas as
+thin wrappers with the SAME parameter lists calling the functions — so `consume_wap` (step 3c) calls exactly what it
+called, textually. `flow.cpp` 2,235 → 1,798 lines; `holons.cpp` 494. CMake: one source added.
+
+**Seen red, twice, before the gate:** (1) the new files were written with `\r\r\n` endings (a double CRLF conversion
+in the script) — MSVC C4335 "Mac file format"; normalised to CRLF. (2) `mem_merge` bound a scratch parameter it never
+reads — C4100; dropped from its signature and wrapper. After both: **build 0 errors, 1 warning** (the pre-existing
+`flow.cpp` C4189 `hostC2`).
+
+**Gate:** the three exit paths (async default / sync / grid, 10 s: `rc=0 done=1 clean=1 abandon=0` each); the 60 s
+default run against the step-2 binary's — rows 14,385 vs 14,384, fresh 99.82 vs 99.79 %, `MsAddedLatency` 20.81 vs
+20.80, `disp_phase` mean 0.5011 vs 0.5010 (sd 0.2816 / 0.2814), `disp_src` step 0.2501 vs 0.2503, uniq/s 239.0 vs
+238.9; the stats line shows the object-holon live (`obj:4 rep:0%`, `gme(dis:0% fit:3.15ms)`). One run per side
+(reliability not measured — DI-3); every number inside R4's measured spread for this content.
+
+**Not in this step:** the arms (3b), `consume_wap` (3c), the consensus move (3c's question).
+
+### 3b · `ArmInputs` on F, the rows' effective ON, the call sites bound (pending)
+
+### 3c · `consume_wap` (pending)
 
 ## 4 · Step 4 — `wap_upload` conditional (pending)
 

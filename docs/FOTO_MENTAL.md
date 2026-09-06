@@ -296,7 +296,10 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
    holones siguen bajo las condiciones manuales hasta el paso 3; registro en 28 de 32 filas. (2) HECHO 2026-09-06 —
    `flow/flow_set.hpp`: `FlowRing` posee los doce escalares por par y los dos contadores, enlaza los puentes host por
    referencia; `main()` conserva los nombres como alias (consumidores intactos); corrida por defecto igual a la del
-   paso 1 (fase media 0.5010);
+   paso 1 (fase media 0.5010); (3a) HECHO 2026-09-06 — las cuatro hojas (`object_repair`, `mem_advect/merge/refresh`)
+   extraídas por ancla a `flow/holons.{hpp,cpp}` (339/339 líneas de cuerpo idénticas; `HolonScratch` en `run_flow`
+   como `hs` con alias; envolturas con la misma firma → `consume_wap` intacto); corrida por defecto igual al paso 2;
+   vistos en rojo antes: finales de línea `\r\r\n` (C4335) y un parámetro sin uso (C4100), ambos corregidos;
    (3) los holones extraídos por ancla y sus arms consumidos en F; (4) `wap_upload` condicional; compuerta G-R5 =
    A/B 2 corridas/lado como R4 + `--layer-dump`. Decisión de entrada corregida: las filas van ON por defecto (el
    "off" del plan era viejo); la compuerta es identidad byte del default. La palabra para R5 (estructural: `FlowSet`/`FlowRing`, las trece filas FLOW del mapa con
