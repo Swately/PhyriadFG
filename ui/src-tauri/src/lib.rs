@@ -13,14 +13,94 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-/// Default: phyriad_fg.exe in the same directory as ui.exe (portable layout).
-/// Overridable from the UI via the `exe_path` field.
+/// The frame generator, carried inside this binary (see build.rs). EMPTY when the launcher was
+/// built in a tree whose C++ had never been built — the on-disk lookup below then behaves exactly
+/// as it always did, which is what keeps a launcher-only `cargo build` useful.
+static EMBEDDED_FG: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/phyriad_fg_embedded.bin"));
+/// FNV-1a of that payload. The extracted file is NAMED by it, so a new build writes a NEW file
+/// instead of racing to overwrite one that an older launcher may still be running.
+static EMBEDDED_FG_HASH: &str = env!("PFG_EMBEDDED_HASH");
+
+/// Write the embedded frame generator out, once, and return where it landed.
+///
+/// `%LOCALAPPDATA%\\PhyriadFG\\bin\\phyriad_fg-<hash>.exe`, and NOT the temp directory: temp is swept by
+/// Windows and by cleaners, and re-extracting 1.3 MB on every launch to a path that may vanish
+/// mid-run is worse than owning a stable one. Re-extraction is skipped when the file is already
+/// there at the right size, so the cost is paid once per version.
+///
+/// EVERY failure returns None rather than propagating: the caller's next move is the on-disk lookup,
+/// which is a perfectly good answer. A launcher that refuses to start because it could not write a
+/// cache file would be worse than one that just asks where the FG is.
+#[cfg(windows)]
+fn extract_embedded_fg() -> Option<std::path::PathBuf> {
+    if EMBEDDED_FG.is_empty() {
+        return None;
+    }
+    let base = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from)?;
+    let dir = base.join("PhyriadFG").join("bin");
+    std::fs::create_dir_all(&dir).ok()?;
+    let exe = dir.join(format!("phyriad_fg-{EMBEDDED_FG_HASH}.exe"));
+
+    // Already extracted at the right size? Then it is this exact payload — the name carries the
+    // content hash, so a same-name/same-size file cannot be a different build.
+    let need_write = match std::fs::metadata(&exe) {
+        Ok(m) => m.len() != EMBEDDED_FG.len() as u64,
+        Err(_) => true,
+    };
+    if need_write {
+        // Write to a temp name and rename, so a half-written exe is never left behind under the
+        // real name if the launcher dies mid-write.
+        let tmp = dir.join(format!("phyriad_fg-{EMBEDDED_FG_HASH}.part"));
+        std::fs::write(&tmp, EMBEDDED_FG).ok()?;
+        // rename() over an existing file fails on Windows; remove first, best-effort.
+        let _ = std::fs::remove_file(&exe);
+        std::fs::rename(&tmp, &exe).ok()?;
+    }
+
+    // Best-effort sweep of payloads from OTHER versions. Ignore every error: one of them may be a
+    // running process from another launcher instance, and failing to delete it is not our problem.
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let n = e.file_name();
+            let n = n.to_string_lossy();
+            if n.starts_with("phyriad_fg-") && n.ends_with(".exe") && e.path() != exe {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    Some(exe)
+}
+
+#[cfg(not(windows))]
+fn extract_embedded_fg() -> Option<std::path::PathBuf> {
+    None
+}
+
+/// Where the FG lives, in resolution order:
+///   1. `phyriad_fg.exe` NEXT TO THE LAUNCHER — the portable/dev layout. It wins on purpose: a
+///      developer who drops a freshly built binary beside the launcher expects to run THAT one, and
+///      an embedded copy silently taking precedence would make testing a new build impossible.
+///   2. the embedded payload, extracted to LOCALAPPDATA — the single-file download path.
+///   3. the bare name, left for the OS to resolve, which is also the honest thing to show in an
+///      error message when neither of the above exists.
+/// Overridable at any time from the UI's executable-path field, which beats all three.
 fn default_exe() -> String {
-    std::env::current_exe()
+    if let Some(beside) = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("phyriad_fg.exe")))
-        .and_then(|p| p.to_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "phyriad_fg.exe".to_string())
+    {
+        if beside.is_file() {
+            if let Some(s) = beside.to_str() {
+                return s.to_string();
+            }
+        }
+    }
+    if let Some(p) = extract_embedded_fg() {
+        if let Some(s) = p.to_str() {
+            return s.to_string();
+        }
+    }
+    "phyriad_fg.exe".to_string()
 }
 
 /// Managed state: the single child process handle, behind a mutex so `stop`/`is_running`

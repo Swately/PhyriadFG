@@ -4,6 +4,31 @@ PhyriadFG is student-built and LLM-assisted, and every release is tagged `-exper
 that is what it is. Numbers in this file are quoted from the run that produced them, or the entry
 says they were not measured.
 
+## [0.5.1-experimental] — 2026-09-06
+
+**One file is now enough.** The launcher carries the frame generator inside itself and writes it out
+on first run, so `PhyriadFG.exe` alone is a complete install — no second download, no archive to
+extract. Nothing about the architecture changed: they are still two processes, because the launcher
+spawns, streams, kills and respawns the FG, and the whole epoch-scoped restart contract lives in that
+separation.
+
+### Added
+
+- **`PhyriadFG.exe` is self-contained.** The FG payload is embedded at build time and extracted to
+  `%LOCALAPPDATA%\PhyriadFG\bin\phyriad_fg-<hash>.exe` on first launch. The file is named by the
+  hash of its own contents, so a new version writes a new file instead of racing to overwrite one an
+  older launcher may still be running, and extraction is skipped entirely once it is there.
+
+### Unchanged, deliberately
+
+- **A `phyriad_fg.exe` sitting next to the launcher still WINS.** Verified: with one beside it, the
+  launcher never extracts anything at all. Dropping a freshly built binary next to the launcher and
+  running THAT one is how this project is developed, and an embedded copy quietly taking precedence
+  would have made testing a new build impossible.
+- The executable-path field in the UI still overrides everything.
+- A launcher built in a tree whose C++ was never built simply carries an empty payload and looks for
+  the FG on disk, exactly as before — `cargo build` on its own must not fail.
+
 ## [0.5.0-experimental] — 2026-09-06
 
 Two arcs land together: the CONVERGENCE restructure (R0–R7) that made the frame-generation kernel a
