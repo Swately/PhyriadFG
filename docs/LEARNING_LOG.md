@@ -200,6 +200,31 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-021 · A new identity was added to the resolver and five sites still asked the old question
+- **class:** regression caught before shipping · **date:** 2026-09-06 · **recurrences:** 1 · **status:** corrected
+- **evidence:** the QoL batch gave the capture target two stable identities, `--window-pid` and `--hwnd`,
+  and rewrote `find_window_by_substr` to honour them. Running the result:
+  `phyriad_fg.exe --window-pid 34500 --duration 2` printed **`[ra] WGC: capturing monitor 0`** and exited 0.
+  A pid alone captured the whole screen, silently. Cause: five call sites gate on `cfg.window_substr[0]`
+  — *"did the user pass a title?"* — when the question is *"did the user ask for a window?"*
+  (`capture_init.cpp` ×3, `cli.cpp` ×2, plus `present.cpp` naming the CSV row "monitor"). The rewrite
+  touched the resolver and every site that CALLED it, but not the sites that decide whether to call it.
+- **the shape to recognise:** when a feature gains a second way to express the same intent, the risk is
+  not in the code that consumes the intent — that code was rewritten, it is where the attention was. It
+  is in every predicate that *tests* for the intent, because those read like unrelated boolean checks and
+  no compiler links them to the change. `grep` for the OLD expression of the intent, not for the new one:
+  the new name has few hits by construction, the old one has all of them.
+- **why it matters more than its size:** the failure it produced — a silent fallback to the wrong capture
+  source, exit 0, no warning — is the exact defect class this batch was built to remove (L-3 / E-5).
+  A change set can reintroduce, in its own new code, the thing it was written to delete.
+- **corrective:** one predicate, `wants_window_target(cfg)` in `cli.hpp`, used at every site that gated on
+  the title; and inside `init_wgc_backend` the stronger test — `wgc_target_hwnd` is a parameter there, so
+  it asks whether a window was RESOLVED, not whether one was requested.
+- **method note, and the reason this was caught at all:** it is invisible to reading, to the compiler, to
+  47 ctest cases and to three build gates. It surfaced on the first *bounded run of the actual binary*.
+  Three of the four defects found that way in this batch were pre-existing; this one was ours. A build
+  that compiles is not a change that works, and the gap between them is one 2-second run.
+
 ### P-020 · A defensive guard written against an impossible event, catching the real one
 - **class:** premise refuted by the code · **date:** 2026-09-06 · **recurrences:** 1 · **status:** open
 - **evidence:** the operator reported that changing the frame-gen GPU with auto-restart on did not restart

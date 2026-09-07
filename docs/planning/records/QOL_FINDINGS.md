@@ -8,8 +8,11 @@ opposed to the convergence gates, which measure the pipeline. Each entry states 
 what is **traced with evidence** and what is still **unverified**. An entry is never promoted from
 reported to traced without quoted source lines.
 
-Three entries are open. **None is fixed** — D-1 and D-2 land on the default present/capture path and
-wait on the operator's word; D-3 has a confirmed root cause and a one-line stopgap, also unapplied.
+**Status 2026-09-06, end of day: all three are BUILT** (commit `8925616`), together with the other 37
+confirmed findings. D-2 ships the honest partial — a mid-run resize now EXITS with a named reason
+instead of running on against a stale pool; the full pool-Recreate + ring realloc needs a re-init
+path the codebase does not have. Nothing here is *published*: ten of these changes alter
+product-visible behaviour and wait on the operator before a release.
 
 ---
 
@@ -174,11 +177,11 @@ created. The one-line stopgap that also removes the dead end:
 
 ## Status table
 
-| id | reported | traced | fixed | blocked on |
+| id | reported | traced | fixed | note |
 |---|---|---|---|---|
-| D-1 window identity | operator | yes, 1 site | no | `--window` is a product-visible contract |
-| D-2 click geometry | operator | yes, 3 sites | no | it is the default present path |
-| D-3 GPU change / stuck Stop | operator | **yes** — 3 dimensions + checked here | no | a one-line stopgap exists; the fix is the operator's call |
+| D-1 window identity | operator | yes, 1 site | **yes** | `--window-pid` / `--hwnd`; `--window` kept as fallback |
+| D-2 click geometry | operator | yes, 3 sites | **partly** | detect-and-exit on resize; the full re-init is deferred |
+| D-3 GPU change / stuck Stop | operator | **yes** — 3 dimensions + checked here | **yes** | epoch-scoped guard + Stop resync + a non-zero exit on every failed init |
 
 **Update 2026-09-06, same day:** the audit (`wf_d4d5ef46-620`) returned **40 CONFIRMED findings, 8 of
 them high**, of which these three are D-1, D-2 and D-3. The other 37 — including a real out-of-range
