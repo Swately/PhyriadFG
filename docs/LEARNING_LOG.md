@@ -200,6 +200,35 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-020 · A defensive guard written against an impossible event, catching the real one
+- **class:** premise refuted by the code · **date:** 2026-09-06 · **recurrences:** 1 · **status:** open
+- **evidence:** the operator reported that changing the frame-gen GPU with auto-restart on did not restart
+  and then would not let him stop the FG. Root cause: `ui/src/main.js:1035-1048,1099` — a `restarting` flag
+  set before `await invoke("restart")` and cleared by a bare 600 ms timer, with an unconditional
+  `if (restarting) return;` on the `fg-exit` listener. The comment beside it states its purpose verbatim:
+  *"si hay un reinicio en vuelo, este `fg-exit` es del hijo VIEJO"*. **The backend makes that event
+  impossible.** `ui/src-tauri/src/lib.rs:320-346` holds an epoch guard whose own comment says the stale
+  reader *"deja el slot + el hijo nuevo intactos y sale en silencio (NO emite `fg-exit`)"*. The old child
+  cannot emit. So the frontend window — opened AFTER the spawn, covering the new child's entire early life
+  — can only ever swallow the NEW child's death. It then wedges: `running` stays true, Start stays
+  disabled, `stop()` takes an empty slot and emits nothing, and `is_running` is called at exactly one site
+  (`:1119`, DOMContentLoaded), so nothing resyncs.
+- **the shape to recognise:** a belt-and-suspenders guard is written when the layer below is *believed* not
+  to handle a case. If the layer below already handles it — and here it says so, in a comment, in the same
+  repository — the guard is not redundant, it is a second filter positioned over a different event. The two
+  comments contradict each other and both were written in good faith; neither was read against the other.
+  A guard's justification is a claim about another component's behaviour and is verifiable like any other.
+- **corrective:** stated, not yet applied — the fix is the operator's call. Scope the guard to the child,
+  not to a stopwatch: the child's epoch travels in the `fg-exit` payload and the listener ignores only
+  events older than the epoch the restart created. The one-line stopgap
+  (`setTimeout(async () => { restarting = false; setRunning(await invoke("is_running")); }, 600)`) is worth
+  more than it looks: it converts an unrecoverable state into a self-healing one, because it is the only
+  thing in the file that would ever call `is_running` twice.
+- **method note:** three of the audit's five dimensions found this independently, and this session then
+  verified every line by hand before reporting it. That order is the rule, not a courtesy — a subordinate's
+  output is a claim. It also cut the other way: one finding was REFUTED and two downgraded to PLAUSIBLE by
+  the verify pass, and a verifier raised one severity after finding a faster fatal exit than its finder had.
+
 ### P-018 · A dated audit read as a live tracker — "T2–T5 have no code" was false and shipped everywhere
 - **class:** recurrence · **date:** 2026-09-06 · **recurrences:** 1 · **status:** corrected
 - **evidence:** the session reported R7(a) as blocked because *"MOTION_TRUTH T2–T5 have no code"*, citing

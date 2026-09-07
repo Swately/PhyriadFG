@@ -8,8 +8,8 @@ opposed to the convergence gates, which measure the pipeline. Each entry states 
 what is **traced with evidence** and what is still **unverified**. An entry is never promoted from
 reported to traced without quoted source lines.
 
-Three entries are open. **None is fixed** — D-1 and D-2 land on the default present/capture path
-and wait on the operator's word; D-3 is one hour old and deliberately un-investigated.
+Three entries are open. **None is fixed** — D-1 and D-2 land on the default present/capture path and
+wait on the operator's word; D-3 has a confirmed root cause and a one-line stopgap, also unapplied.
 
 ---
 
@@ -96,20 +96,49 @@ Two symptoms in sequence:
 2. Afterwards the launcher **would not stop the FG**, even though the FG was already off — the UI's
    process state disagreed with reality (a live Stop path for a dead process).
 
-**Status: REPORTED, NOT INVESTIGATED.** The operator's instruction was explicit — *"anotalo y
-esperemos a los agentes"* — so nothing here is traced. The single fact established is *where* the
-mechanism lives, from one grep, and it is recorded as a starting point and not as a diagnosis:
+**Status: CONFIRMED, root cause found — and it is ONE bug, not two.** Found independently by three
+of the audit's five dimensions (`launcher` L-2 · `config` C-1 · `encoding` E-7, run `wf_d4d5ef46-620`,
+`QOL_AUDIT_2026-09-06.md`) and then **checked first-hand by this session**, line by line.
 
-`ui/src/main.js:24-26,1011-1032` holds `autoRestart` / `restarting` / `restartTimer`, the change
-listener, a `if (!autoRestart || !running) return;` guard and a 1 s debounce before `doRestart`.
-Whether the GPU control is wired into that listener at all, and whether `running` is what went
-stale, is **unmeasured**.
+**The mechanism.** `ui/src/main.js:1035` sets `restarting = true` before `await invoke("restart")`.
+It is cleared by a bare timer 600 ms after that promise resolves (`:1046-1048`) — i.e. the window
+opens *after the new child has already been spawned* and covers its entire early life. Line `:1099`
+is an unconditional `if (restarting) return;`, so an `fg-exit` arriving in that window is dropped and
+`setRunning(false)` at `:1102` never runs. From there:
 
-This lands on the `launcher` dimension of the audit workflow already in flight (run
-`wf_d4d5ef46-620`), whose prompt asks *"whether the launcher's UI state can disagree with reality
-(a Stop button for a dead process, a running pill for a crashed FG, an orphan process)"* — i.e. the
-second symptom is exactly the failure that dimension was sent to look for. Cross-check this entry
-against its confirmed findings before opening any code.
+- `running` stays `true` → `btnStart.disabled` stays set (`:997`) → **the FG cannot be started**;
+- the pill still reads *running* (`:1000`) → **the UI asserts a process that is dead**;
+- `btnStop`'s handler (`:1079-1086`) awaits `invoke("stop")` and does nothing else, while
+  `lib.rs:423-431` takes an already-empty slot, kills nothing and returns `Ok(())` **with no event**
+  → **Stop is inert**;
+- `grep -n "is_running" ui/src/main.js` returns **exactly one line, `:1119`**, inside
+  `DOMContentLoaded`. There is no polling and no resync. The state is stuck until the window reloads.
+
+**The guard swallows the wrong child, and its own comment proves it.** The comment at `:1033-1034`
+states the event being dropped is the previous process's — *"este `fg-exit` es del hijo VIEJO"*. But
+`lib.rs:320-346` shows the backend's epoch guard already makes the old child's reader **exit in
+silence — `NO emite fg-exit`**. The old child therefore cannot produce the event the window exists to
+swallow. The only `fg-exit` those 600 ms can ever eat is the **new** child's. A belt-and-suspenders
+guard against an impossible event, catching the real one instead.
+
+**Both of the operator's symptoms are this single defect.** The restart *did* fire; it killed the old
+child (`lib.rs:399-407`) and spawned a new one that died fast. From the operator's seat a process that
+is killed and whose replacement dies immediately is indistinguishable from *"no reinició"*. The
+launcher then wedged, which is *"no dejó apagarlo aun con el FG apagado"* — the FG was indeed off, and
+the launcher was asserting otherwise.
+
+**What is still UNVERIFIED: why his new child died.** The wedge requires a death inside ~600 ms, so
+one occurred, but this session has not reproduced it and does not claim a cause. Two fast fatal exits
+are quoted in the tree and are candidates, neither confirmed for this run:
+`src/core/core_init.cpp:96` — `need primary GPU (LUID) + assist discrete (or --force-single-gpu).
+B=MISSING` → `return 1`, and `src/core/main.cpp:208` — `return cfg.parse_failed ? 2 : 0`, which
+`--fg-gpu`'s own validator reaches at `cli.cpp:503` (`unknown '%s' (auto|primary|assist)`). Settling
+it costs one console run of `phyriad_fg.exe` with the exact value he selected.
+
+**Fix, from the agents and unapplied.** Make the guard child-scoped rather than time-scoped: put the
+child's epoch in the `fg-exit` payload and ignore only events older than the epoch the restart just
+created. The one-line stopgap that also removes the dead end:
+`setTimeout(async () => { restarting = false; setRunning(await invoke("is_running")); }, 600)`.
 
 ---
 
@@ -119,6 +148,12 @@ against its confirmed findings before opening any code.
 |---|---|---|---|---|
 | D-1 window identity | operator | yes, 1 site | no | `--window` is a product-visible contract |
 | D-2 click geometry | operator | yes, 3 sites | no | it is the default present path |
-| D-3 GPU change / stuck Stop | operator | **no, by instruction** | no | the audit workflow's `launcher` dimension |
+| D-3 GPU change / stuck Stop | operator | **yes** — 3 dimensions + checked here | no | a one-line stopgap exists; the fix is the operator's call |
+
+**Update 2026-09-06, same day:** the audit (`wf_d4d5ef46-620`) returned **40 CONFIRMED findings, 8 of
+them high**, of which these three are D-1, D-2 and D-3. The other 37 — including a real out-of-range
+index at `capture_init.cpp:402` and four config controls whose two UI switches can silently disagree —
+are inventoried verbatim in [`QOL_AUDIT_2026-09-06.md`](QOL_AUDIT_2026-09-06.md). This file stays the
+short list of what the OPERATOR hit himself.
 
 *Made with my soul - Swately <3*
