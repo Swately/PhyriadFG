@@ -4,6 +4,33 @@ PhyriadFG is student-built and LLM-assisted, and every release is tagged `-exper
 that is what it is. Numbers in this file are quoted from the run that produced them, or the entry
 says they were not measured.
 
+## [0.5.2-experimental] - 2026-09-06
+
+**Three regressions from 0.5.0/0.5.1, all found in the operator's own session log.** If you are on
+0.5.0 or 0.5.1, upgrade: the first one makes the launcher unusable after a single Stop.
+
+### Fixed
+
+- **Start stopped working after the first Stop.** Stopping the FG left the launcher unable to spawn
+  anything ever again -- Start flashed "Running" and nothing launched. The two-stage stop added in
+  0.5.0 reached the console-less child through `AttachConsole`, which replaces and then closes the
+  *launcher's own* standard handles; every later spawn then failed with
+  `The handle is invalid. (os error 6)`. The console path is REMOVED, and the FG is now spawned with
+  its own explicit stdin so no external handle state can reach it. Stop is an immediate kill again;
+  for a finalized `-stats.csv`, end the run with `--duration` or `--max-frames`, which run the FG's
+  full teardown.
+- **A one-pixel flutter ended the session.** 0.5.0's mid-run resize guard treated ANY size change as
+  fatal, and a browser relaying itself out by a single pixel -- `1920x1080 -> 1920x1079` -- was enough
+  to quit. It now exits only when the source GROWS beyond the size the pipeline was built for, which
+  is the case where frames are actually being cropped. A source that shrinks says so once and keeps
+  generating frames.
+- **Selecting a window, then letting it rename itself, lost the binding.** The launcher re-validated
+  the picked window by TITLE, so a browser tab switch dropped the pid and handle and fell back to
+  spawning with the stale caption alone -- which the FG then correctly refused. Identity is now
+  re-validated by handle, then by pid, never by title; a rename is followed, and the field updates
+  with it. `--window-pid` exists precisely to survive a rename, and the launcher was discarding it at
+  the moment it became useful.
+
 ## [0.5.1-experimental] — 2026-09-06
 
 **One file is now enough.** The launcher carries the frame generator inside itself and writes it out

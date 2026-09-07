@@ -888,14 +888,30 @@ async function refreshWindows() {
       if (match) sel.value = cur;
       updateTarget(cur, match ? match.exe : "");
     }
-    // Drop a stale identity: if the window we had picked is no longer enumerated, the pid we
-    // would emit points at nothing (or, worse, at a recycled process). Keep whatever the user
-    // has typed; just stop claiming the identity.
+    // Re-validate the picked identity by HANDLE, then by PID -- NEVER by title.
+    //
+    // This block used to require the title to match too, and that was the whole bug: --window-pid
+    // exists precisely so a window that renames itself does not get lost, and matching on the title
+    // threw the pid away at exactly the moment it became useful. The operator lost a session to it --
+    // a Chrome tab changed the caption, the identity was dropped, and the launcher fell back to
+    // spawning with the STALE title alone, which the FG then correctly refused with WINDOW_NOT_FOUND.
+    //
+    // A window that is genuinely gone still clears the identity: the pid we would emit points at
+    // nothing, or worse at a recycled process.
     if (selectedWindow) {
-      const still = lastWindows.find(
-        (w) => w.pid === selectedWindow.pid && w.title === selectedWindow.title
-      );
-      selectedWindow = still || null;
+      const still =
+        lastWindows.find((w) => selectedWindow.hwnd && w.hwnd === selectedWindow.hwnd) ||
+        lastWindows.find((w) => w.pid === selectedWindow.pid);
+      if (still) {
+        // Follow the rename: refresh the stored row, and the visible field with it when the field
+        // still shows the caption we picked. If the user has typed something else, leave their text
+        // alone -- but the identity stays, because they picked this window and it is still alive.
+        const wi = windowInput();
+        if (wi && wi.value.trim() === selectedWindow.title) wi.value = still.title;
+        selectedWindow = still;
+      } else {
+        selectedWindow = null;
+      }
     }
   } catch (e) {
     resetWindowSelect("error listing windows");
@@ -949,6 +965,10 @@ function buildArgs() {
   {
     const wiSel = windowInput();
     const wtxt = wiSel ? wiSel.value.trim() : "";
+    // The title guard stays -- it is what distinguishes "the user typed something else" from "the
+    // window renamed itself". refreshWindows now follows a rename and updates BOTH sides, so a live
+    // window keeps its identity; only a hand-edit makes the two disagree, and then the typed text is
+    // what the operator meant.
     if (selectedWindow && wtxt !== "" && selectedWindow.title === wtxt) {
       if (selectedWindow.pid) args.push("--window-pid", String(selectedWindow.pid));
       if (selectedWindow.hwnd) args.push("--hwnd", String(selectedWindow.hwnd));

@@ -51,6 +51,9 @@ IDirect3DDxgiInterfaceAccess : ::IUnknown {
         std::atomic<bool>   size_changed{false};   // a later frame's ContentSize differs from the baseline
         std::atomic<bool>   source_closed{false};  // GraphicsCaptureItem::Closed fired (window/display gone)
         std::atomic<bool>   bail_said{false};      // one-shot: EXACTLY one reason is emitted from a callback
+        // One-shot latch for the SHRINK notice, which does NOT bail. Separate from bail_said on
+        // purpose: a source that shrinks and later GROWS must still be able to emit the fatal line.
+        std::atomic<bool>   shrink_said{false};
         // I-8: the MinUpdateInterval currently applied to `session`, in 100ns units. Written at init and
         // by the 1 Hz monitor re-check, which re-applies only when the derived value actually CHANGES.
         std::atomic<long long> mui_100ns{0};

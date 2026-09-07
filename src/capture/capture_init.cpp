@@ -270,15 +270,30 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
                 const int32_t _bw=raw_wctx->base_w.load();
                 if(_bw==0){
                     raw_wctx->base_w.store(_sz.Width); raw_wctx->base_h.store(_sz.Height);
-                } else if(_sz.Width!=_bw || _sz.Height!=raw_wctx->base_h.load()){
+                } else if(_sz.Width>_bw || _sz.Height>raw_wctx->base_h.load()){
+                    // EXCEEDS the geometry everything downstream was sized for. WGC clamps content to
+                    // the pool, so the extra pixels are not delivered at all: every remaining frame is
+                    // CROPPED, silently. That is the defect, and there is no re-init path — exit.
                     raw_wctx->size_changed.store(true);
                     if(!raw_wctx->bail_said.exchange(true)){
-                        std::printf("[ra] captured source RESIZED %dx%d -> %dx%d — the pipeline is sized once at init (no re-init path); exiting cleanly\n",
+                        std::printf("[ra] captured source GREW %dx%d -> %dx%d — beyond the size the pipeline was built for; every further frame would be silently cropped. Exiting cleanly; restart at the new size.\n",
                                     _bw,raw_wctx->base_h.load(),_sz.Width,_sz.Height);
                         ra::compat::emit(ra::compat::ReasonCode::SOURCE_RESIZED);
                     }
                     g_quit=true;
                     return;   // do NOT copy a frame whose content no longer matches the ring geometry
+                } else if(_sz.Width!=_bw || _sz.Height!=raw_wctx->base_h.load()){
+                    // SMALLER than the baseline, in one or both axes. Nothing is cropped and nothing
+                    // reads out of bounds — the valid content simply occupies less of a pool-sized
+                    // texture, leaving a stale margin. Killing the run over this was wrong, and it is
+                    // not a theoretical case: the operator lost a session to 1920x1080 -> 1920x1079,
+                    // a ONE-PIXEL flutter Chrome produces on its own while relaying out. Say it once
+                    // and keep generating frames.
+                    if(!raw_wctx->shrink_said.exchange(true)){
+                        std::printf("[ra] captured source is now %dx%d (was %dx%d) — smaller than the size the pipeline was built for, so a %dx%d margin may hold stale pixels. Continuing; restart to resize the pipeline.\n",
+                                    _sz.Width,_sz.Height,_bw,raw_wctx->base_h.load(),
+                                    _bw-_sz.Width,raw_wctx->base_h.load()-_sz.Height);
+                    }
                 }
             }
             auto surface=frame.Surface();

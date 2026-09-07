@@ -286,23 +286,9 @@ fn no_window(cmd: &mut Command) {
 #[cfg(not(windows))]
 fn no_window(_cmd: &mut Command) {}
 
-/// Same as `no_window`, plus `CREATE_NEW_PROCESS_GROUP` — used ONLY for the FG child (C-7).
-///
-/// The new group makes the child the ROOT of its own process group, whose group id is its pid;
-/// that is what lets `try_graceful_stop` address `GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid)`
-/// at this child alone and not at the launcher. Note `creation_flags` REPLACES the flag word, so
-/// both constants are set in one call. Side effect of the new group, documented by Win32: CTRL+C
-/// is disabled for it — irrelevant here, since the FG's handler (src/core/globals.cpp:46-49) also
-/// accepts CTRL_BREAK_EVENT and that is the event we send.
-#[cfg(windows)]
-fn no_window_new_group(cmd: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-}
-#[cfg(not(windows))]
-fn no_window_new_group(_cmd: &mut Command) {}
+// REMOVED 2026-09-06 — `no_window_new_group` (CREATE_NEW_PROCESS_GROUP) existed only so that
+// `try_graceful_stop` could aim GenerateConsoleCtrlEvent at the child's group. That whole path is
+// gone (see `stop`), so the flag would now be a creation flag with no consumer.
 
 /// C-9 — bind one spawned child to the app's kill-on-close Job Object.
 ///
@@ -331,68 +317,7 @@ fn bind_to_job(_app: &AppHandle, _child: &Child) -> Result<(), String> {
     Ok(())
 }
 
-/// C-7 — ask the FG to shut down CLEANLY, and report whether it did.
-///
-/// Why this exists: `stop` used to be TerminateProcess only, so the FG's teardown never ran and
-/// its `-stats.csv` (written at the tail of the telemetry drain loop) was unreachable from the
-/// launcher. The FG already has the receiving half — `console_ctrl_handler` in
-/// src/core/globals.cpp:46-49 sets `g_quit` on CTRL_BREAK_EVENT, registered at
-/// src/core/main.cpp:219 — so all that is missing is a sender.
-///
-/// Why the console dance: `GenerateConsoleCtrlEvent` only reaches processes attached to the
-/// CALLER's console, and release ui.exe is `windows_subsystem = "windows"` — it has no console.
-/// So we temporarily attach to the CHILD's console (it owns one; CREATE_NO_WINDOW gives a console
-/// with no window), disable the event for ourselves while attached, signal the child's process
-/// group, and detach. The group id is the child's pid because it was spawned with
-/// CREATE_NEW_PROCESS_GROUP, so the launcher — which is in a different group — is not signalled.
-///
-/// HONESTY: whether AttachConsole succeeds against a CREATE_NO_WINDOW child was NOT executed when
-/// this was written. It does not have to be true for this code to be safe: every step is checked
-/// and any failure returns `Err`, at which point the caller does exactly what it did before
-/// (kill + wait). The caller logs which branch ran, so one Stop click settles the question.
-///
-/// Returns `Ok(())` only if the child actually EXITED within `timeout` after the event; every
-/// other path returns `Err` carrying the reason, which the caller prints verbatim.
-#[cfg(windows)]
-fn try_graceful_stop(child: &mut Child, timeout: Duration) -> Result<(), String> {
-    use windows::Win32::System::Console::{
-        AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler,
-        CTRL_BREAK_EVENT,
-    };
-    // AttachConsole/FreeConsole are PROCESS-wide; serialize so two commands never interleave.
-    static CONSOLE_LOCK: Mutex<()> = Mutex::new(());
-    let _g = CONSOLE_LOCK.lock().map_err(|e| e.to_string())?;
-
-    let pid = child.id();
-    unsafe {
-        let _ = FreeConsole(); // no-op when we have none; required if we somehow do
-        AttachConsole(pid).map_err(|e| format!("AttachConsole failed ({})", e))?;
-        // Ignore the event in THIS process while attached (belt-and-suspenders: the child is in
-        // its own group, so it should not reach us anyway).
-        let _ = SetConsoleCtrlHandler(None, true);
-        let sent = GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid);
-        let _ = FreeConsole();
-        let _ = SetConsoleCtrlHandler(None, false);
-        sent.map_err(|e| format!("GenerateConsoleCtrlEvent failed ({})", e))?;
-    }
-
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => return Ok(()),
-            Ok(None) => {}
-            Err(e) => return Err(format!("try_wait failed ({})", e)),
-        }
-        if std::time::Instant::now() >= deadline {
-            return Err(format!("no exit within {} ms", timeout.as_millis()));
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-}
-#[cfg(not(windows))]
-fn try_graceful_stop(_child: &mut Child, _timeout: Duration) -> Result<(), String> {
-    Err("not supported on this platform".to_string())
-}
+// REMOVED 2026-09-06 — `try_graceful_stop`. See `stop` for what replaced it and why.
 
 /// L-6 — cheap pre-flight so `restart` never destroys a live run for a path that cannot spawn.
 /// Catches the dominant real case (a half-typed executable path arriving through the 1 s
@@ -427,9 +352,14 @@ fn spawn_fg(
         o.write("launch", &format!("exe={} argv: {}", exe, args.join(" ")));
     }
     let mut cmd = Command::new(&exe);
-    cmd.args(&args).stdout(Stdio::piped()).stderr(Stdio::piped());
-    // C-7: CREATE_NEW_PROCESS_GROUP as well, so `stop` can address CTRL_BREAK at this child.
-    no_window_new_group(&mut cmd);
+    // stdin EXPLICITLY null, never inherited. The FG never reads stdin, and an inherited stdin is
+    // how R1 killed this launcher: Rust duplicates the inherited handle into the child, so ONE bad
+    // std handle in the parent turns every later spawn into "The handle is invalid. (os error 6)".
+    // Owning all three handles makes the spawn independent of whatever else touched this process.
+    cmd.args(&args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // CREATE_NO_WINDOW only. The child used to get CREATE_NEW_PROCESS_GROUP for a CTRL_BREAK stop
+    // that is gone; see `stop`.
+    no_window(&mut cmd);
 
     let mut child = cmd.spawn().map_err(|e| {
         let msg = format!("Failed to start '{}': {}", exe, e);
@@ -660,18 +590,17 @@ fn restart(
 
 /// Stop the running FG (if any). The stdout reader thread will then hit EOF and emit fg-exit.
 ///
-/// C-7 — TWO-STAGE stop. First ask for a CLEAN exit (CTRL_BREAK → the FG's
-/// `console_ctrl_handler` sets `g_quit` → the main loop joins the workers and the telemetry
-/// destructor finalizes `run.csv` and writes `-stats.csv`). Only if that cannot be delivered, or
-/// the FG does not exit inside `GRACEFUL_STOP_MS`, fall back to `kill()` — i.e. to exactly the
-/// old behaviour, so this can only ever add a clean exit, never remove a working one. Which
-/// branch ran is printed, so the operator can see whether the clean path works on his machine.
+/// Stop is a KILL. It was briefly a two-stage CTRL_BREAK-then-kill (C-7) and that was reverted on
+/// 2026-09-06: reaching a console-less child needs AttachConsole, which replaces and then closes THIS
+/// process's standard handles, after which every later spawn failed with ERROR_INVALID_HANDLE. The
+/// operator hit it on the first release build — one Stop, and Start never worked again.
+///
+/// The lost benefit was smaller than it looked, and it is not lost. A run needs the FG's own clean
+/// teardown to get its `-stats.csv`, and the launcher can already ask for that WITHOUT any signal:
+/// the `--duration` and `--max-frames` controls set the same `g_quit` the handler would have, then
+/// run the full teardown. Stop remains the immediate, unconditional way out.
 #[tauri::command]
 fn stop(app: AppHandle, state: State<'_, FgState>) -> Result<(), String> {
-    /// Budget for the FG's teardown. Sized above the 2 s `vk_wait_live` abandon deadline in
-    /// src/core/globals.cpp so a stuck fence cannot make us give up before the FG does.
-    const GRACEFUL_STOP_MS: u64 = 4000;
-
     if let Some(o) = observer(&app) {
         o.write("ui", "stop requested");
     }
@@ -680,28 +609,16 @@ fn stop(app: AppHandle, state: State<'_, FgState>) -> Result<(), String> {
         guard.take()
     };
     if let Some(mut ch) = child {
-        match try_graceful_stop(&mut ch, Duration::from_millis(GRACEFUL_STOP_MS)) {
-            Ok(()) => {
-                if let Some(o) = observer(&app) {
-                    o.write("ui", "stop: clean shutdown (CTRL_BREAK)");
-                }
-                let _ = app.emit(
-                    "fg-log",
-                    "[ui] stop: clean shutdown (CTRL_BREAK) — telemetry finalized".to_string(),
-                );
-            }
-            Err(e) => {
-                if let Some(o) = observer(&app) {
-                    o.write("ui", &format!("stop: CTRL_BREAK {} -- hard kill", e));
-                }
-                let _ = app.emit(
-                    "fg-log",
-                    format!("[ui] stop: CTRL_BREAK {} — hard kill (no -stats.csv)", e),
-                );
-                let _ = ch.kill();
-                let _ = ch.wait();
-            }
+        let _ = ch.kill();
+        let _ = ch.wait();
+        if let Some(o) = observer(&app) {
+            o.write("ui", "stop: killed");
         }
+        let _ = app.emit(
+            "fg-log",
+            "[ui] stop: FG terminated (for a finalized -stats.csv, end the run with --duration or --max-frames instead)"
+                .to_string(),
+        );
     }
     Ok(())
 }
