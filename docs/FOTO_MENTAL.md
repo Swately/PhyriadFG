@@ -4,8 +4,10 @@
 > [`planning/ACTION_PLAN.md`](planning/ACTION_PLAN.md); the durable knowledge is the D-22 memory
 > (`phyriadfg-*.md`). Rewritten at every checkpoint; older snapshots are not kept (the spine is).
 
-**Taken:** 2026-09-06 (R7 code half; the 2026-09-04 backlog-audit stamp is superseded). Sections 4b-4j are the
-accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, Self-prompt) is.
+**Taken:** 2026-09-06, LATE — **`v0.5.0-experimental` is PUBLISHED** (`origin/main` = `4911ef1`, 55 commits,
+179 files, +40,434 lines; the earlier same-day stamp for the R7 code half is superseded by this one).
+Sections 4b-4j are the accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5,
+Self-prompt) is.
 
 0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` →
    **`P → S2.T6 displacement gap → S4.R3 (fg_core.comp) · next`**. (The old pointer here read
@@ -14,11 +16,25 @@ accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5, S
 1. **OBJECTIVE** — P: perfect PhyriadFG as ONE final FG = the clean minimal core (`apps/minimal_fg`, the
    SG seam) + the layers that earn their place, on the LAYERTAB contract; exact motion measured as DATA
    (S2 MOTION_TRUTH), perceptual quality parked (S5).
-2. **FOCUS (rewritten 2026-09-06 — the 2026-09-04 text below the line was stale and is kept as the note
-   in §4)** — the in-place restructure is COMPLETE: R0–R6 closed and gated, and R7's code half closed
-   (`records/R7_GATE.md`). The MOTION_TRUTH instrument is complete too: T0–T5 gated, T6's gate PASSES since
-   1c.7 (`records/S2_T6_GATE.md`). The live question is no longer construction — it is R7(a), the
-   `--legacy-warp` default, which now has its M1 table on both paths and is the operator's call.
+2. **FOCUS (rewritten 2026-09-06 LATE)** — R0–R7 are ALL closed and gated, and **R7(a) was decided:
+   `fg_core.comp` IS the shipping default** (`--legacy-warp` is the one-token revert). On top of that,
+   a 10-agent QoL audit (`records/QOL_AUDIT_2026-09-06.md`, 43 verdicts / 40 CONFIRMED / 8 high) was
+   designed, reconciled and APPLIED in full — 124 patches over 22 files — and the result shipped as
+   `v0.5.0-experimental`. The operator's own three defects (`records/QOL_FINDINGS.md` D-1/D-2/D-3) are
+   built; D-2 ships the honest partial.
+
+   **The live question is now MEASUREMENT, not construction.** Two named things wait, both his call:
+   (a) **MR-8**, his eye on the flipped kernel default, still outstanding — the default shipped ahead
+   of it; (b) **C-2 direction (a)**, flipping `igpu_field` to true so `bg-snap`/`band-xfade` actually
+   run. Only direction (b) — the honest help text — landed, because (a) changes presented pixels on a
+   default the R7(a) gate certified the same day and wants an M1 measurement first.
+
+   **TRAP FOR THE NEXT SESSION (measured 2026-09-06):** this rig is SINGLE-GPU to PhyriadFG. The GTX
+   1080 Ti sits in Windows driver error 31, so Vulkan enumerates only the RTX 4090 (discrete) + the
+   Radeon iGPU, `pB` stays null and `single_gpu` derives true. The whole assist/device-B path is
+   therefore UNEXERCISED here, and every measurement taken on this machine is a single-GPU
+   measurement. `core_init.cpp:96`'s "B=MISSING" guard is unreachable dead code — do not read it as a
+   failure path.
 3. **METHOD** — Phyriad protocols: CONDUCT (verify-before-claim, calibrated, zero praise), PLAN_TIER T2
    (no commit with an `open` risk), AAP (closed: A0 frozen sha256 `670687d0…6933`, 3 candidates, 9
    scorecards, ATG 2 lenses, A3 = C + G1–G5, AT3/AT4/ATF approved — `docs/planning/aap/`), DI-3 two runs
