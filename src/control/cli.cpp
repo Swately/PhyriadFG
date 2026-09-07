@@ -12,7 +12,10 @@ void print_help(const char* a0) {
         "Usage: %s [options]\n\n"
         "DEFAULT STACK (all ON):\n"
         "  warp-at-presenter, soft-gate, commit-real (thresh 0.08), bidir (occl 1.5px),\n"
-        "  rescue, mv-guided (sim 0.10), gme, mv-subpel, sync-clock, sc-select, vblend, bg-snap, band-xfade,\n"
+        "  rescue, mv-guided (sim 0.10), gme, mv-subpel, sync-clock, sc-select, vblend,\n"
+        "  NOT in the default stack despite their initializers: bg-snap and band-xfade. They read the iGPU\n"
+        "  contour field, which is DEFAULT OFF, so a bare run cascades them off (two [ra] lines say so).\n"
+        "  Arm them with --igpu-field, or with --bg-snap / --band-xfade, which arm the field themselves.\n"
         "  phasefix, phase-anchor, onepos, commit-default, member-commit, objects, stasis (0.50), inertia (0.50);\n"
         "  conf-improv 0.20, agreement 0.05.  (matte + fill-div are DEFAULT OFF; see --matte / --fill-div)\n\n"
         "ESCAPE HATCHES (--no-* disables a feature; cascades apply regardless of flag order):\n"
@@ -63,13 +66,21 @@ void print_help(const char* a0) {
         "  --mass-k F            Matte mass-feedback gain (clamped [0,2]; 0=off/lerp only, default 0.5)\n"
         "\n"
         "CAPTURE / ROUTING:\n"
-        "  --monitor M           Capture from DXGI output M (default: 0)\n"
-        "  --present-monitor P   Present on output P (default: same as capture)\n"
+        "  --monitor M           Capture from DXGI output M (default: 0, and NOT explicit: with --window the\n"
+        "                        target window's monitor selects the present monitor. Passing --monitor makes\n"
+        "                        the choice explicit and it then wins over that derivation)\n"
+        "  --present-monitor P   Present on present-candidate P from --list-monitors (default: the --window\n"
+        "                        target's monitor, else the captured output's monitor)\n"
         "  --list-monitors       Print available outputs and exit\n"
         "  --fg-factor N|auto    Output multiplier: 2=2x (default), 3=3x, ... auto=measured\n"
         "  --capture-api API     Capture backend: wgc (default) or dd\n"
         "                        wgc = Windows Graphics Capture (HW-accel flip/overlay; MSVC)\n"
         "  --window SUBSTR       Capture that window ONLY, via WGC (default); with --capture-api dd, its whole MONITOR\n"
+        "                        Title substring, first visible match wins. Prefer --window-pid / --hwnd below.\n"
+        "  --window-pid N        Bind the target by owning PROCESS ID — stable across title changes. --window,\n"
+        "                        if also given, is then only the tie-break among that process's windows\n"
+        "  --hwnd N              Bind the target by EXACT window handle (decimal, as the launcher enumerated it).\n"
+        "                        Verified with IsWindow(); a dead handle falls back to --window-pid, then --window\n"
         "  --fg-gpu GPU          FG device: auto (default = primary-FG enabled; NOT load-aware), primary, assist\n"
         "  --convert-gpu DEV     igpu (default, zero-PCIe fused convert) or primary\n"
         "  --ingest-async        Decouple DDA capture ingest: acquire-only thread (readback-overlap) +\n"
@@ -78,7 +89,9 @@ void print_help(const char* a0) {
         "  --dedup               Drop content-duplicate captured frames (DDA composites the desktop at\n"
         "                        refresh; the game renders fewer unique frames). FG then interpolates\n"
         "                        between true uniques. Default off\n"
-        "  --refresh-hz N        Output-clock tick rate (default 240)\n"
+        "  --refresh-hz N        Output-clock tick rate. DEFAULT: derived from the PRESENT monitor's enumerated\n"
+        "                        refresh (240 only when the panel reports nothing usable). Pass N to override --\n"
+        "                        the enumeration returns an INTEGER rate, so a 143.97Hz mode reports 143\n"
         "  --pace-present        Metronomic drift-corrected present pacer (collapses the present MASD toward a steady metronome). Default off, byte-identical.\n"
         "  --pace-hard           HARD present-target pacer: pin each frame to the QPC edge of tgt (bounded sleep-then-spin) — composes above --pace-present; own-window-only; freeze-floor-capped < one vblank. Default off, byte-identical.\n"
         "  --flow-scale N        DRS: run the flow + per-pair CPU tail on a 1/N-res MV grid\n"
@@ -290,6 +303,16 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--fg-core-ab")){ c.fg_core_ab=true; return 0; }                 // R3: both kernels, count differing pixels
             if(!std::strcmp(arg,"--fg-core-clean-sim")){ c.fg_core_clean_sim=true; return 0; }   // XR1: the exact --mv-sim instead of the packed reproduction
             if(!std::strcmp(arg,"--legacy-warp")){ c.legacy_warp=true; return 0; }               // R7's name for the old path (today's default)
+            // ── STABLE WINDOW IDENTITY (QoL I-1 / E-1 / E-3). The launcher enumerates HWND + pid and today emits
+            // only a title; the FG then re-derives a handle from that string with a first-match substring search.
+            // These two flags carry the identity across the hop. Resolution order in capture_init:
+            //   --hwnd (only while IsWindow says it is alive) → --window-pid → --window (the substring).
+            // They live HERE, in parse_extra, not in the main else-if chain: that chain is near MSVC's C1061
+            // nested-block limit and a lambda body restarts nesting at 0.
+            if(!std::strcmp(arg,"--window-pid")){ if(auto v=next(arg)){ c.window_pid=(uint32_t)std::strtoul(v,nullptr,10);
+                std::printf("[ra] --window-pid %u: bind the capture target by OWNING PROCESS ID (stable across title changes). --window, if also given, becomes the TIE-BREAK among that process's windows instead of the whole identity.\n", c.window_pid); return 0; } return 1; }
+            if(!std::strcmp(arg,"--hwnd")){ if(auto v=next(arg)){ c.window_hwnd=(uint64_t)std::strtoull(v,nullptr,10);
+                std::printf("[ra] --hwnd %llu: bind the capture target by EXACT window handle. Verified with IsWindow() at resolution; a dead handle falls back to --window-pid, then to --window.\n", (unsigned long long)c.window_hwnd); return 0; } return 1; }
             // ── OFF-switches del set DEFAULT-ON (flip 2026-07: el stack validado por el operador).
             // Cada --no-X restaura el comportamiento pre-flip. --no-rfp limpia también rfp_fresh
             // (fresh es inalcanzable sin rfp); el resto son independientes.
@@ -369,7 +392,8 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--pace-variance")){ c.pace_variance=true; std::printf("[ra] --pace-variance: FSR3 variance-aware moving-average present pacer (target = SMA10(present deltas) − varFactor·stddev − safetyMargin; defaults 0.1/0.75ms; reset on >100ms hitch). Smooths the present-interval CoV in the light/stable regime; pair with --async-present for the saturation collapse. Pure CPU; default-off byte-identical.\n"); return 0; }   // FSR3 variance-aware present pacer
             if(!std::strcmp(arg,"--pv-safety")){ if(auto v=next(arg)){ c.pv_safety_ms=std::atof(v); return 0; } return 1; }   // FSR3 safetyMargin override (ms)
             if(!std::strcmp(arg,"--pv-var")){ if(auto v=next(arg)){ c.pv_var_factor=std::atof(v); return 0; } return 1; }   // FSR3 varianceFactor override
-            if(!std::strcmp(arg,"--target-output-fps")){ if(auto v=next(arg)){ c.target_output_fps=(!std::strcmp(v,"auto"))?(float)c.refresh_hz:(float)std::atof(v); if(c.target_output_fps>0.f) c.async_present=true; std::printf("[ra] --target-output-fps %.0f: output cap. DEFAULT mechanism = TRUE TICK DECIMATION (snapped to the nearest exact divisor of refresh-hz — the fixed-panel even-vblank constraint; the snap is printed at present-init): warp+present SKIPPED on non-selected vblank slots -> the FG's GPU cost scales with the output rate. --no-decimate restores the OLD s2 content-quantizer (even-grid + over-production drop) for A/B — measured to return NOTHING to the game (SATURATION_PLAN.md \xC2\xA7" "9). Auto-enables --async-present. 0=OFF byte-identical.\n", c.target_output_fps); return 0; } return 1; }   // auto-enables async; decimation is the default cap mechanism
+            if(!std::strcmp(arg,"--target-output-fps")){ if(auto v=next(arg)){ c.target_output_fps_auto=(!std::strcmp(v,"auto")); c.target_output_fps=c.target_output_fps_auto?(float)c.refresh_hz:(float)std::atof(v);   // 'auto' is RE-RESOLVED in capture_init after refresh_hz is derived from the present monitor; this parse-time value is provisional
+                 if(c.target_output_fps>0.f) c.async_present=true; std::printf("[ra] --target-output-fps %.0f: output cap. DEFAULT mechanism = TRUE TICK DECIMATION (snapped to the nearest exact divisor of refresh-hz — the fixed-panel even-vblank constraint; the snap is printed at present-init): warp+present SKIPPED on non-selected vblank slots -> the FG's GPU cost scales with the output rate. --no-decimate restores the OLD s2 content-quantizer (even-grid + over-production drop) for A/B — measured to return NOTHING to the game (SATURATION_PLAN.md \xC2\xA7" "9). Auto-enables --async-present. 0=OFF byte-identical.\n", c.target_output_fps); return 0; } return 1; }   // auto-enables async; decimation is the default cap mechanism
             if(!std::strcmp(arg,"--no-decimate")){ c.decimate=false; std::printf("[ra] --no-decimate: --target-output-fps uses the OLD s2 fractional content-quantizer (realized_mult even-grid; ticks+warps stay at panel rate, duplicates re-presented) instead of true tick decimation. A/B baseline for \xC2\xA7" "9. Dead without --target-output-fps.\n"); return 0; }   // A/B: the pre-decimation s2 path
             if(!std::strcmp(arg,"--s2-sustain")){ if(auto v=next(arg)){ float f=(float)std::atof(v); c.s2_sustain_frac = f<0.5f?0.5f:(f>1.f?1.f:f); return 0; } return 1; }   // kSustainFrac override [0.5,1]
             if(!std::strcmp(arg,"--load-governor")){ c.load_governor=true; std::printf("[ra] --load-governor: a util-driven GRADUATED tier FLOOR (decoupled from the t_pair_ema>budget gate). The live 4090 util maps to a tier floor: >=%.0f%%->5 (bwd-off + single-pass gme), >=%.0f%%->4 (object_repair/memory shed), >=%.0f%%->3 (period-4 holon); the floor is a MAX over the CPU ladder. The util LEADS the CPU EMA (the GPU pegs before the pair time does), so the shed engages under combat. Keeps fwd-flow+warp ALWAYS (keep-generating). Hysteresis: raise fast, lower on dwell (~90 pairs). DEFAULT ON (--no-load-governor desactiva; byte-identical mientras no haya presión/util alta).\n",c.gov_util,c.gov_util-6.f,c.gov_util-12.f); return 0; }   // DEFAULT-ON load governor
@@ -454,7 +478,7 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--no-mv-subpel")){    c.mv_subpel=false;    std::printf("[ra] --no-mv-subpel: sub-pixel MV refinement OFF (integer best_mv). DEFAULT is ON.\n"); return 0; }
             if(!std::strcmp(arg,"--no-bg-snap")){      c.bg_snap=false;      std::printf("[ra] --no-bg-snap: background-MV snap OFF. DEFAULT is ON. (igpu-field stays on if band-xfade needs it.)\n"); return 0; }
             if(!std::strcmp(arg,"--no-band-xfade")){   c.band_xfade=0.f;     std::printf("[ra] --no-band-xfade: gravity-cancellation reveal-fill OFF. DEFAULT is ON.\n"); return 0; }
-            if(!std::strcmp(arg,"--no-igpu-field")){   c.igpu_field=false;   std::printf("[ra] --no-igpu-field: campo de contornos iGPU OFF. DEFAULT is ON. Cascada (post-parse): apaga bg-snap/band-xfade/afill (leen el campo).\n"); return 0; }
+            if(!std::strcmp(arg,"--no-igpu-field")){   c.igpu_field=false;   std::printf("[ra] --no-igpu-field: campo de contornos iGPU OFF. DEFAULT is OFF already (cli.hpp igpu_field=false) — this flag is the EXPLICIT off. Cascada (post-parse): apaga bg-snap/band-xfade/afill (leen el campo).\n"); return 0; }
             if(!std::strcmp(arg,"--no-deficit-tier")){ c.deficit_tier=false; std::printf("[ra] --no-deficit-tier: heavy-scene object_repair/memory shed OFF. DEFAULT is ON.\n"); return 0; }
             // The 4 DEFAULT-ON flags have their --no-X disabler here (in parse_extra, dodging the main-chain
             // C1061 limit). Each disables ONLY its own field; --no-fg-protect does NOT touch pin_threads/
@@ -471,7 +495,7 @@ bool parse_args(int argc, char** argv, Config& c) {
         else if (!std::strcmp(a,"--list-monitors"))   { c.list_only=true; }
         else if (!std::strcmp(a,"--no-upscale"))      { c.no_upscale=true; }
         else if (!std::strcmp(a,"--upscale-lanczos")) { c.lanczos=true; }
-        else if (!std::strcmp(a,"--monitor"))         { if(auto v=next(a)) c.cap_mon=std::atoi(v); else return false; }
+        else if (!std::strcmp(a,"--monitor"))         { if(auto v=next(a)){ c.cap_mon=std::atoi(v); c.cap_mon_explicit=true; } else return false; }   // latch: an EXPLICIT --monitor outranks the --window monitor derivation in capture_init
         else if (!std::strcmp(a,"--present-monitor")) { if(auto v=next(a)) c.pres_mon=std::atoi(v); else return false; }
         else if (!std::strcmp(a,"--residual-ceil"))   { if(auto v=next(a)) c.res_ceil=(float)std::atof(v); else return false; }
         else if (!std::strcmp(a,"--conf-improv"))     { if(auto v=next(a)) c.conf_improv=(float)std::atof(v); else return false; }
@@ -518,7 +542,7 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(v,"timer")) c.output_clock=OC_TIMER;
             else { std::printf("[ra] ERROR: --output-clock '%s' not supported — only 'timer' remains\n",v); return false; }
         }
-        else if (!std::strcmp(a,"--refresh-hz")) { if(auto v=next(a)){ c.refresh_hz=std::atoi(v); if(c.refresh_hz<1) c.refresh_hz=1; } else return false; }
+        else if (!std::strcmp(a,"--refresh-hz")) { if(auto v=next(a)){ c.refresh_hz=std::atoi(v); if(c.refresh_hz<1) c.refresh_hz=1; c.refresh_hz_set=true; } else return false; }   // latch: an EXPLICIT --refresh-hz outranks the present-monitor derivation in capture_init
         else if (!std::strcmp(a,"--cap-fps"))    { if(auto v=next(a)){ c.cap_fps=std::atoi(v); if(c.cap_fps<1) c.cap_fps=0; } else return false; }
         else if (!std::strcmp(a,"--flow-scale")) {
             // flow-resolution DRS. N ∈ {1,2,4}; reject anything else (no silent clamp).
@@ -742,7 +766,7 @@ bool parse_args(int argc, char** argv, Config& c) {
             c.gme_gpu=true; c.gme_gpu_verify=true;
         }
         else if (!std::strcmp(a,"--igpu-field")) {
-            std::printf("[ra] --igpu-field: iGPU computes an image-derived contour field (Sobel) on G.q2 after the convert, into hostFIELD. DEFAULT ON (--no-igpu-field disables); consumers read binding 11: afill (visualizer), bg-snap, band-xfade, disoccl-hardpick, multicand edge-gate. Needs the iGPU convert path.\n");
+            std::printf("[ra] --igpu-field: iGPU computes an image-derived contour field (Sobel) on G.q2 after the convert, into hostFIELD. DEFAULT OFF — this flag ARMS it (--bg-snap/--band-xfade/--afill/--igpu-field-verify arm it too; --no-igpu-field is the explicit off). Consumers read binding 11: afill (visualizer), bg-snap, band-xfade, disoccl-hardpick, multicand edge-gate. Needs the iGPU convert path.\n");
             c.igpu_field=true;
         }
         else if (!std::strcmp(a,"--igpu-field-verify")) {
@@ -778,10 +802,18 @@ bool parse_args(int argc, char** argv, Config& c) {
     // WGC (con --dedup default-ON el MinUpdateInterval se deriva del panel → entrega a tasa de
     // composición; el PLL se alimenta post-dedup). --capture-api dd conserva la ruta DDA: --window
     // pasa a significar "el MONITOR completo donde está esa ventana" (se resuelve en main() → cap_mon).
-    if (c.window_substr[0] && c.capture_api==CA_WGC) {
+    if (wants_window_target(c) && c.capture_api==CA_WGC) {
         std::printf("[ra] --window '%s': captura solo-de-la-ventana (WGC, default; --capture-api dd para el monitor completo)\n", c.window_substr);
-    } else if (c.window_substr[0]) {
+    } else if (wants_window_target(c)) {
         std::printf("[ra] --window '%s' + --capture-api dd: capturara su MONITOR completo via DDA\n", c.window_substr);
+    }
+    // The ONLY fg-gpu/topology combination decidable at PARSE time. The device set is not known until
+    // core_init.cpp:94 derives single_gpu, so the general "--fg-gpu primary on a single-GPU rig" note has
+    // to live there (core_init.cpp:235-241) — but --force-single-gpu settles it here: main.cpp:339 will
+    // force want_pfg=false, so primary-FG cannot exist and --fg-gpu primary is a no-op. Advisory only,
+    // never a parse error: the run is still correct, the flag just does nothing.
+    if (c.fg_gpu==FG_PRIMARY && c.force_single_gpu) {
+        std::printf("[ra] --fg-gpu primary + --force-single-gpu: primary-FG is INERT on the single-GPU path (want_pfg is forced off once single_gpu is derived) — the flag is accepted and changes nothing. Use --fg-gpu auto.\n");
     }
     // The post-parse cascades + the derived c.d.* predicates live in ONE site, resolve_config() above
     // (re-callable from the runtime degrade in main.cpp). See cli.hpp. This is the central "decode" —

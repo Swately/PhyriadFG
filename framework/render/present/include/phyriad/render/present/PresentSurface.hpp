@@ -56,7 +56,10 @@ enum class Style : uint8_t {
                 //   never steal the game's input focus). Carries the no-lock-out contract:
                 //   a foreground-window yield + a present-thread watchdog and a
                 //   device-loss exit. DEFAULT-OFF mode; reachable only via the consumer
-                //   flag. NOT reported by is_click_through() (that flag stays DcompCt-only).
+                //   flag. REPORTED by is_click_through(): this style applies the same
+                //   WS_EX_LAYERED|WS_EX_TRANSPARENT pair DcompCt does, so the two are
+                //   indistinguishable to the mouse and reporting them differently only ever
+                //   produced a false "click_through=no" on the default present path.
 };
 
 // Immediate now; PresentationManager is the timestamp-pacing upgrade path.
@@ -106,12 +109,25 @@ struct PresentSurfaceDesc {
     // (Style::OwnWindow only): the captured GAME's top-level HWND. USED ONLY by OwnWindow's
     // no-lock-out contract — the foreground-yield monitor compares GetForegroundWindow() against
     // {our window, this game window}: foreground is NEITHER → the user left both → yield the displayed
-    // plane (hide + drop topmost) so the desktop is reachable. Also picks our monitor via
-    // MonitorFromWindow(game_hwnd) when it is the game's monitor. nullptr (the default, and for every
-    // other Style) → no game binding: OwnWindow then yields only on foreground != our window (still
-    // never locks out), and binds by monitor_index. Opaque void* (kept <windows.h>-free;
-    // reinterpret_cast<HWND> in the .cpp).
+    // plane (hide + drop topmost) so the desktop is reachable. nullptr (the default, and for every other
+    // Style) → NO game binding: an unbound OwnWindow plane NEVER yields, because our own window is
+    // WS_EX_NOACTIVATE + click-through and can never become the foreground either — the old "yield when
+    // the foreground is not our window" rule therefore latched yielded forever and presented nothing at
+    // all. The no-lock-out floor for the unbound case is the present-thread watchdog (force-hide on a
+    // stall) plus the clean quit paths.
+    // This field does NOT select a monitor. It never did: the sentence that claimed it "picks our monitor
+    // via MonitorFromWindow(game_hwnd)" described behaviour no code implemented, and it was DELETED rather
+    // than implemented — the monitor is the caller's decision, declared by monitor_handle / monitor_index,
+    // so an explicit present-monitor request can never be silently overridden by wherever the game sits.
+    // Opaque void* (kept <windows.h>-free; reinterpret_cast<HWND> in the .cpp).
     void*    game_hwnd = nullptr;
+    // EXACT monitor binding (optional): an HMONITOR as an opaque void*. When non-null it WINS over
+    // monitor_index and the surface is built on GetMonitorInfo(handle).rcMonitor. Reason: the caller
+    // enumerates monitors in its own order (this consumer uses DXGI EnumAdapters x EnumOutputs) while
+    // pick_monitor() walks EnumDisplayMonitors with index 0 forced to the PRIMARY monitor — two orderings
+    // that agree only by luck, so an index handed across them selects the wrong panel. A handle carries no
+    // ordering at all. nullptr → the legacy monitor_index path, unchanged.
+    void*    monitor_handle = nullptr;
 };
 static_assert(std::is_standard_layout_v<PresentSurfaceDesc>);
 static_assert(std::is_trivially_copyable_v<PresentSurfaceDesc>);

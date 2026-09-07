@@ -17,13 +17,32 @@ const DEFAULT_EXE = "";
 // abajo caerían en la zona muerta temporal (TDZ) y lanzarían ReferenceError.
 //   running      : ¿hay un FG vivo? (lo mantiene setRunning()).
 //   autoRestart  : control SOLO de UI; con el FG vivo, cambiar un flag reinicia el FG.
-//   restarting   : true mientras un reinicio está en vuelo, para que "fg-exit" ignore el
-//                  cierre del hijo viejo y la UI NO parpadee a "detenido".
-//   restartTimer : timer de debounce (reinicia 1 s DESPUÉS del último cambio, no por tecla).
+//   liveEpoch    : the backend epoch of the child we believe is LIVE (0 = unknown/none).
+//   staleEpoch   : the highest epoch we KNOW is dead. An `fg-exit` is ignored only when its
+//                  epoch is <= staleEpoch. This replaces the old 600 ms `restarting` blanket,
+//                  which was a TIME window, not a child-scoped one: it swallowed the NEW
+//                  child's own fatal exit (a bad raw-flags token exits the FG in milliseconds)
+//                  and wedged the UI at "running" with a Start that stayed disabled and a Stop
+//                  that killed an already-empty slot (L-2 / C-1 / E-7). The one thing the
+//                  blanket legitimately covered — the documented lib.rs race where the OLD
+//                  child's stale reaper wins the slot lock between restart's take and
+//                  spawn_fg's store — is covered exactly by raising staleEpoch to the outgoing
+//                  child's epoch BEFORE asking the backend to restart.
+//   restartTimer : debounce timer (restarts 1 s AFTER the last change, not per keystroke).
+//   launchedArgs : the argv actually handed to the backend for the live child, so the Command
+//                  card can say when the preview has drifted from what is running (C-4).
+//   lastReason   : the last "[ra] REASON ..." advisory the FG printed, appended to the exit
+//                  line so the exit code stops standing alone (L-8).
+//   selectedWindow : the WHOLE WindowInfo picked in the dropdown (pid, and hwnd when the
+//                  backend reports one), not just its volatile caption (L-1 / E-1 / E-3).
 let running = false;
 let autoRestart = false;
-let restarting = false;
+let liveEpoch = 0;
+let staleEpoch = 0;
 let restartTimer = null;
+let launchedArgs = null;
+let lastReason = "";
+let selectedWindow = null;
 
 // ── Flag model ───────────────────────────────────────────────────────────────
 // type: 'switch'      bool, default OFF -> emits `flag` when ON
@@ -255,8 +274,8 @@ const GROUPS = [
         desc: "Present(sync_interval): 0 = present-immediately (default, over-presents); 1 = pace to the compositor.",
       },
       {
-        flag: "--present-waitable", type: "switch", default: true, name: "Swapchain waitable",
-        desc: "SetMaximumFrameLatency(1) + wait-before-present: reduces jitter WITHIN DWM composition (PARTIAL; doesn't reach Independent Flip).",
+        flag: "--no-present-waitable", type: "switch-off", default: true, name: "Swapchain waitable",
+        desc: "SetMaximumFrameLatency(1) + wait-before-present: reduces jitter WITHIN DWM composition (PARTIAL; doesn't reach Independent Flip). DEFAULT ON — the OFF position emits --no-present-waitable, like every other default-on control. As a plain 'switch' the OFF position emitted NOTHING and cli.hpp's present_waitable=true survived, so the waitable swapchain stayed armed and the XR15 A/B was unreachable from the UI (C-3).",
       },
       {
         flag: "--present-colorspace", type: "select", default: "off", name: "Overlay colorspace",
@@ -354,18 +373,19 @@ const GROUPS = [
     title: "GME / Objects / Matte",
     note: "Matte sub-stack: most are children of --matte/--gme/--bidir/--objects and cascade off if the parent is off.",
     controls: [
-      { flag: "--no-gme-gpu", type: "switch-off", default: true, name: "GME on GPU B",
-        desc: "DEFAULT ON. Offloads the gme affine fit to GPU B (1080 Ti, where MV/SAD live). Off = CPU. Auto-fallback to CPU if B is absent." },
-      { flag: "--gme-gpu-verify", type: "switch", default: false, name: "GME-GPU verify",
-        desc: "Runs GPU+CPU gme and prints rel-diff + dis-mask flips. Implies gme-gpu." },
-      { flag: "--gme-irls2", type: "switch", default: false, name: "GME IRLS 2-pass",
-        desc: "gme_fit with 2 IRLS passes instead of 3 (~0.3-0.7ms/pair). Default 3 (byte-identical)." },
+      // C-6 — --no-gme-gpu / --gme-gpu-verify / --gme-irls2 were hand-written HERE and are also
+      // owned by the binary's layer registry (layer_table.def -> layer_registry.cpp), so each
+      // flag got two independent switches that both push into `els` and both reach buildArgs:
+      // the hand-written switch OFF emitted --no-gme-gpu while turning the registry's twin back
+      // ON emitted nothing, so the UI displayed a state the argv contradicted. Deleted here; the
+      // registry rows (rendered as "Layers · Flow") are the single source of truth for them.
       { flag: "--matte-thresh", type: "number", default: "0.25", min: 0.05, max: 1, step: 0.05, name: "Matte: threshold",
         desc: "Matte dissent cutoff (R8-norm [0.05,1])." },
       { flag: "--mass-k", type: "number", default: "0.5", min: 0, max: 2, step: 0.1, name: "Matte: mass-k",
         desc: "Matte mass-conservation feedback gain [0,2] (0=off/lerp)." },
-      { flag: "--no-obj-fill-rim", type: "switch-off", default: true, name: "Obj fill-rim",
-        desc: "Coherent MV infill across the ENTIRE interior of a rigid object (kills the half-moon crescent). Gives up on a non-rigid rim." },
+      // C-6 — --no-obj-fill-rim is registry-owned too: layer_table.def:262 declares it PF_NO_FORM
+      // on --obj-fill-rim and layer_registry.cpp:475-476 rewrites it to "--no-obj-fill-rim", the
+      // exact token that was hand-written here. Deleted; the registry owns it.
       { flag: "--disoccl-commit", type: "switch", default: false, name: "Disoccl-commit",
         desc: "One-sided commit in the disocclusion band (replaces the symmetric blend-fallbacks). Requires --matte." },
       { flag: "--no-crescent", type: "switch-off", default: true, name: "Crescent (bg)",
@@ -378,8 +398,7 @@ const GROUPS = [
         desc: "DEFAULT ON. Crescent-side weighting for the OBJECT layer. Off = (1-t,t)." },
       { flag: "--no-change-gate", type: "switch-off", default: true, name: "Change-gate",
         desc: "DEFAULT ON. Dissent masks require CHANGED content (anti-halo). Off = raw masks." },
-      { flag: "--no-expire", type: "switch-off", default: true, name: "Expire (stigmergy)",
-        desc: "DEFAULT ON. Expiry of cross-pair EMAs on contradictions. Off = decays through." },
+      // C-6 — --no-expire is registry-owned (layer_table.def); the hand-written twin is deleted.
     ],
   },
   {
@@ -608,6 +627,17 @@ function renderGroup(group) {
   }
 
   for (const ctrl of group.controls) {
+    // C-6 guard — one flag, one control. Both the hand-written GROUPS block and the binary's
+    // layer registry render through here into the SAME `els` array, and buildArgs iterates
+    // `els`: a flag rendered twice gets two switches that can silently disagree in the argv.
+    // With the five duplicates deleted above nothing hits this today; it is the tripwire that
+    // makes the next accidental re-introduction loud instead of silent. First declaration wins.
+    // console.warn and not logLine: renderGroup runs during module evaluation, BEFORE the `const
+    // logEl` binding exists, so logLine() here would throw a TDZ ReferenceError.
+    if (els.some((e) => e.ctrl.flag === ctrl.flag)) {
+      console.warn("[ui] duplicate control skipped for flag " + ctrl.flag);
+      continue;
+    }
     const row = document.createElement("div");
     row.className = "row";
     row.title = ctrl.desc || "";
@@ -662,7 +692,17 @@ function renderGroup(group) {
       ctl.appendChild(input);
     }
 
-    input.addEventListener("input", updatePreview);
+    // L-6 / C-10 — free-text fields (--window, --csv, the GPU-name boxes, and any registry
+    // string param) are bound to 'input' for the PREVIEW ONLY. Auto-restarting on every
+    // keystroke kills the live FG on a half-typed value, and lib.rs's restart() kills the old
+    // child BEFORE it attempts the spawn, so a partial value leaves nothing running at all.
+    // The restart is scheduled from 'change' (commit / blur / Enter) instead. Every other
+    // control type keeps both events: a checkbox, a select and a spinner commit atomically.
+    if (ctrl.type === "text") {
+      input.addEventListener("input", renderPreview);
+    } else {
+      input.addEventListener("input", updatePreview);
+    }
     input.addEventListener("change", updatePreview);
 
     row.appendChild(lab);
@@ -691,7 +731,7 @@ function renderGroup(group) {
 // A dropdown of visible top-level windows (from the `list_windows` backend command)
 // that fills the free-text `--window` flag with the selected window's TITLE. The text
 // field stays editable as a manual override; this just populates it.
-let lastWindows = []; // [{title, exe, pid}]
+let lastWindows = []; // [{title, exe, pid, hwnd, iconic}] — see lib.rs WindowInfo
 
 function windowInput() {
   const e = els.find((x) => x.ctrl.flag === "--window");
@@ -717,11 +757,24 @@ function renderWindowSelector(g) {
 
   const sel = document.createElement("select");
   sel.id = "window-select";
+  // L-5 — the list used to be a startup snapshot: a window opened after the launcher started
+  // never appeared, and a window that had since closed was still offered. Re-enumerate at the
+  // moment the user opens the dropdown. mousedown fires BEFORE the native popup opens, so the
+  // fresh list is the one actually shown; focus covers keyboard opening. refreshWindows()
+  // no-ops while a previous call is still in flight, so a click-drag cannot double-populate.
+  sel.addEventListener("mousedown", refreshWindows);
+  sel.addEventListener("focus", refreshWindows);
   sel.addEventListener("change", () => {
     const opt = sel.selectedOptions[0];
     if (!opt || opt.value === "") return; // placeholder: keep manual value
     const title = opt.value;
     const exe = opt.dataset.exe || "";
+    // L-1 / E-1 / E-3 — keep the WHOLE WindowInfo, not just the caption. The pid (and the hwnd
+    // when the backend reports one) is the STABLE identity; the title is a volatile snapshot
+    // that a browser tab, a level load or a document save invalidates before the FG ever gets
+    // to resolve it, and an unanchored first-match strstr on it can bind the wrong window.
+    const idx = Number(opt.dataset.idx);
+    selectedWindow = Number.isInteger(idx) ? lastWindows[idx] || null : null;
     const wi = windowInput();
     if (wi) wi.value = title;
     updateTarget(title, exe);
@@ -747,6 +800,12 @@ function renderWindowSelector(g) {
       const v = wi.value.trim();
       const match = lastWindows.find((w) => w.title === v);
       updateTarget(v, match ? match.exe : "");
+      // A hand-edit detaches the field from the picked window: the pid we are holding would then
+      // name a DIFFERENT window than the text claims, which is worse than no pid at all. Drop
+      // the identity unless the text is still exactly an enumerated window's title.
+      if (!selectedWindow || selectedWindow.title !== v) {
+        selectedWindow = match || null;
+      }
     });
   }
 }
@@ -773,8 +832,14 @@ function updateTarget(title, exe) {
   }
 }
 
+// L-5 — now also called from the dropdown's mousedown/focus, so it can fire repeatedly and
+// re-entrantly; the latch keeps a second call from resetting the select out from under the
+// first call's append loop.
+let winRefreshInFlight = false;
+
 async function refreshWindows() {
-  if (!invoke) return;
+  if (!invoke || winRefreshInFlight) return;
+  winRefreshInFlight = true;
   const sel = document.getElementById("window-select");
   resetWindowSelect("loading...");
   try {
@@ -785,14 +850,37 @@ async function refreshWindows() {
         ? `- select window (${lastWindows.length}) -`
         : "- no titled windows -"
     );
-    for (const w of lastWindows) {
+    for (let i = 0; i < lastWindows.length; i++) {
+      const w = lastWindows[i];
       const opt = document.createElement("option");
       opt.value = w.title;
       opt.dataset.exe = w.exe || "";
-      opt.textContent = w.exe ? `${w.title} — ${w.exe}` : w.title;
+      // L-1 / E-1 / E-3 — index back into lastWindows so the change handler can keep the whole
+      // WindowInfo (pid, and hwnd when the backend reports one), not just this caption string.
+      opt.dataset.idx = String(i);
+      // L-4 — the backend no longer de-duplicates the list by caption, so two windows that share
+      // a title now arrive as two REAL rows. The pid therefore goes in the LABEL: without it those
+      // two rows are visually IDENTICAL and the dropdown is worse than the de-duplicated one it
+      // replaced. This is exactly the label format lib.rs declares for the row.
+      let label = w.exe
+        ? `${w.title} — ${w.exe} (pid ${w.pid})`
+        : `${w.title} (pid ${w.pid})`;
+      // B-3 — the backend REPORTS `iconic` per row and leaves the presentation decision here. A
+      // minimized window has a degenerate client rect and capture_init now REFUSES to start on one
+      // (SOURCE_MINIMIZED), so name it and take it out of the selectable set instead of letting the
+      // run fail seconds after the click. UX only: correctness is already covered FG-side.
+      if (w.iconic) {
+        label += " (minimized)";
+        opt.disabled = true;
+      }
+      opt.textContent = label;
       sel.appendChild(opt);
     }
     // Reflect the current --window field selection if it matches an enumerated window.
+    // KNOWN, PRE-EXISTING AMBIGUITY, not a regression: `sel.value = cur` selects by option VALUE,
+    // which is the TITLE, so now that the backend no longer de-duplicates captions it lands on the
+    // FIRST row carrying that title. Only this reflect-the-typed-text path is ambiguous — a user
+    // PICK goes through dataset.idx and carries that exact WindowInfo (pid / hwnd).
     const wi = windowInput();
     const cur = wi ? wi.value.trim() : "";
     if (cur) {
@@ -800,9 +888,20 @@ async function refreshWindows() {
       if (match) sel.value = cur;
       updateTarget(cur, match ? match.exe : "");
     }
+    // Drop a stale identity: if the window we had picked is no longer enumerated, the pid we
+    // would emit points at nothing (or, worse, at a recycled process). Keep whatever the user
+    // has typed; just stop claiming the identity.
+    if (selectedWindow) {
+      const still = lastWindows.find(
+        (w) => w.pid === selectedWindow.pid && w.title === selectedWindow.title
+      );
+      selectedWindow = still || null;
+    }
   } catch (e) {
     resetWindowSelect("error listing windows");
     logLine("[ui] error list_windows: " + e, "exit");
+  } finally {
+    winRefreshInFlight = false;
   }
 }
 
@@ -835,6 +934,27 @@ function buildArgs() {
       }
     }
   }
+  // ── Stable window identity (L-1 / E-1 / E-3) ────────────────────────────────────────────
+  // The dropdown already holds the picked window's pid (and its hwnd when the backend reports
+  // one). Emit it ALONGSIDE --window so the FG binds to THAT window instead of re-resolving a
+  // volatile caption with an unanchored, case-sensitive, first-match strstr. --window stays as
+  // the manual-substring fallback and as the human-readable record of what was picked.
+  // Emitted only while the text field still holds exactly the picked title; a hand-edit or a
+  // window that has since closed clears selectedWindow, so the argv never claims an identity
+  // the visible field contradicts.
+  // CONTRACT (see the cluster's `shared` block): --window-pid and --hwnd are FG flags owned by
+  // the identity cluster; `hwnd` is a WindowInfo field owned by the launcher_rs cluster. The
+  // hwnd push is gated on the field actually being present so an absent field can never become
+  // a bogus `--hwnd 0`.
+  {
+    const wiSel = windowInput();
+    const wtxt = wiSel ? wiSel.value.trim() : "";
+    if (selectedWindow && wtxt !== "" && selectedWindow.title === wtxt) {
+      if (selectedWindow.pid) args.push("--window-pid", String(selectedWindow.pid));
+      if (selectedWindow.hwnd) args.push("--hwnd", String(selectedWindow.hwnd));
+    }
+  }
+
   // raw flags box (advanced) — appended last
   const raw = document.getElementById("raw-flags").value;
   for (const tok of tokenize(raw)) args.push(tok);
@@ -879,18 +999,40 @@ function quoteArg(a) {
 }
 
 const cmdPreview = document.getElementById("cmd-preview");
+// C-4 — the "pending — restart to apply" marker declared in index.html's Command card.
+const cmdPending = document.getElementById("cmd-pending");
 const exeInput = document.getElementById("exe-path");
 
-function updatePreview() {
+// PREVIEW ONLY (L-6 / C-10): rebuild the command line and update the C-4 pending marker.
+// Schedules nothing, so it is safe to call on every keystroke of a free-text field.
+// C-4 — the Command card is a LAUNCH preview by construction: the FG reads its Config only at
+// startup, so with a live child and auto-restart off, every control change rewrote this card
+// while the running process kept the argv it was given, with nothing saying so. Compare against
+// the argv the live child ACTUALLY got and mark the card when they have diverged.
+function renderPreview() {
   const args = buildArgs();
   const exe = exeBasename(exeInput.value || DEFAULT_EXE) || "phyriad_fg.exe";
   cmdPreview.textContent = [exe, ...args.map(quoteArg)].join(" ");
-  // Ruta común de TODO cambio de flag: si el auto-reinicio está activo y el FG está vivo,
-  // programa un reinicio debounced con la nueva config. (No-op si está off o no hay proceso.)
+  const pending =
+    running &&
+    launchedArgs !== null &&
+    args.join("\u0000") !== launchedArgs.join("\u0000"); // NUL: no argv token can contain it
+  if (cmdPending) cmdPending.hidden = !pending;
+  return args;
+}
+
+// Preview + the common path of EVERY flag change: if auto-restart is on and the FG is live,
+// schedule a debounced restart with the new config. (No-op when off or with no process.)
+function updatePreview() {
+  renderPreview();
   maybeScheduleRestart();
 }
 
-document.getElementById("raw-flags").addEventListener("input", updatePreview);
+// L-6 — the raw-flags box is free text too, and it is the FASTEST way to kill a child: an
+// unknown token makes cli.cpp set parse_failed and main.cpp:208 return 2 in milliseconds,
+// before any device work. Preview on every keystroke, restart only on commit.
+document.getElementById("raw-flags").addEventListener("input", renderPreview);
+document.getElementById("raw-flags").addEventListener("change", updatePreview);
 
 // ── R0: the LAYERS section is rendered from the BINARY's own model (`phyriad_fg.exe --layer-model-json`,
 //    src/layers/layer_table.def). No layer literal lives here: if the binary has a flag the UI shows it,
@@ -915,7 +1057,11 @@ document.getElementById("raw-flags").addEventListener("input", updatePreview);
     renderGroup({ title: "Layers (registry)", note: `Could not load the layer model from the binary: ${e}`, controls: [] });
   }
 })();
-exeInput.addEventListener("input", updatePreview);
+// C-10 — the executable path is free text: typing into it used to kill the live FG one second
+// later, and lib.rs's restart() kills the old child BEFORE attempting the spawn, so a
+// half-typed path left nothing running. Preview live, restart only on commit.
+exeInput.addEventListener("input", renderPreview);
+exeInput.addEventListener("change", updatePreview);
 updatePreview();
 
 // ── Live status parsing ──────────────────────────────────────────────────────
@@ -953,6 +1099,11 @@ function logLine(text, cls) {
 }
 
 function classify(line) {
+  // L-8 — the FG's fatal advisory (compat_reason.hpp:122 prints `[ra] REASON <TOKEN>: <text>`)
+  // was styled exactly like every routine "[ra]" init line, so the one line that explains a
+  // death read as ordinary startup chatter. Tested BEFORE the generic "[ra]" branch, which
+  // would otherwise swallow it.
+  if (line.startsWith("[ra] REASON")) return "exit";
   if (line.startsWith("[ra-cap]")) return "cap";
   if (line.startsWith("[ra]")) return "ra";
   if (line.startsWith("[nota]")) return "sys"; // eco de la nota del operador (observer)
@@ -1003,7 +1154,12 @@ function setRunning(on) {
     fpsCapEl.textContent = "--";
     fpsInEl.textContent = "--";
     fpsOutEl.textContent = "--";
+    // No live child: no epoch to compare a future exit against, and no launched argv for the
+    // Command card to have diverged from (C-4).
+    liveEpoch = 0;
+    launchedArgs = null;
   }
+  renderPreview(); // refresh the C-4 pending marker for the new running state
 }
 
 // Checkbox de auto-reinicio (en la run-card). NO entra en el modelo GROUPS ni llama a
@@ -1025,27 +1181,55 @@ function maybeScheduleRestart() {
   restartTimer = setTimeout(doRestart, 1000); // 1 s tras el ÚLTIMO cambio
 }
 
+// C-8 — run-scoped output flags. Each of these opens its target with "wb" at startup, or keys a
+// dump filename off a per-process counter that resets to 0 (telemetry_csv.hpp:216 and :405;
+// present.cpp:1372 outdump_idx, :1435 qdump_idx, :1489 the qdump manifest, :1723 arrival_log).
+// A restart therefore TRUNCATES the CSV of the run in progress and re-uses the same frame-dump
+// indices in the same folder, leaving two runs interleaved at one set of paths with nothing
+// marking the seam — and a -stats.csv from the older run sitting next to it. Auto-restart is
+// refused while any of them is set; Stop + Start still works and is at least a deliberate act.
+const RUN_SCOPED_OUTPUT_FLAGS = [
+  "--csv",
+  "--dump",
+  "--objdump",
+  "--pairdump",
+  "--outdump",
+  "--phaselog",
+  "--qdump",       // reachable only through the raw-flags box (--qdump DIR N)
+  "--arrival-log", // idem
+];
+
 async function doRestart() {
   if (!invoke || !running) return;
   const args = buildArgs();
-  const exePath = exeInput.value || DEFAULT_EXE;
-  logLine("[ui] restarting FG with new config...", "sys");
-  // Belt-and-suspenders del guard de epoch del backend: marcar el reinicio en vuelo para que
-  // el "fg-exit" del hijo viejo (si el backend llegara a emitir uno) no nos pase a "detenido".
-  restarting = true;
-  try {
-    await invoke("restart", { args, exePath });
-  } catch (e) {
-    logLine("[ui] restart error: " + e, "exit");
-    restarting = false;
-    setRunning(false); // el reinicio falló (p.ej. spawn): el FG ya no está corriendo
+  const clash = RUN_SCOPED_OUTPUT_FLAGS.filter((f) => args.includes(f));
+  if (clash.length) {
+    logLine(
+      "[ui] auto-restart SKIPPED: " +
+        clash.join(" ") +
+        " write run-scoped files that a restart would truncate or interleave (C-8). " +
+        "Stop and Start manually to apply the new config.",
+      "exit"
+    );
     return;
   }
-  // Éxito: el hijo nuevo corre; seguimos "en ejecución". Limpiar el guard tras un margen breve
-  // para descartar un posible fg-exit tardío del hijo viejo (ventana de carrera del backend).
-  setTimeout(() => {
-    restarting = false;
-  }, 600);
+  const exePath = exeInput.value || DEFAULT_EXE;
+  logLine("[ui] restarting FG with new config...", "sys");
+  lastReason = "";
+  // L-2 / C-1 / E-7 — the backend is about to kill THIS child, so its exit is expected from here
+  // on: raise the stale ceiling to its epoch BEFORE the invoke. That is what closes the lib.rs
+  // race (a stale reaper winning the slot lock between restart's take and spawn_fg's store)
+  // WITHOUT the 600 ms blanket that used to swallow the new child's own fatal exit too.
+  staleEpoch = Math.max(staleEpoch, liveEpoch);
+  try {
+    const ep = await invoke("restart", { args, exePath });
+    if (typeof ep === "number") liveEpoch = ep; // the generation that is live now
+    launchedArgs = args; // C-4: what is ACTUALLY running, to compare the preview against
+    renderPreview();
+  } catch (e) {
+    logLine("[ui] restart error: " + e, "exit");
+    setRunning(false); // the restart failed (e.g. a bad exe path): nothing is running
+  }
 }
 
 async function detectMonitors() {
@@ -1067,9 +1251,17 @@ btnStart.addEventListener("click", async () => {
   const args = buildArgs();
   const exePath = exeInput.value || DEFAULT_EXE;
   setRunning(true);
+  lastReason = ""; // L-8: reasons belong to the run that printed them
   logLine("[ui] starting: " + exeBasename(exePath) + " " + args.map(quoteArg).join(" "), "sys");
   try {
-    await invoke("launch", { args, exePath });
+    const ep = await invoke("launch", { args, exePath });
+    // L-2 / C-1 / E-7 — the epoch of the child we just started (see the fg-exit listener). A
+    // backend that does not return one leaves liveEpoch at 0, which the listener reads as
+    // "unknown": every exit is then accepted, i.e. the pre-fix behaviour minus the 600 ms
+    // blanket, which is the part that wedged the UI.
+    if (typeof ep === "number") liveEpoch = ep;
+    launchedArgs = args; // C-4: the argv this child actually got
+    renderPreview();
   } catch (e) {
     logLine("[ui] failed to start: " + e, "exit");
     setRunning(false);
@@ -1083,6 +1275,19 @@ btnStop.addEventListener("click", async () => {
   } catch (e) {
     logLine("[ui] stop error: " + e, "exit");
   }
+  // L-2 / C-1 / E-7 resync — the COMPLEMENT to the epoch guard, kept even though the guard
+  // should make it unnecessary. Stop used to react only to a REJECTION: when the slot was
+  // already empty (the child had died and its exit had been swallowed) lib.rs's stop() killed
+  // nothing and returned Ok, so the UI stayed at "running" with Start disabled and NO in-app
+  // recovery at all — is_running was invoked exactly once in the whole file, at DOMContentLoaded.
+  // Ask the backend what is actually true and believe it, unconditionally, so Stop can ALWAYS
+  // unwedge the UI no matter how the two got out of step.
+  try {
+    const isUp = await invoke("is_running");
+    setRunning(!!isUp);
+  } catch {
+    setRunning(false);
+  }
 });
 
 // ── Wire events ──────────────────────────────────────────────────────────────
@@ -1090,15 +1295,31 @@ if (listen) {
   listen("fg-log", (e) => {
     const line = String(e.payload ?? "");
     parseStatus(line);
+    // L-8 — stash the last named reason so the exit line can carry it. The exit CODE alone maps
+    // to nothing an operator can act on (an init bail returns 1, a parse failure returns 2), and
+    // the FG has already named the cause by the time it dies.
+    if (line.startsWith("[ra] REASON")) lastReason = line.slice("[ra] ".length);
     logLine(line, classify(line));
   });
   listen("fg-exit", (e) => {
-    // Belt-and-suspenders del guard de epoch del backend: si hay un reinicio en vuelo, este
-    // "fg-exit" es del hijo VIEJO (o un cierre transitorio del swap); ignorarlo para que la UI
-    // siga "en ejecución" sin parpadear a "detenido".
-    if (restarting) return;
-    const code = e.payload;
-    logLine("[ui] process finished (code " + (code ?? "?") + ")", "exit");
+    // L-2 / C-1 / E-7 — EPOCH-scoped guard, NOT a time window. This is the defect the operator
+    // hit. The payload is `{ code, epoch }`: `epoch` is the backend generation of the child that
+    // died (see the `shared` contract). Ignore ONLY a child we already know is dead — that is
+    // the documented lib.rs race in which the OLD child's stale reaper wins the slot lock in the
+    // gap between restart()'s take and spawn_fg()'s store, and emits a spurious exit for the
+    // outgoing generation. The child that is live NOW always gets through, so its own fatal exit
+    // (a bad raw-flags token exits in milliseconds, well inside the old 600 ms blanket) can no
+    // longer be swallowed into a permanent "running" with a disabled Start and an inert Stop.
+    // Tolerated payload shapes: a bare code (a backend that does not yet send an epoch) is NEVER
+    // ignored — losing the race-window cover is strictly better than losing real exits.
+    const p = e.payload;
+    const isObj = p !== null && typeof p === "object";
+    const code = isObj ? p.code : p;
+    const epoch = isObj && typeof p.epoch === "number" ? p.epoch : null;
+    if (epoch !== null && epoch <= staleEpoch) return;
+    // L-8 — append the reason the FG already named, so the code stops standing alone.
+    const reason = lastReason ? " — " + lastReason : "";
+    logLine("[ui] process finished (code " + (code ?? "?") + ")" + reason, "exit");
     setRunning(false);
   });
 }

@@ -1,12 +1,15 @@
 // PhyriadFG capture layer. Bodies of the CAPTURE-side D3D11/DXGI interop + iGPU convert/unpack
-// factories declared in capture/capture.hpp. The find-window internals (WndFind / enum_wnd_cb)
-// stay `static`; the main-called factories get external linkage. No *_spv.hpp includes (factories
-// take the SPIR-V as a param).
+// factories declared in capture/capture.hpp. The find-window internals (WndCand / WndFind /
+// enum_wnd_cb / wcs_find_i / wnd_title_utf8 / wnd_pick / wnd_report) stay `static`; the main-called
+// factories get external linkage. No *_spv.hpp includes (factories take the SPIR-V as a param).
 #include "capture/capture.hpp"
 #include "ingest/ingest.hpp"   // R6 step 1: STAGE 2 (the convert + publish, and the --ingest-async worker)
 #include "ingest/frames.hpp"   // R7: RawRing::publish -- the acquire side of the 1->2 ring
 #include <d3d11_4.h>   // ID3D11Multithread (ring: shared immediate-context protection)
-#include <cstring>     // std::strstr (find_window_by_substr / enum_wnd_cb)
+#include <cstring>     // std::memcpy (the staging readbacks)
+#include <cwchar>      // std::wcslen / std::wcsncpy / _wcsnicmp / _wcsicmp (the WIDE window finder)
+#include <vector>      // std::vector<WndCand> (the window finder accumulates every match)
+#include "core/compat_reason.hpp" // ra::compat::emit (the named-reason SOURCE_RESIZED bail on a DDA mode change)
 #include "core/fg_context.hpp"   // FgContext (the C-thread's shared main()-locals as refs)
 #include <cstdio>                 // std::printf (C-thread body)
 #include <cmath>                  // std::sqrt (igpu-field-verify CPU oracle)
@@ -70,12 +73,37 @@ bool dda_rearm(D3D& d){
     if(FAILED(d.dev->QueryInterface(__uuidof(IDXGIDevice),(void**)&dxgi))||!dxgi) return false;
     IDXGIAdapter* ad=nullptr; dxgi->GetAdapter(&ad); rel(dxgi);
     if(!ad) return false;
+    // ── B-5 — re-check the HMONITOR before re-duplicating ─────────────────────────────────────────
+    // The output INDEX is not a stable identity. Unplugging a display whose index is BELOW cap_ci
+    // shifts every higher index down, so EnumOutputs(cap_ci) can hand back a DIFFERENT physical panel
+    // and this function would silently start capturing the wrong screen — the desc was never read
+    // (o->GetDesc was never called here) so nothing noticed. d.cap_hmon is the identity d3d_init
+    // recorded (capture.cpp:43); re-scan the adapter for the output that still carries it.
+    // NO-REGRESSION BY CONSTRUCTION: when the HMONITOR is not found we do NOT refuse the re-arm — an
+    // HMONITOR can legitimately change identity across a display re-enumeration, and refusing would
+    // turn today's working ACCESS_LOST recovery into a permanent park. We warn once and fall back to
+    // the persisted index, which is exactly the current behaviour.
+    if(d.cap_hmon){
+        int hit=-1;
+        for(UINT i=0;;++i){ IDXGIOutput* p=nullptr; if(ad->EnumOutputs(i,&p)!=S_OK) break;
+            DXGI_OUTPUT_DESC pd{}; p->GetDesc(&pd); rel(p);
+            if(pd.Monitor==d.cap_hmon){ hit=(int)i; break; } }
+        if(hit>=0 && hit!=d.cap_ci){
+            std::printf("[ra] DDA re-arm: the captured display moved from output %d to output %d — following it (the index space shifted)\n",d.cap_ci,hit);
+            d.cap_ci=hit;
+        } else if(hit<0){
+            static bool _hmon_said=false;
+            if(!_hmon_said){ _hmon_said=true;
+                std::printf("[ra] DDA re-arm: the captured display's HMONITOR is no longer enumerated — falling back to the persisted output index %d (it may be a different panel)\n",d.cap_ci); }
+        }
+    }
     bool ok=false; IDXGIOutput* o=nullptr;
     if(ad->EnumOutputs((UINT)d.cap_ci,&o)==S_OK && o){
         IDXGIOutput1* o1=nullptr; o->QueryInterface(__uuidof(IDXGIOutput1),(void**)&o1);
         if(o1 && o1->DuplicateOutput(d.dev,&d.dup)==S_OK && d.dup){
             DXGI_OUTDUPL_DESC dd{}; d.dup->GetDesc(&dd);
             d.w=dd.ModeDesc.Width; d.h=dd.ModeDesc.Height; d.fmt=dd.ModeDesc.Format; d.cap_rot=(int)dd.Rotation;
+            { DXGI_OUTPUT_DESC od{}; if(SUCCEEDED(o->GetDesc(&od))) d.cap_hmon=od.Monitor; }   // B-5: keep the display identity current for the NEXT re-arm
             ok=true;
         }
         rel(o1); rel(o);
@@ -84,18 +112,146 @@ bool dda_rearm(D3D& d){
     return ok;
 }
 
-// Find the first visible window whose title contains substr (EnumWindows helper).
+// Resolve the capture-target window. SELECTION CONTRACT (priority order):
+//   1. want_pid  != 0        -> candidate set = the visible top-level windows owned by that pid.
+//                               When want_hwnd is also given, alive, and a MEMBER of that set, it is
+//                               taken directly (the most specific element of the winning set -- the
+//                               pid still governs, the HWND only says which of its windows).
+//   2. want_hwnd != nullptr  -> that HWND, iff IsWindow() && IsWindowVisible() still hold.
+//   3. substr                -> candidate set = visible windows whose title CONTAINS substr.
+// Each stage falls through to the next when its set comes out empty.
+//
+// Every stage accumulates ALL matches (the enumeration is never aborted early) and then CHOOSES
+// deterministically: exact case-insensitive title equality first, else the largest client rect,
+// ties broken by enumeration order. Windows owned by the CALLING process are never candidates.
+// When more than one window matched, the candidates are listed and the choice is printed, so an
+// ambiguous fragment is auditable instead of silently resolving to whatever happens to sit nearest
+// the front of the Z-order (I-2 / E-3 / B-2). Note (from B-2): PhyriadFG's own present HWND does
+// not exist yet at capture_init time, so the self-exclusion has no self-match to make TODAY -- it
+// is here so the finder stays correct if it is ever called after the present surface is up.
+//
+// ENCODING (E-2 / E-8). Titles are read with GetWindowTextW: the old GetWindowTextA flattened every
+// character the ACP cannot represent to '?', so a short CJK needle could alias onto an unrelated CJK
+// title. The needle still arrives as ACP bytes through argv (the CRT flattens the command line), so
+// it is widened here with CP_ACP -- the encoding the CRT actually produced. That makes the HAYSTACK
+// lossless; the argv half needs the UTF-8 application manifest, which this file cannot supply.
+// Titles are printed back out as UTF-8, because the only renderer of these lines is the launcher,
+// which decodes the FG's stdout with String::from_utf8_lossy (ui/src-tauri/src/lib.rs:277/:310).
+//
 // WGC-only (--window): MSVC path. Guarded so the mingw DD-only build stays warning-clean.
 #ifdef _MSC_VER
-struct WndFind { const char* substr; HWND found; };
+// Case-insensitive WIDE substring search. _wcsnicmp folds ASCII under the C locale, which is exactly
+// the case-insensitivity B-2 asked for; it does NOT fold non-ASCII case. That limit is deliberate --
+// a locale-aware fold would mean StrStrIW and shlwapi.lib on the link line, and this file adds no new
+// link dependency.
+static const wchar_t* wcs_find_i(const wchar_t* hay,const wchar_t* needle){
+    if(!hay||!needle) return nullptr;
+    const size_t n=std::wcslen(needle);
+    if(n==0) return hay;
+    for(const wchar_t* p=hay;*p;++p) if(_wcsnicmp(p,needle,n)==0) return p;
+    return nullptr;
+}
+// One accumulated candidate. cw/ch are the CLIENT rect -- a minimized window reports an empty rect,
+// so it scores 0 and ranks last without needing an IsIconic special case.
+struct WndCand { HWND hwnd; DWORD pid; long cw; long ch; bool exact; wchar_t title[256]; };
+struct WndFind {
+    const wchar_t*        needle;    // widened --window substring; nullptr/empty = no title filter
+    DWORD                 want_pid;  // 0 = no pid filter
+    DWORD                 self_pid;  // GetCurrentProcessId() -- never a candidate
+    std::vector<WndCand>* out;
+};
 static BOOL CALLBACK enum_wnd_cb(HWND h,LPARAM lp){
     WndFind* f=reinterpret_cast<WndFind*>(lp);
-    char title[256]={}; GetWindowTextA(h,title,sizeof(title));
-    if(IsWindowVisible(h)&&title[0]&&std::strstr(title,f->substr)){f->found=h;return FALSE;}
-    return TRUE;
+    if(!IsWindowVisible(h)) return TRUE;
+    DWORD pid=0; GetWindowThreadProcessId(h,&pid);
+    if(pid==f->self_pid) return TRUE;                      // never capture ourselves (I-2 / B-2)
+    if(f->want_pid && pid!=f->want_pid) return TRUE;       // pid stage: the pid IS the membership test
+    wchar_t title[256]={}; GetWindowTextW(h,title,256);    // WIDE: no CP_ACP flattening (E-2)
+    if(!title[0]) return TRUE;
+    bool exact=false;
+    if(!f->want_pid){                                      // title stage: substr decides membership
+        if(!f->needle||!f->needle[0]) return TRUE;
+        if(!wcs_find_i(title,f->needle)) return TRUE;
+        exact=(_wcsicmp(title,f->needle)==0);
+    } else if(f->needle&&f->needle[0]){
+        exact=(_wcsicmp(title,f->needle)==0);              // pid stage: the title only RANKS
+    }
+    WndCand c{}; c.hwnd=h; c.pid=pid; c.exact=exact;
+    RECT cr{};
+    if(GetClientRect(h,&cr)&&cr.right>cr.left&&cr.bottom>cr.top){ c.cw=(long)(cr.right-cr.left); c.ch=(long)(cr.bottom-cr.top); }
+    { size_t n=0; while(n<255&&title[n]){ c.title[n]=title[n]; ++n; } }   // bounded copy; c is zero-init so c.title[255] stays L'\0' (a wcsncpy here is C4996)
+    f->out->push_back(c);
+    return TRUE;                                           // NEVER stop early -- accumulate every match
 }
-HWND find_window_by_substr(const char* substr){
-    WndFind f{substr,nullptr}; EnumWindows(enum_wnd_cb,reinterpret_cast<LPARAM>(&f)); return f.found;
+// UTF-8 narrow copy of a wide title for the "[ra] " printf lines (E-8: ACP bytes reached the
+// launcher as U+FFFD).
+static void wnd_title_utf8(const wchar_t* w,char* out,int cb){
+    out[0]='\0';
+    WideCharToMultiByte(CP_UTF8,0,w,-1,out,cb,nullptr,nullptr);
+    out[cb-1]='\0';
+}
+// The deterministic choice: exact title equality first, then the largest client rect, ties broken by
+// enumeration order (the first candidate produced wins).
+static size_t wnd_pick(const std::vector<WndCand>& v){
+    size_t best=0;
+    for(size_t i=1;i<v.size();++i){
+        const WndCand& a=v[best]; const WndCand& b=v[i];
+        if(b.exact!=a.exact){ if(b.exact) best=i; continue; }
+        if((long long)b.cw*b.ch > (long long)a.cw*a.ch) best=i;
+    }
+    return best;
+}
+// Ambiguity report: only ever printed when N>1, so the unambiguous path stays silent (byte-identical
+// output for the common single-match case).
+static void wnd_report(const char* substr,const std::vector<WndCand>& v,size_t chosen){
+    char t[1024]={};
+    wnd_title_utf8(v[chosen].title,t,(int)sizeof(t));
+    std::printf("[ra] --window '%s': %zu windows matched -- using '%s' (pid %lu, %ldx%ld client). "
+                "Pass a longer substring, or the pid, to disambiguate.\n",
+                substr?substr:"",v.size(),t,(unsigned long)v[chosen].pid,v[chosen].cw,v[chosen].ch);
+    const size_t nshow = v.size()<8 ? v.size() : 8;   // bounded: an ambiguous fragment must not spam the log
+    for(size_t i=0;i<nshow;++i){
+        wnd_title_utf8(v[i].title,t,(int)sizeof(t));
+        std::printf("[ra]   %s '%s' (pid %lu, %ldx%ld)%s\n",i==chosen?"->":"  ",t,
+                    (unsigned long)v[i].pid,v[i].cw,v[i].ch,v[i].exact?" [exact title]":"");
+    }
+    if(v.size()>nshow) std::printf("[ra]   ... %zu more\n",v.size()-nshow);
+}
+HWND find_window_by_substr(const char* substr,DWORD want_pid,HWND want_hwnd){
+    const DWORD self_pid=GetCurrentProcessId();
+    wchar_t needle[256]={};
+    if(substr&&substr[0]) MultiByteToWideChar(CP_ACP,0,substr,-1,needle,256);   // argv is ACP bytes (E-2)
+    needle[255]=L'\0';
+
+    // 1. pid (highest priority).
+    if(want_pid){
+        std::vector<WndCand> v; WndFind f{needle,want_pid,self_pid,&v};
+        EnumWindows(enum_wnd_cb,reinterpret_cast<LPARAM>(&f));
+        if(!v.empty()){
+            if(want_hwnd&&IsWindow(want_hwnd))
+                for(size_t i=0;i<v.size();++i) if(v[i].hwnd==want_hwnd) return want_hwnd;
+            const size_t k=wnd_pick(v);
+            if(v.size()>1) wnd_report(substr,v,k);
+            return v[k].hwnd;
+        }
+        std::printf("[ra] --window-pid %lu: no visible window is owned by that pid -- falling back to the HWND/title match.\n",(unsigned long)want_pid);
+    }
+
+    // 2. explicit HWND.
+    if(want_hwnd){
+        DWORD hp=0; GetWindowThreadProcessId(want_hwnd,&hp);
+        if(IsWindow(want_hwnd)&&IsWindowVisible(want_hwnd)&&hp!=self_pid) return want_hwnd;
+        std::printf("[ra] --hwnd %p is not a live visible window -- falling back to the title match.\n",(void*)want_hwnd);
+    }
+
+    // 3. title substring.
+    if(!needle[0]) return nullptr;   // an empty needle now matches NOTHING (the old strstr matched everything)
+    std::vector<WndCand> v; WndFind f{needle,0,self_pid,&v};
+    EnumWindows(enum_wnd_cb,reinterpret_cast<LPARAM>(&f));
+    if(v.empty()) return nullptr;
+    const size_t k=wnd_pick(v);
+    if(v.size()>1) wnd_report(substr,v,k);
+    return v[k].hwnd;
 }
 // Map an HMONITOR to the DXGI output INDEX on the capture (primary) adapter (for --window → DDA-on-its-monitor).
 // Creates a throwaway D3D11 device just to enumerate the primary adapter's outputs; matches by HMONITOR.
@@ -290,8 +446,16 @@ void run_capture(FgContext& ctx){
                         bool re=false;
                         while(!(re=dda_rearm(d)) && !g_quit && !g_quit_threads.load()) Sleep(10);
                         if(re && (d.w!=NAT_W || d.h!=NAT_H)){
-                            static bool warned=false;
-                            if(!warned){ warned=true; std::printf("[ra] WARN: DDA re-armed at %ux%u != pipeline %ux%u (resolution change mid-run needs a restart; capture may show stale frames)\n",d.w,d.h,(unsigned)NAT_W,(unsigned)NAT_H); }
+                            // B-4 (async twin of the serial site below). The pipeline is INIT-SIZED: NAT_W/NAT_H
+                            // thread into dxgi_stage/dxgi_stage2, Astage and every downstream extent, and nothing
+                            // re-sizes them. A duplication re-armed at a NEW mode can therefore never be consumed:
+                            // CopyResource between different dimensions is dropped by the runtime (it returns void),
+                            // and the Map below hands back the PREVIOUS frame's bytes forever. Exit cleanly with a
+                            // named reason instead of falling through into that stall. The old `static bool warned`
+                            // latch is gone -- this path quits, so it cannot repeat and no later mismatch is swallowed.
+                            std::printf("[ra] DDA re-armed at %ux%u != pipeline %ux%u — the capture resolution changed mid-run and the pipeline is init-sized; it cannot follow. Exiting cleanly (restart PhyriadFG to pick up the new mode).\n",d.w,d.h,(unsigned)NAT_W,(unsigned)NAT_H);
+                            ra::compat::emit(ra::compat::ReasonCode::SOURCE_RESIZED);
+                            g_quit_threads.store(true); g_quit=true; break;
                         }
                         have_prev=false;   // the previous copy (if any) is on the dead duplication — drop it
                         continue;
@@ -572,8 +736,14 @@ void run_capture(FgContext& ctx){
                             bool re=false;
                             while(!(re=dda_rearm(d)) && !g_quit && !g_quit_threads.load()) Sleep(10);
                             if(re && (d.w!=NAT_W || d.h!=NAT_H)){
-                                static bool warned=false;
-                                if(!warned){ warned=true; std::printf("[ra] WARN: DDA re-armed at %ux%u != pipeline %ux%u (resolution change mid-run needs a restart; capture may show stale frames)\n",d.w,d.h,(unsigned)NAT_W,(unsigned)NAT_H); }
+                                // B-4. Same reasoning as the async twin above: the CopyResource at the bottom of
+                                // this branch copies into dxgi_stage, which is NAT_W x NAT_H and is never realloc'd.
+                                // A dimension-mismatched CopyResource is dropped by the runtime, so the BLOCKING Map
+                                // that follows returns the previous frame's bytes indefinitely. Named reason + clean
+                                // exit, and no `static bool warned` latch to swallow a second mismatch.
+                                std::printf("[ra] DDA re-armed at %ux%u != pipeline %ux%u — the capture resolution changed mid-run and the pipeline is init-sized; it cannot follow. Exiting cleanly (restart PhyriadFG to pick up the new mode).\n",d.w,d.h,(unsigned)NAT_W,(unsigned)NAT_H);
+                                ra::compat::emit(ra::compat::ReasonCode::SOURCE_RESIZED);
+                                g_quit_threads.store(true); g_quit=true; break;
                             }
                             continue;
                         }

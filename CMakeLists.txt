@@ -333,6 +333,16 @@ endif()
 if(MSVC)
     target_compile_options(phyriad_fg PRIVATE /W4 /EHsc)
     target_link_libraries(phyriad_fg PRIVATE windowsapp)   # C++/WinRT (WGC backend)
+    # E-2: embed res/phyriad_fg.manifest so the process ACP is UTF-8 (see that file for why a manifest
+    # and not /utf-8). /MANIFESTINPUT requires /MANIFEST:EMBED, and both are link.exe options -- hence
+    # the MSVC guard. The non-MSVC branch below is left alone and therefore keeps the system ACP and the
+    # defect; that is deliberate, since build.bat / build-release.bat both pin the MSVC toolchain and the
+    # MinGW path is not a shipped configuration. LINK_DEPENDS makes an edit to the manifest relink.
+    target_link_options(phyriad_fg PRIVATE
+        "/MANIFEST:EMBED"
+        "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/res/phyriad_fg.manifest")
+    set_property(TARGET phyriad_fg APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/res/phyriad_fg.manifest")
     set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/core/ra_simd.cpp"
         PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
 else()

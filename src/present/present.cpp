@@ -8,6 +8,7 @@
 #include "tdr_hang_spv.hpp"           // kTdrHangSpv (--tdr-test, G-R4)
 #include "seam/seam_graph.hpp"     // STAGE 5 output barriers, derived (R2b/X15)
 #include "core/compat_reason.hpp"    // ra::compat::emit / ReasonCode (named-reason present-init bail)
+#include "core/app_init.hpp"         // wgc_recheck_window_monitor (I-8: the 1 Hz captured-monitor re-check)
 #include "flow/flow.hpp"             // MedianPipe (the P-thread medPipe member access)
 #include <phyriad/hal/CpuWait.hpp>   // phyriad::hal::cpu_wait_for_ns (paced spin-finish)
 #include "core/globals.hpp"          // g_quit / vk_live / g_ov_in/g_ov_out / g_gpu_a_util / g_device_lost (true globals the P body names)
@@ -377,7 +378,12 @@ void run_present(FgContext& ctx){
             phyriadfg::TelemetryCsv tcsv;
             if(!cfg.csv_path.empty()){
                 unsigned long tgt_pid=0; if(wgc_target_hwnd) GetWindowThreadProcessId(wgc_target_hwnd,&tgt_pid);
-                const std::string appname = cfg.window_substr[0] ? std::string(cfg.window_substr) : std::string("monitor");
+                // The CSV's Application column: a pid-bound run has no title argument, so name it by
+                // the identity that was actually used rather than mislabelling the row "monitor".
+                const std::string appname = cfg.window_substr[0] ? std::string(cfg.window_substr)
+                    : cfg.window_pid  ? ("pid:"  + std::to_string(cfg.window_pid))
+                    : cfg.window_hwnd ? ("hwnd:" + std::to_string(cfg.window_hwnd))
+                    : std::string("monitor");
                 tcsv.start(cfg.csv_path, appname, (unsigned int)tgt_pid, nvNameA, nvNameB);
             }
             // per-tick row counter + forward-fill of the per-SECOND rates (computed at the
@@ -1638,8 +1644,13 @@ void run_present(FgContext& ctx){
             // the beat |R_panel−N·src| is structurally impossible.
             {
                 const double tick_period_ms=1000.0/(double)cfg.refresh_hz;
-                std::printf("[ra] output-clock: timer @ %d Hz (tick %.3f ms) — present cadence = the panel\n",
-                    cfg.refresh_hz,tick_period_ms);
+                // C-5: name the SOURCE. This line used to assert "present cadence = the panel" for a number
+                // that was hard-coded at 240 Hz and had never been read off any panel.
+                const char* _hz_src = cfg.refresh_hz_set        ? "--refresh-hz override"
+                                    : cfg.refresh_hz_from_panel ? "derived from the present monitor"
+                                                                : "built-in default — the present monitor reported no usable refresh";
+                std::printf("[ra] output-clock: timer @ %d Hz (tick %.3f ms) — %s\n",
+                    cfg.refresh_hz,tick_period_ms,_hz_src);
                 // ── --target-output-fps DECIMATION (v1: exact panel-rate divisors only) ──────────
                 // TRUE tick decimation: the pacer keeps the panel vblank cadence; on non-selected
                 // slots the tick SKIPS selection+warp+present entirely (the flip chain persists the
@@ -1955,6 +1966,20 @@ void run_present(FgContext& ctx){
                             g_quit_threads.store(true); g_quit=true; break;
                         }
                     }
+
+                    // ── I-8 — 1 Hz re-check of the captured window's MONITOR (WGC window path) ─────
+                    // WGC follows the window across panels by itself, so the PICTURE stays right; what
+                    // goes stale is the delivery-cadence base — MinUpdateInterval was derived once from
+                    // the STARTING panel's Hz and never revisited. The check is one MonitorFromWindow per
+                    // second while the window stays put. The DDA half of this defect is NOT covered; the
+                    // honest reason lives at wgc_recheck_window_monitor (capture/capture_init.cpp).
+#ifdef _MSC_VER
+                    if(wgc_target_hwnd && cfg.capture_api==CA_WGC && wgc_ctx){
+                        static HMONITOR mon_cur=nullptr; static int mon_hz=0; static double mon_last=0.0;
+                        if(!mon_cur) mon_cur=MonitorFromWindow(wgc_target_hwnd,MONITOR_DEFAULTTONEAREST);   // seed: no re-apply on the first tick
+                        if((t0_p-mon_last)>=1000.0){ mon_last=t0_p; wgc_recheck_window_monitor(cfg,wgc_target_hwnd,wgc_ctx,mon_cur,mon_hz); }
+                    }
+#endif
 
                     // ── No async-hang watchdog here. A naive age check on async_inflight false-positives:
                     // async_inflight is read BEFORE the in-lambda preamble that clears it, so it ~always reads

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- phyriad_fg.exe application manifest.
+     E-2: pins the PROCESS active code page to UTF-8 so every narrow-string path in the process speaks
+     one encoding. Without this the CRT flattens argv through CP_ACP and GetWindowTextA returns CP_ACP
+     bytes, so the byte-wise std::strstr in src/capture/capture.cpp:94 compares one lossy transcription
+     against another and an unmappable title degrades to a run of '?'. With it, both sides are UTF-8 and
+     the substring match is lossless (UTF-8 is self-synchronizing, so a byte-wise strstr cannot match a
+     partial code point). Requires Windows 10 1903+; on anything older the setting is IGNORED and the
+     process silently keeps today's system-ACP behaviour; it never fails to launch.
+     NOTE: this does NOT change the CONSOLE OUTPUT code page. See the full fix in the patch notes. -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>
+<!-- Made with my soul - Swately <3 -->

@@ -443,6 +443,10 @@ bool init_images(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, VkFormat n
 #ifdef _MSC_VER
 bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int cap_mon_hz,
                       HWND wgc_target_hwnd, ImagesInit& o_img, WgcCtx*& wgc_ctx);                    // capture/capture_init.cpp (MSVC/WGC)
+// I-8: 1 Hz re-check of the captured window's monitor — re-applies the WGC delivery cadence when the
+// window moves to a panel with a different refresh. io_hmon/io_hz are the caller's remembered state
+// (seed io_hmon from MonitorFromWindow at the first tick, io_hz from 0). No-op while the window stays put.
+void wgc_recheck_window_monitor(Config& cfg, HWND hwnd, WgcCtx* ctx, HMONITOR& io_hmon, int& io_hz);  // capture/capture_init.cpp (MSVC/WGC)
 #endif
 bool init_igpu_pipes(Config& cfg, uint32_t NAT_W, uint32_t NAT_H, uint32_t nat_bpp,
                      uint32_t WW, uint32_t WH, DevicesInit& o_dev, HostBridgeInit& o_host,

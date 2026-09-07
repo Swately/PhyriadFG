@@ -6,6 +6,7 @@
 #include <cstdio>
 #include "core/app_init.hpp"
 #include "core/compat_reason.hpp"   // ra::compat::emit (named compatibility-floor reasons)
+#include "core/globals.hpp"          // g_quit — the source-lifecycle callbacks latch the clean-exit flag
 #include "hdr_convert_spv.hpp"
 #include "igpu_convert_pack_spv.hpp"
 #include "unpack_packed_spv.hpp"
@@ -159,10 +160,16 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
         // named reason. Catch it on this cold path, surface CAPTURE_INIT_FAILED, and exit cleanly via the
         // `goto done` cleanup (forward jump out of this scope runs the locals' destructors).
         try {
-            if(cfg.window_substr[0]){
+            if(wgc_target_hwnd){   // RESOLVED, not merely requested -- --window-pid/--hwnd bind with no title
                 winrt::check_hresult(interop->CreateForWindow(wgc_target_hwnd,
                     winrt::guid_of<wgc::GraphicsCaptureItem>(),winrt::put_abi(cap_item)));
-                std::printf("[ra] WGC: capturing window '%s'\n",cfg.window_substr);
+                {   // Report the window we RESOLVED, not the argument we were given: with
+                    // --window-pid the title argument is a tie-break and may not describe it at all.
+                    wchar_t _wt[256]={}; GetWindowTextW(wgc_target_hwnd,_wt,256);
+                    char _t8[512]={}; WideCharToMultiByte(CP_UTF8,0,_wt,-1,_t8,(int)sizeof(_t8)-1,nullptr,nullptr);
+                    DWORD _tp=0; GetWindowThreadProcessId(wgc_target_hwnd,&_tp);
+                    std::printf("[ra] WGC: capturing window '%s' (pid %lu)\n",_t8,(unsigned long)_tp);
+                }
                 if(cfg.dpi_probe){ auto _sz=cap_item.Size(); std::printf("[ra] --dpi-probe: cap_item.Size()=%dx%d (WGC's OWN physical window size — the DPI-independent source of truth)\n",_sz.Width,_sz.Height); }
             } else {
                 winrt::check_hresult(interop->CreateForMonitor(d.cap_hmon,
@@ -243,6 +250,37 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
             if(!raw_wctx->running.load()) return;
             auto frame=p.TryGetNextFrame(); if(!frame) return;
             if(dp_on){ static bool _dp_once=false; if(!_dp_once){ _dp_once=true; auto _cs=frame.ContentSize(); std::printf("[ra] --dpi-probe: first frame.ContentSize()=%dx%d (what WGC ACTUALLY delivers — the non-circular truth vs the pool size)\n",_cs.Width,_cs.Height); } }
+            // ── I-3 / B-1 / E-4 — MID-RUN SOURCE-RESIZE DETECT (detect-and-quit; MINIMAL fix) ──────
+            // The whole pipeline is sized ONCE at init: NAT_W/NAT_H (capture_init.cpp:424, const) feed
+            // the staging ring (:188/:191), the WGC pool (:193/:199-200), the Vulkan images and every
+            // flow/warp extent. WGC frames are always POOL-sized, so a grown window is CROPPED and a
+            // shrunk one is parked top-left with stale margins — wrong content, no crash, no log line,
+            // for the rest of the run. There is no re-init path (see the deferred full fix), so the
+            // honest small fix is to detect the change and exit cleanly with a named reason.
+            //
+            // WHY THE BASELINE IS THE FIRST FRAME AND NOT pool_sz: WGC's own idea of the source size can
+            // legitimately differ from the GetClientRect that sized the pool — that gap IS the known
+            // startup high-DPI crop this file's own --dpi-probe (:166, :418) exists to expose. Comparing
+            // against pool_sz would fire on frame 1 and refuse to run at all on those rigs. Comparing
+            // against the first DELIVERED frame detects the CHANGE, which is the actual defect.
+            // Cost: one ContentSize() property read per delivered frame (<=240/s) — a getter on an
+            // already-materialized frame; there is no cheaper way to see the change.
+            {
+                const auto _sz=frame.ContentSize();
+                const int32_t _bw=raw_wctx->base_w.load();
+                if(_bw==0){
+                    raw_wctx->base_w.store(_sz.Width); raw_wctx->base_h.store(_sz.Height);
+                } else if(_sz.Width!=_bw || _sz.Height!=raw_wctx->base_h.load()){
+                    raw_wctx->size_changed.store(true);
+                    if(!raw_wctx->bail_said.exchange(true)){
+                        std::printf("[ra] captured source RESIZED %dx%d -> %dx%d — the pipeline is sized once at init (no re-init path); exiting cleanly\n",
+                                    _bw,raw_wctx->base_h.load(),_sz.Width,_sz.Height);
+                        ra::compat::emit(ra::compat::ReasonCode::SOURCE_RESIZED);
+                    }
+                    g_quit=true;
+                    return;   // do NOT copy a frame whose content no longer matches the ring geometry
+                }
+            }
             auto surface=frame.Surface();
             auto acc=surface.try_as<IDirect3DDxgiInterfaceAccess>(); if(!acc) return;
             winrt::com_ptr<ID3D11Texture2D> tex;
@@ -288,6 +326,29 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
             raw_wctx->frame_ready.store(true);
         });
 
+        // ── B-6 — SOURCE-DEATH DETECTOR for WGC (covers the MONITOR path the watchdog cannot) ────
+        // present.cpp:1950's window-death watchdog is gated on `if(wgc_target_hwnd)`, and
+        // present_stage.cpp:45 confirms that handle is NULL in monitor mode — so when a captured
+        // DISPLAY is removed, frames stop, f_seq stalls and P re-presents the stale pair forever with
+        // unbounded latency, which is precisely the failure the window watchdog was written to fix.
+        // GraphicsCaptureItem::Closed fires for BOTH shapes (window destroyed / display removed), so
+        // ONE registration beside the FrameArrived one closes the gap without touching the window path.
+        // The item is stored on the ctx first: the local cap_item dies with this function, and the
+        // registration must outlive it. Teardown sets running=false BEFORE session.Close()
+        // (main.cpp:1113-1114), so a Closed fired by our own teardown is correctly ignored.
+        wgc_ctx->item=cap_item;
+        {
+            WgcCtx* raw_wctx_c=wgc_ctx;
+            wgc_ctx->item.Closed([raw_wctx_c](auto&,auto&){
+                if(!raw_wctx_c->running.load()) return;   // our own teardown closes it — not a death
+                raw_wctx_c->source_closed.store(true);
+                if(!raw_wctx_c->bail_said.exchange(true)){
+                    std::printf("[ra] capture source CLOSED (window destroyed or captured display removed) — exiting cleanly\n");
+                    ra::compat::emit(ra::compat::ReasonCode::SOURCE_CLOSED);
+                }
+                g_quit=true;
+            });
+        }
         wgc_ctx->session=wgc_ctx->pool.CreateCaptureSession(cap_item);
         try { wgc_ctx->session.IsBorderRequired(false); } catch(...) {}  // Win11 22621+ only
         // Do NOT bake the cursor into captured frames — a captured (delayed) cursor would float
@@ -314,6 +375,7 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
             const long long mui_100ns = (cfg.cap_fps > 0) ? (10000000LL / (long long)cfg.cap_fps)
                                        : (cfg.dedup ? mui_dedup : 80000LL);
             wgc_ctx->session.MinUpdateInterval(winrt::Windows::Foundation::TimeSpan{mui_100ns});
+            wgc_ctx->mui_100ns.store(mui_100ns);   // I-8: the LIVE cadence base, so the 1 Hz monitor re-check re-applies only a CHANGED value
             if (cfg.cap_fps > 0)
                 std::printf("[ra] WGC MinUpdateInterval: %.1f ms (--cap-fps %d) — source throttled so the FG interpolates more frames/pair (crescent easier to eyeball)\n", (double)mui_100ns/10000.0, cfg.cap_fps);
             else if (cfg.dedup)
@@ -323,9 +385,87 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
         } catch(...) { std::printf("[ra] WGC MinUpdateInterval: unavailable (pre-24H2) — default ~60/s cap\n"); }
         wgc_ctx->session.StartCapture();
         std::printf("[ra] WGC session started — frames arriving via free-threaded callback\n");
+        // ── I-6 — FIRST-FRAME TIMEOUT ────────────────────────────────────────────────────────────
+        // Before this, EVERY no-frames cause left the process idling forever with no named reason: the
+        // C-thread's spin (capture.cpp:418-419) is bounded but its enclosing loop is not, and
+        // present.cpp:1953's death watchdog needs !IsWindow, which stays TRUE for a live-but-silent
+        // source. So the run printed 'cap 0/s' every stat line and never terminated. Wait BOUNDED for
+        // the first FrameArrived — the callback bumps `arrived` before any drop path can swallow the
+        // frame — and quit with a named reason if none comes. This catches the iconic case the guard
+        // above cannot see (a window restored between the IsIconic check and StartCapture), an OS
+        // capture-policy refusal, and a source on a GPU this session cannot be fed from.
+        // Healthy path: WGC delivers on session start, so this costs one 5 ms sleep at most and is silent.
+        {
+            const int kFirstFrameMs=5000;   // generous: a busy compositor, or a --cap-fps 1 throttle
+            int _waited=0;
+            while(wgc_ctx->arrived.load()==0 && !g_quit && _waited<kFirstFrameMs){ Sleep(5); _waited+=5; }
+            if(wgc_ctx->arrived.load()==0 && !g_quit){
+                std::printf("[ra] WGC delivered NO frame in %d ms — the source is not producing (minimized, capture-policy blocked, or on a GPU WGC will not deliver from)\n",kFirstFrameMs);
+                ra::compat::emit(ra::compat::ReasonCode::NO_FRAMES);
+                return false;   // clean cold-path exit — main.cpp:519 takes `goto done`, which tears the ctx down
+            }
+            if(_waited>=250) std::printf("[ra] WGC first frame took %d ms\n",_waited);
+        }
     }
 #endif
     return true;
+}
+
+// ── I-8 — slow-cadence re-check of the CAPTURED WINDOW'S MONITOR (WGC window path only) ────────
+// THE HONEST SPLIT between the two halves of this finding:
+//
+//   CHEAP — implemented here. WGC's CreateForWindow follows the window across monitors BY ITSELF, so
+//   the CONTENT stays correct; the only thing that goes stale is the delivery-cadence base, because
+//   MinUpdateInterval was derived ONCE (capture_init.cpp:312-316) from the panel the window started on
+//   and cap_mon_hz (:474-478) is never revisited. Re-deriving it costs a MonitorFromWindow +
+//   GetMonitorInfo + EnumDisplaySettingsEx and a LIVE property set on the session that already exists.
+//   Nothing is reallocated, nothing is re-created, and while the window stays put the whole call is one
+//   MonitorFromWindow that returns the cached HMONITOR and bails.
+//
+//   NOT CHEAP — deliberately NOT implemented, and this is the honest half. Following the window on the
+//   DDA path means releasing the duplication, re-DuplicateOutput on a new output index (d.cap_ci is the
+//   index dda_rearm persists), and accepting that the new panel may have a DIFFERENT RESOLUTION — which
+//   walks straight into the same wall as I-3/B-1/B-4: NAT_W/NAT_H, the staging ring, the Vulkan images
+//   and every flow/warp extent are frozen at init and there is no re-init path. Doing it "cheaply"
+//   would produce exactly the silent CopyResource-size-mismatch stall B-4 documents. DDA is also behind
+//   the non-default --capture-api dd and is monitor-scoped by construction (cli.cpp:784). So the DDA
+//   half stays deferred, named here rather than pretended away.
+//
+// Called at ~1 Hz from the present loop. io_hmon/io_hz are the caller's remembered state.
+void wgc_recheck_window_monitor(Config& cfg, HWND hwnd, WgcCtx* ctx, HMONITOR& io_hmon, int& io_hz){
+    if(!hwnd || !ctx || cfg.capture_api!=CA_WGC) return;
+    const HMONITOR hm=MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST);
+    if(!hm || hm==io_hmon) return;              // the window has not changed panel — this is the whole cost
+    io_hmon=hm;
+    MONITORINFOEXA mi{}; mi.cbSize=sizeof(mi);
+    int hz=0;
+    if(GetMonitorInfoA(hm,(LPMONITORINFO)&mi)){
+        DEVMODEA dm{}; dm.dmSize=sizeof(dm);
+        if(EnumDisplaySettingsExA(mi.szDevice,ENUM_CURRENT_SETTINGS,&dm,0)) hz=(int)dm.dmDisplayFrequency;
+    }
+    if(hz<=0) return;                           // could not read the new panel — leave the cadence alone
+    io_hz=hz;
+    // The SAME derivation as the init site (capture_init.cpp:312-316) — one formula, kept identical:
+    // --cap-fps wins; else HALF the captured panel's period with --dedup, clamped [0.5ms, 8ms]; else the
+    // historical 8 ms floor. With --cap-fps set or --dedup off the value does not depend on the panel,
+    // so the compare below correctly makes this a no-op instead of a misleading re-apply.
+    const long long half_period_100ns = 10000000LL / (2LL*(long long)hz);
+    const long long mui_dedup = half_period_100ns<5000LL?5000LL:(half_period_100ns>80000LL?80000LL:half_period_100ns);
+    const long long mui_100ns = (cfg.cap_fps > 0) ? (10000000LL / (long long)cfg.cap_fps)
+                               : (cfg.dedup ? mui_dedup : 80000LL);
+    if(mui_100ns==ctx->mui_100ns.load()){
+        std::printf("[ra] captured window moved to a %d Hz panel — the WGC cadence base is unchanged (%.2f ms; --cap-fps / no --dedup pin it)\n",
+                    hz,(double)mui_100ns/10000.0);
+        return;
+    }
+    try {
+        ctx->session.MinUpdateInterval(winrt::Windows::Foundation::TimeSpan{mui_100ns});
+        ctx->mui_100ns.store(mui_100ns);
+        std::printf("[ra] captured window moved to a %d Hz panel — WGC MinUpdateInterval re-applied: %.2f ms (delivery cadence follows the window)\n",
+                    hz,(double)mui_100ns/10000.0);
+    } catch(...) {
+        std::printf("[ra] captured window moved to a %d Hz panel — MinUpdateInterval unavailable (pre-24H2); delivery cadence unchanged\n",hz);
+    }
 }
 #endif
 // ── Capture source init (E1: moved VERBATIM from main.cpp's pre-goto init head).
@@ -349,17 +489,29 @@ int init_capture_source(Config& cfg, CaptureSrcInit& o_cap){
     // Ruta DDA explícita (--capture-api dd, ya no el default): --window captura el MONITOR completo
     // donde está la ventana, vía DDA (llega al refresh del panel; el default WGC con --dedup también
     // llega — MinUpdateInterval derivado del panel capturado; sin --dedup WGC conserva su cap de 8ms).
-    if (cfg.capture_api==CA_DD && cfg.window_substr[0]) {
+    if (cfg.capture_api==CA_DD && wants_window_target(cfg)) {
         // --present-own-window con DDA: persistimos el HWND del juego en wgc_target_hwnd para que
         // present.cpp lo pase como psd.game_hwnd → el yield del plano OwnWindow lo reconoce como "frente
         // válido" y NO se esconde cuando el juego está al frente. Da el pid correcto al CSV. El watchdog de
         // muerte-de-ventana es seguro en DDA (la captura del escritorio no se estanca al cerrar la ventana).
-        wgc_target_hwnd=find_window_by_substr(cfg.window_substr);
+        wgc_target_hwnd=find_window_by_substr(cfg.window_substr, (DWORD)cfg.window_pid, (HWND)(uintptr_t)cfg.window_hwnd);
         if (wgc_target_hwnd) {
             int _oi=d3d_output_index_for_monitor(MonitorFromWindow(wgc_target_hwnd,MONITOR_DEFAULTTONEAREST));
             if (_oi>=0) { cfg.cap_mon=_oi; std::printf("[ra] --window '%s' -> DDA en su monitor (salida %d)\n",cfg.window_substr,_oi); }
             else std::printf("[ra] --window '%s': no mapea a una salida DXGI del adaptador de captura (¿otra GPU?) — usando --monitor %d (DDA)\n",cfg.window_substr,cfg.cap_mon);
-        } else std::printf("[ra] --window '%s': ninguna ventana visible coincide — usando --monitor %d (DDA)\n",cfg.window_substr,cfg.cap_mon);
+        } else {
+            // L-3 / E-5: this was a bare printf that fell through, so a stale --window title silently captured
+            // --monitor 0 -- with tgt_pid 0 in the CSV (present.cpp gates GetWindowThreadProcessId on this HWND)
+            // and the window-death watchdog disabled (present.cpp gates it on `if(wgc_target_hwnd)`), while the
+            // WGC branch below emits WINDOW_NOT_FOUND and bails on the identical condition. Emit the named reason
+            // ALWAYS so the launcher's compat surface and the operator see the target was never bound, and bail
+            // like WGC -- EXCEPT when --monitor was explicit, which is the one case where whole-monitor DDA
+            // capture of a named output is what was asked for rather than a degradation.
+            std::printf("[ra] --window '%s': ninguna ventana visible coincide (DDA)\n",cfg.window_substr);
+            ra::compat::emit(ra::compat::ReasonCode::WINDOW_NOT_FOUND);
+            if(!cfg.cap_mon_explicit){ d3d_shutdown(d); return 1; }
+            std::printf("[ra] --monitor %d was explicit: continuing as WHOLE-MONITOR DDA capture with NO window binding (no target pid in the CSV, no window-death watchdog)\n",cfg.cap_mon);
+        }
     }
 #endif
     const bool want_dd = (cfg.capture_api == CA_DD);
@@ -399,25 +551,85 @@ int init_capture_source(Config& cfg, CaptureSrcInit& o_cap){
             pres_outputs[i].coords.left,pres_outputs[i].coords.top,pres_outputs[i].hz,
             pres_outputs[i].adapter_name,pres_outputs[i].attached?"":" [detached]");
     if (cfg.list_only) { d3d_shutdown(d); return 0; }
-    if (cfg.pres_mon<0||cfg.pres_mon>=(int)pres_outputs.size()){
-        // Present ON the capture/game monitor — the assistant's whole point. The surface is
-        // capture-proof BY CONSTRUCTION (the pillar's WDA). --present-monitor still overrides.
-        cfg.pres_mon=cfg.cap_mon;
+    // ── B-7: pres_outputs is indexed UNGUARDED downstream (main.cpp: `pres_outputs[cfg.pres_mon].coords`,
+    // std::vector::operator[]), and nothing upstream range-tested the index it inherited. Three guards:
+    // an empty enumeration bails with a named reason; an out-of-range --present-monitor is REPORTED and
+    // demoted to "unset" instead of silently becoming something else; an out-of-range --monitor is
+    // reported here, where d.outputs is finally known (d3d_init cannot reject it on the WGC path --
+    // capture.cpp returns true on device-created alone, and capture_init force-sets d.fmt below, which
+    // bypasses route_for, the only guard that used to catch it).
+    if (pres_outputs.empty()) {
+        std::printf("[ra] no present candidates enumerated (no attached DXGI output on any adapter)\n");
+        ra::compat::emit(ra::compat::ReasonCode::CAPTURE_INIT_FAILED); d3d_shutdown(d); return 1;
     }
+    if (cfg.pres_mon>=(int)pres_outputs.size()) {
+        std::printf("[ra] --present-monitor %d out of range (%zu present candidates) — resolving from the capture/game monitor instead\n",cfg.pres_mon,pres_outputs.size());
+        cfg.pres_mon=-1;
+    }
+    if (cfg.cap_mon<0 || cfg.cap_mon>=(int)d.outputs.size())
+        std::printf("[ra] WARNING: --monitor %d is not an output index on the capture adapter (%zu outputs) — capture dimensions and the present-monitor derivation fall back\n",cfg.cap_mon,d.outputs.size());
+    // pres_mon itself is resolved AFTER the --window block below: on the WGC path the target window's
+    // HMONITOR is not known until then, and the resolution keys on that HMONITOR, never on an index
+    // copied across index spaces (see the block after #endif).
     // WDA_EXCLUDEFROMCAPTURE on the pillar's HWND makes capture+present on one output
     // feedback-free unconditionally.
 
     // WGC window capture: adjust d.w/d.h from target window's client rect before route_for.
 #ifdef _MSC_VER
-    if(cfg.capture_api==CA_WGC && cfg.window_substr[0]){
-        wgc_target_hwnd=find_window_by_substr(cfg.window_substr);
+    if(cfg.capture_api==CA_WGC && wants_window_target(cfg)){
+        wgc_target_hwnd=find_window_by_substr(cfg.window_substr, (DWORD)cfg.window_pid, (HWND)(uintptr_t)cfg.window_hwnd);
         if(!wgc_target_hwnd){std::printf("[ra] --window: no visible window matching '%s'\n",cfg.window_substr);ra::compat::emit(ra::compat::ReasonCode::WINDOW_NOT_FOUND);d3d_shutdown(d);return 1;}   // named reason on the no-match bail
+        // ── I-6 / B-3 / E-4b — a MINIMIZED target is FATAL, not "keep the monitor size" ──────────
+        // The finder's only filter is IsWindowVisible (capture.cpp:94), and WS_VISIBLE survives
+        // minimize — so an iconic window MATCHES. Its client rect is empty, and the guard below used to
+        // have NO else: d.w/d.h silently kept the whole-monitor values d3d_init wrote (capture.cpp:50-51),
+        // sizing the staging ring, the WGC pool and every downstream extent to the monitor and parking
+        // the window's content in the top-left corner (the same corner-zoom --dpi-probe names). Bail with
+        // a named reason instead, in exactly the shape of the null-HWND bail on the line above.
+        if(IsIconic(wgc_target_hwnd)){
+            std::printf("[ra] --window '%s': the matched window is MINIMIZED — restore it and start again\n",cfg.window_substr);
+            ra::compat::emit(ra::compat::ReasonCode::SOURCE_MINIMIZED); d3d_shutdown(d); return 1;
+        }
         RECT cr{}; GetClientRect(wgc_target_hwnd,&cr);
         if(cr.right>cr.left&&cr.bottom>cr.top){d.w=(uint32_t)(cr.right-cr.left);d.h=(uint32_t)(cr.bottom-cr.top);}
+        else {
+            // Degenerate rect from any cause (iconic-but-not-IsIconic, a shell window, a failed call):
+            // inheriting the monitor size here is what makes the corner-zoom look like a healthy run.
+            std::printf("[ra] --window '%s': GetClientRect is empty (%ldx%ld) — refusing to inherit the monitor size\n",
+                        cfg.window_substr,cr.right-cr.left,cr.bottom-cr.top);
+            ra::compat::emit(ra::compat::ReasonCode::SOURCE_MINIMIZED); d3d_shutdown(d); return 1;
+        }
         d.fmt=DXGI_FORMAT_B8G8R8A8_UNORM; // WGC always delivers BGRA8
         if(cfg.dpi_probe){ UINT _dpi=GetDpiForWindow(wgc_target_hwnd); std::printf("[ra] --dpi-probe: GetClientRect=%ldx%ld  GetDpiForWindow=%u (scale %.2fx) — this feeds NAT_W/NAT_H + the WGC pool today\n",cr.right-cr.left,cr.bottom-cr.top,_dpi,_dpi/96.0); }
     }
 #endif
+    // ── The present monitor, resolved by HMONITOR (I-4 / B-8 / B-7) ───────────────────────────────
+    // THREE index spaces meet here and an integer must never cross between them:
+    //   (1) cfg.cap_mon  indexes d.outputs      — the CAPTURE adapter's EnumOutputs order;
+    //   (2) cfg.pres_mon indexes pres_outputs   — EnumAdapters x EnumOutputs over EVERY adapter;
+    //   (3) PresentSurface::pick_monitor(n)     — EnumDisplayMonitors order with index 0 FORCED to the
+    //       primary monitor (PresentSurface.cpp mon_enum).
+    // The old `cfg.pres_mon=cfg.cap_mon` copied (1) into (2) and then handed the result to (3), and the
+    // DDA branch's window->monitor derivation was never mirrored on the DEFAULT WGC path, so "present on
+    // the game's monitor" was true only on a single-monitor rig. Resolve on the HMONITOR instead: the
+    // --window target's monitor when one is bound and --monitor was not explicit, else the captured
+    // output's monitor. cfg.pres_hmon then carries the exact handle to the presenter, which bypasses (3).
+    {
+        HMONITOR _want=nullptr; const char* _src="captured output";
+#ifdef _MSC_VER
+        if(wgc_target_hwnd && !cfg.cap_mon_explicit){ _want=MonitorFromWindow(wgc_target_hwnd,MONITOR_DEFAULTTONEAREST); _src="--window target's monitor"; }
+#endif
+        if(!_want){ _want=d.cap_hmon; _src="captured output"; }
+        if(cfg.pres_mon>=0) _src="--present-monitor (explicit)";
+        else {
+            cfg.pres_mon=0;   // floor: pres_outputs is non-empty (guarded above), so [0] is always valid
+            bool _hit=false;
+            if(_want) for(size_t _i=0;_i<pres_outputs.size();++_i) if(pres_outputs[_i].hmon==_want){ cfg.pres_mon=(int)_i; _hit=true; break; }
+            if(!_hit) _src="fallback [0] — no present candidate matches that HMONITOR";
+        }
+        cfg.pres_hmon=(void*)pres_outputs[cfg.pres_mon].hmon;
+        std::printf("[ra] present monitor: [%d] %s %dHz  <- %s\n",cfg.pres_mon,pres_outputs[cfg.pres_mon].name,pres_outputs[cfg.pres_mon].hz,_src);
+    }
     VkFormat nat_vkfmt=VK_FORMAT_UNDEFINED; uint32_t nat_bpp=0; Route route=RT_NONE; const char* rdesc="";
     if (!route_for(d.fmt,nat_vkfmt,nat_bpp,route,rdesc)) { std::printf("[ra] unsupported capture format DXGI=%d\n",(int)d.fmt); ra::compat::emit(ra::compat::ReasonCode::UNSUPPORTED_FORMAT); d3d_shutdown(d); return 1; }   // named reason on the unsupported-format bail
     const bool IS_HDR=(route==RT_HDR);
@@ -461,6 +673,25 @@ int init_capture_source(Config& cfg, CaptureSrcInit& o_cap){
     const uint32_t WW_warp=WW/warp_div, WH_warp=WH/warp_div;   // OUR warp's (down)scaled output/dispatch size
 
     std::printf("[ra] capture [%d]: %ux%u DXGI=%d → %s → work %ux%u\n",cfg.cap_mon,NAT_W,NAT_H,(int)d.fmt,rdesc,WW,WH);
+
+    // ── Output clock: DERIVED from the present monitor, not hard-coded (C-5) ──────────────────────
+    // cli.hpp's refresh_hz=240 was the only value the output clock ever used (its single assignment was
+    // --refresh-hz), while present.cpp printed "present cadence = the panel" -- a claim nothing measured.
+    // docs/research/ongoing/STAGE39_OUTPUT_CLOCK_DESIGN.md:252 specified the else-branch that was never
+    // implemented: read the PRESENT monitor's refresh from the STAGE-33 enumeration unless --refresh-hz
+    // overrides. EnumDisplaySettingsEx reports an INTEGER rate (a 143.97Hz mode reports 143), so
+    // --refresh-hz remains the exact-grid override and the source is printed rather than asserted.
+    if(!cfg.refresh_hz_set){
+        const int _phz=pres_outputs[cfg.pres_mon].hz;
+        if(_phz>=20){ cfg.refresh_hz=_phz; cfg.refresh_hz_from_panel=true; }
+        else std::printf("[ra] present monitor [%d] reports no usable refresh (%d Hz) — output clock stays at the %d Hz built-in default (--refresh-hz overrides)\n",cfg.pres_mon,_phz,cfg.refresh_hz);
+    }
+    // '--target-output-fps auto' resolved against the PROVISIONAL parse-time refresh_hz; re-resolve it now
+    // that the real one is known, else the cap would silently sit at a rate the clock no longer runs at.
+    if(cfg.target_output_fps_auto && cfg.target_output_fps!=(float)cfg.refresh_hz){
+        std::printf("[ra] --target-output-fps auto: re-resolved %.0f -> %d (the derived output clock)\n",cfg.target_output_fps,cfg.refresh_hz);
+        cfg.target_output_fps=(float)cfg.refresh_hz;
+    }
 
     // ── Refresh del monitor CAPTURADO — la base de escalado de la ingesta ─────
     // El techo físico de entrega de cualquier captura por composición (WGC/DDA) = la tasa de

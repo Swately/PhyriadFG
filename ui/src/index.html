@@ -95,6 +95,19 @@
 
         <div class="card cmd-card">
           <label class="field-label">Command</label>
+          <!-- C-4 — the Command card is a LAUNCH preview by construction: the FG reads its Config
+               only at startup, so with a live child and auto-restart off, every control change
+               rewrites this card while the running process keeps the argv it was given, and
+               nothing said so. main.js's renderPreview() unhides this marker whenever the built
+               args differ from the argv the live child actually got. -->
+          <p
+            id="cmd-pending"
+            class="hint"
+            style="margin: 0 0 6px; color: var(--danger); font-weight: 600"
+            hidden
+          >
+            pending — restart to apply
+          </p>
           <code id="cmd-preview" class="cmd-preview">phyriad_fg.exe</code>
         </div>
       </aside>
@@ -119,3 +132,4 @@
     </section>
   </body>
 </html>
+<!-- Made with my soul - Swately <3 -->

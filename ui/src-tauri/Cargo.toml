@@ -33,5 +33,10 @@ windows = { version = "0.61", features = [
     "Win32_System_JobObjects",
     # CreateJobObjectW está gated tras Win32_Security (su parámetro SECURITY_ATTRIBUTES).
     "Win32_Security",
+    # C-7: AttachConsole / FreeConsole / GenerateConsoleCtrlEvent / SetConsoleCtrlHandler,
+    # usados por try_graceful_stop para pedirle al FG un cierre LIMPIO (CTRL_BREAK) antes de
+    # recurrir a TerminateProcess.
+    "Win32_System_Console",
 ] }
 
+# Made with my soul - Swately <3

@@ -33,11 +33,25 @@ enum class ReasonCode : uint32_t {
     WGC_UNSUPPORTED_OS   = 4,   // GraphicsCaptureSession::IsSupported()==false (build < 1803) — descend
     VRR_WILL_BE_DISABLED = 5,   // FLOOR (NVIDIA) — a non-hooking overlay can't drive the game's VRR (advisory)
     ANTICHEAT_UNVERIFIED = 6,   // a known kernel-AC title not in the verified set (advisory)
-    WINDOW_NOT_FOUND     = 7,   // --window SUBSTR matched no visible window
+    WINDOW_NOT_FOUND     = 7,   // no window matched --hwnd / --window-pid / --window SUBSTR
     UNSUPPORTED_FORMAT   = 8,   // route_for() rejected the captured DXGI surface format
     CAPTURE_INIT_FAILED  = 9,   // backend device/duplication/session create failed for an OS reason
     PRESENT_INIT_FAILED  = 10,  // PresentSurface::create failed (no in-thread fallback → clean quit)
     REASON_UNCLASSIFIED  = 11,  // THE TRIPWIRE — none of the above; its count MUST be 0
+    // Appended 2026-09-06 (QOL audit: I-3/B-1/E-4, I-6, B-3, B-6, OP-FGGPU-2). The set is APPEND-ONLY
+    // by the contract at the head of this file: 12+ leaves every existing value — REASON_UNCLASSIFIED
+    // included — exactly where it was, so an old log stays comparable. The numbering below is the
+    // RECONCILED one: three independent designs each appended starting at 12, so the two device codes
+    // were moved to 16/17 to keep every value unique.
+    SOURCE_MINIMIZED     = 12,  // --window matched a MINIMIZED window (IsIconic / degenerate client rect)
+    SOURCE_RESIZED       = 13,  // the captured source changed size mid-run; the pipeline is sized once at init
+    SOURCE_CLOSED        = 14,  // the capture item's source (window destroyed / display removed) went away
+    NO_FRAMES            = 15,  // the WGC session started but delivered no frame within the first-frame timeout
+    // The device-init cold path violated this header's own opening contract — it bailed with a bare
+    // printf and a `goto done` that fell through to `return 0`, so a failed run was byte-identical to a
+    // clean quit as far as the launcher could tell.
+    DEVICE_INIT_FAILED   = 16,  // a Vulkan device / host-bridge / pipeline init stage refused or failed
+    DEVICE_LOST          = 17,  // VK_ERROR_DEVICE_LOST latched during the run — the exit is NOT clean
 };
 
 // The machine token: the stable string a log harness greps from the run log. One per enumerator;
@@ -57,6 +71,12 @@ inline constexpr const char* token(ReasonCode r) {
     case ReasonCode::CAPTURE_INIT_FAILED:  return "CAPTURE_INIT_FAILED";
     case ReasonCode::PRESENT_INIT_FAILED:  return "PRESENT_INIT_FAILED";
     case ReasonCode::REASON_UNCLASSIFIED:  return "REASON_UNCLASSIFIED";
+    case ReasonCode::SOURCE_MINIMIZED:     return "SOURCE_MINIMIZED";
+    case ReasonCode::SOURCE_RESIZED:       return "SOURCE_RESIZED";
+    case ReasonCode::SOURCE_CLOSED:        return "SOURCE_CLOSED";
+    case ReasonCode::NO_FRAMES:            return "NO_FRAMES";
+    case ReasonCode::DEVICE_INIT_FAILED:   return "DEVICE_INIT_FAILED";
+    case ReasonCode::DEVICE_LOST:          return "DEVICE_LOST";
     }
     return "REASON_UNCLASSIFIED";   // unreachable (the switch is exhaustive); the safe sentinel default
 }
@@ -89,8 +109,9 @@ inline constexpr const char* advisory(ReasonCode r) {
         return "the target matches a known kernel-anti-cheat title not in the verified set — capture "
                "MAY be blocked or flagged server-side. Advisory only; PhyriadFG never injects.";
     case ReasonCode::WINDOW_NOT_FOUND:
-        return "--window matched no visible window with that title substring. Check the title and that "
-               "the game is running and not minimized.";
+        return "no visible window matched the target identity (--hwnd, then --window-pid, then the "
+               "--window title substring, in that order). Check that the app is running, not minimized, "
+               "and that the pid/handle still belongs to it -- a handle dies when its window closes.";
     case ReasonCode::UNSUPPORTED_FORMAT:
         return "the captured surface format is not one PhyriadFG routes (RGBA8/BGRA8/FP16-HDR/10bpc). "
                "Capture cannot proceed with this output format.";
@@ -103,13 +124,46 @@ inline constexpr const char* advisory(ReasonCode r) {
     case ReasonCode::REASON_UNCLASSIFIED:
         return "a failure that maps to NO named reason code — this is the unclassified-failure tripwire and a bug: "
                "the failure path must be classified.";
+    case ReasonCode::SOURCE_MINIMIZED:
+        return "--window matched a MINIMIZED window. Its client rect is empty, so the capture would be "
+               "sized to the WHOLE MONITOR and the window's content would sit in the top-left corner. "
+               "Restore the window and start again.";
+    case ReasonCode::SOURCE_RESIZED:
+        return "the captured source CHANGED SIZE mid-run (resize / maximise / F11 / a DPI change). The "
+               "whole pipeline — staging ring, WGC pool, Vulkan images, flow/warp extents — is sized ONCE "
+               "at init and there is no re-init path, so continuing would silently crop or letterbox every "
+               "remaining frame. PhyriadFG exits instead; restart at the new size.";
+    case ReasonCode::SOURCE_CLOSED:
+        return "the captured source was CLOSED by the OS (the window was destroyed, or the captured display "
+               "was removed) — no further frames can arrive. PhyriadFG exits cleanly instead of "
+               "re-presenting the stale pair forever.";
+    case ReasonCode::NO_FRAMES:
+        return "the capture session started but delivered NO frame within the first-frame timeout. The "
+               "source may be minimized, occluded by an OS capture policy, or on a GPU this session cannot "
+               "be fed from. PhyriadFG exits instead of idling.";
+    case ReasonCode::DEVICE_INIT_FAILED:
+        return "a device-init stage failed (Vulkan device, host bridge, images, pipelines or the present "
+               "bridge). The line printed just above names the exact allocation that refused. This is a "
+               "FATAL init bail: the process exits 1 and presents nothing.";
+    case ReasonCode::DEVICE_LOST:
+        return "VK_ERROR_DEVICE_LOST was latched during the run — PhyriadFG unwound cleanly but the run "
+               "did NOT complete. The game is unaffected (we never hook its swapchain).";
     }
     return advisory(ReasonCode::REASON_UNCLASSIFIED);   // unreachable; the safe sentinel default
 }
 
 // The unclassified-failure tripwire counter. Incremented ONLY when a failure cannot be mapped to a
-// named code. Plain non-atomic uint32_t: every emit site runs on the main thread at init/failure,
-// before the capture/present worker threads spawn — no hot-path concurrency, so no atomic is needed.
+// named code. Plain non-atomic uint32_t.
+//
+// THREADING, corrected 2026-09-06: it is NO LONGER true that every emit site runs on the main thread
+// at init/failure before the capture/present worker threads spawn. SOURCE_RESIZED is emitted from the
+// WGC FrameArrived callback and SOURCE_CLOSED from GraphicsCaptureItem::Closed — both winrt
+// thread-pool threads, each guarded one-shot by WgcCtx::bail_said (an exchange(true)), so each of
+// those codes is emitted at most once per run. What those callbacks share with the main thread is
+// std::printf, which is itself thread-safe; a concurrent bail can interleave lines but cannot corrupt
+// state. This counter stays a plain uint32_t because it is bumped ONLY by REASON_UNCLASSIFIED, and no
+// callback emits that code — every callback bail is a named one. If a callback path ever emits
+// REASON_UNCLASSIFIED, this must become a std::atomic<uint32_t>.
 // Its value must be 0 over the test set (a failure that maps to no named code is a bug).
 inline uint32_t g_unclassified_count = 0u;
 
@@ -121,6 +175,21 @@ inline ReasonCode emit(ReasonCode r) {
     if (r == ReasonCode::REASON_UNCLASSIFIED) ++g_unclassified_count;
     std::printf("[ra] REASON %s: %s\n", token(r), advisory(r));
     return r;
+}
+
+// The FATAL latch. Set by emit_fatal() only; read once, at main()'s single `return`, so a failed init or
+// a latched device loss exits NON-ZERO instead of falling through the shared `done:` teardown to
+// `return 0`. Every emit_fatal site is the main thread at init, or the one-shot device-loss latch at
+// teardown — the WGC callback bails above use plain emit(), not this — so a plain bool is enough.
+inline bool g_fatal_reason = false;
+
+// Emit a named reason AND latch the process as failed. `stage` (optional) names the init stage that
+// refused, so the launcher log carries both the class (the token) and the site (the stage) even though
+// the leaf allocation printed only its own bare line.
+inline ReasonCode emit_fatal(ReasonCode r, const char* stage = nullptr) {
+    g_fatal_reason = true;
+    if (stage) std::printf("[ra] init stage FAILED: %s\n", stage);
+    return emit(r);
 }
 
 }  // namespace ra::compat

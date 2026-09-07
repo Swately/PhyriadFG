@@ -79,6 +79,18 @@ RECT pick_monitor(int n) noexcept {
     return c.rc;
 }
 
+// The EXACT binding (PresentSurfaceDesc::monitor_handle). pick_monitor above is an ORDERING —
+// EnumDisplayMonitors with 0 forced to the primary — and no caller enumerates monitors in that order,
+// so an index handed to it is a guess. An HMONITOR is not an ordering. Returns false (handle null, or
+// the monitor is gone between the caller's enumeration and now) so create() can fall back to the index.
+bool monitor_rect_from_handle(void* h, RECT& out) noexcept {
+    if (!h) return false;
+    MONITORINFO mi{}; mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfo(reinterpret_cast<HMONITOR>(h), &mi)) return false;
+    out = mi.rcMonitor;
+    return true;
+}
+
 // The overlay WndProc: stays non-activating; never owns input. Every style of this surface is a
 // NON-INTERACTIVE presentation plane, so hit-testing must always fall through to the window
 // beneath (the game): WM_NCHITTEST → HTTRANSPARENT is the ROBUST click-through — it works for
@@ -324,7 +336,10 @@ PresentSurface::create(const PresentSurfaceDesc& desc) noexcept {
     if (!impl) return fail(phyriad::ErrorCode::OutOfMemory);
     impl->desc  = desc;
     impl->hinst = GetModuleHandle(nullptr);
-    impl->mon   = pick_monitor(desc.monitor_index);
+    // monitor_handle (when the caller supplied one) is the EXACT binding and wins; monitor_index is the
+    // legacy ordering-based guess and remains the fallback, including when the handle is stale.
+    if (!monitor_rect_from_handle(desc.monitor_handle, impl->mon))
+        impl->mon = pick_monitor(desc.monitor_index);
     impl->W = desc.width  ? desc.width  : static_cast<UINT>(impl->mon.right  - impl->mon.left);
     impl->H = desc.height ? desc.height : static_cast<UINT>(impl->mon.bottom - impl->mon.top);
 
@@ -593,9 +608,16 @@ PresentSurface::submit(const SharedFrameHandle& s) noexcept {
         const bool ours = (fg == impl_->hwnd);
         const bool game = (impl_->game_hwnd && fg == impl_->game_hwnd);
         // game_hwnd set → display only while the game or our window is in front (yield to any other app).
-        // game_hwnd==nullptr (no game binding) → we can only key off our own window: a null/own
-        // foreground keeps us displayed, anything else yields (still never a permanent lock-out).
-        const bool want_yield = impl_->game_hwnd ? !(ours || game) : (fg != nullptr && fg != impl_->hwnd);
+        // game_hwnd==nullptr (monitor capture with no --window, and the DDA --window no-match fallback):
+        // the old rule keyed off our own window, and our own window can NEVER satisfy it — it is
+        // WS_EX_NOACTIVATE + WS_EX_LAYERED|WS_EX_TRANSPARENT, shown with SW_SHOWNOACTIVATE, and its
+        // WM_NCHITTEST returns HTTRANSPARENT, so it never becomes the foreground. Any other window taking
+        // focus therefore latched `yielded` PERMANENTLY and every present after that returned {} — a whole
+        // capture mode displayed nothing, while the transition log told the user to focus the captured
+        // window, which (with no binding) keeps it yielded. UNBOUND = NEVER YIELD. The no-lock-out floor is
+        // still held: the present-thread watchdog force-hides the plane on a stall, and the quit paths hide
+        // it on exit.
+        const bool want_yield = impl_->game_hwnd ? !(ours || game) : false;
         const bool was_yielded = impl_->yielded.load();
         if (want_yield && !was_yielded) {
             impl_->yielded.store(true);
@@ -666,7 +688,13 @@ PresentSurface::submit_at(const SharedFrameHandle& /*src*/, uint64_t /*target_qp
 }
 
 bool PresentSurface::capture_excluded() const noexcept { return impl_ && impl_->wda_ok; }
-bool PresentSurface::is_click_through() const noexcept { return impl_ && impl_->click_through; }
+bool PresentSurface::is_click_through() const noexcept {
+    // BOTH styles that grant it: DcompCt sets impl->click_through at the overlay branch, and
+    // OwnWindow applies the IDENTICAL WS_EX_LAYERED|WS_EX_TRANSPARENT pair. Reporting only the
+    // first made the default path print "click_through=no" about a plane the mouse passes
+    // straight through -- which matters now that an UNBOUND own-window plane never yields.
+    return impl_ && (impl_->click_through || impl_->own_window);
+}
 // (Style::OwnWindow) yield-state diagnostic: submit() in the yielded state early-returns SUCCESS
 // (present-nothing = passthrough, the no-lock-out contract), so ps-ok counters cannot distinguish
 // displayed from hidden — this accessor is the consumer's only truth for "is my plane on the panel".

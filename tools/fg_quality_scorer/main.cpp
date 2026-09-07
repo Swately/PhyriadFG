@@ -179,20 +179,23 @@ bool load_manifest(const std::string& manifest_path, Manifest& m) {
             // each; Mode B too if a sibling <prefix>{2j+1}_live.rgba exists (the full-pipeline replay output).
             char pfx[200] = {}; int count = 0;
             if (std::sscanf(line.c_str(), "sequence %199s %d", pfx, &count) == 2 && count >= 3) {
+                // E-9: these three names used to be built in char[64], while the sscanf above accepts a
+                // prefix of up to 199 characters. A prefix over 47 chars (lv), 52 (fn) or 57 (nm) was
+                // truncated by snprintf and the triple then surfaced as the misleading
+                // "[skip] missing one of prev/mid/next .rgba" line rather than as an error about the
+                // prefix. Build the names in std::string and leave only the 6-digit index in a buffer,
+                // which cannot overflow. Output is byte-identical for every prefix that works today.
+                auto idx6 = [](int v) { char d[16]; std::snprintf(d, sizeof d, "%06d", v); return std::string(d); };
+                const std::string pfx_s(pfx);
                 for (int j = 0; 2*j + 2 <= count - 1; ++j) {
-                    auto frame = [&](int idx) {
-                        char fn[64]; std::snprintf(fn, sizeof fn, "%s%06d.rgba", pfx, idx);
-                        return dir + "/" + fn;
-                    };
+                    auto frame = [&](int idx) { return dir + "/" + pfx_s + idx6(idx) + ".rgba"; };
                     Triple t;
-                    char nm[64]; std::snprintf(nm, sizeof nm, "%s%06d", pfx, 2*j+1);  // named by the held-out frame
-                    t.name = nm;
+                    t.name = pfx_s + idx6(2*j+1);                                     // named by the held-out frame
                     t.prev_path = frame(2*j);
                     t.mid_path  = frame(2*j+1);
                     t.next_path = frame(2*j+2);
                     // optional full-pipeline replay output for the held-out midpoint (Mode B), if present.
-                    char lv[64]; std::snprintf(lv, sizeof lv, "%s%06d_live.rgba", pfx, 2*j+1);
-                    t.live_path = dir + "/" + lv;
+                    t.live_path = dir + "/" + pfx_s + idx6(2*j+1) + "_live.rgba";
                     t.has_live  = false;  // resolved at score time: read_file fails silently if absent
                     m.triples.push_back(t);
                 }

@@ -506,29 +506,29 @@ int main(int argc, char** argv) {
     auto& hostMVB1=o_wap.hostMVB1; auto& hMVB1_a=o_wap.hMVB1_a;   // ... and the backward field
 
     // ── Devices + the derived feature gates (E1 → core/core_init.cpp) ──────
-    if(!init_devices(cfg,pA,pB,pG,single_gpu,want_pfg,IS_HDR,NAT_W,NAT_H,WW,WH,route,o_dev)) goto done;
+    if(!init_devices(cfg,pA,pB,pG,single_gpu,want_pfg,IS_HDR,NAT_W,NAT_H,WW,WH,route,o_dev)){ ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"devices"); goto done; }
 
     // ── Host bridge (E1 → core/core_init.cpp) ─────────────────────
-    if(!init_host_bridge(cfg,d,single_gpu,want_pfg,NAT_W,NAT_H,nat_bpp,WW,WH,UP_W,UP_H,WW_flow,WH_flow,cap_mon_hz,o_dev,FD,o_gme,o_img,o_host)) goto done;
+    if(!init_host_bridge(cfg,d,single_gpu,want_pfg,NAT_W,NAT_H,nat_bpp,WW,WH,UP_W,UP_H,WW_flow,WH_flow,cap_mon_hz,o_dev,FD,o_gme,o_img,o_host)){ ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"host-bridge"); goto done; }
 
     // ── Images (E1 → core/core_init.cpp) ───────────────────────
-    if(!init_images(cfg,d,NAT_W,NAT_H,nat_vkfmt,WW,WH,WW_flow,WH_flow,flow_div,UP_W,UP_H,want_pfg,o_dev,FD,o_host,o_flow,o_img)) goto done;
+    if(!init_images(cfg,d,NAT_W,NAT_H,nat_vkfmt,WW,WH,WW_flow,WH_flow,flow_div,UP_W,UP_H,want_pfg,o_dev,FD,o_host,o_flow,o_img)){ ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"images"); goto done; }
 
     // ── WGC backend init (E1 → capture/capture_init.cpp) ────────────
 #ifdef _MSC_VER
-    if(!init_wgc_backend(cfg,d,NAT_W,NAT_H,cap_mon_hz,wgc_target_hwnd,o_img,wgc_ctx)) goto done;
+    if(!init_wgc_backend(cfg,d,NAT_W,NAT_H,cap_mon_hz,wgc_target_hwnd,o_img,wgc_ctx)){ ra::compat::g_fatal_reason=true; goto done; }
 #endif
 
     // ── Convert pipeline (A: native→RGBA8 work) (E1 → capture/capture_init.cpp) ──
-    if(!init_convert_pipe(o_dev,o_img,o_cv)) goto done;
+    if(!init_convert_pipe(o_dev,o_img,o_cv)){ ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"convert-pipe"); goto done; }
 
     // ── OpticalFlowPipeline (B) + NVOFA + MV-smooth + primary-FG OFP (E1 → flow/flow_init.cpp) ──
-    if(!init_flow_pipes(cfg,single_gpu,want_pfg,WW,WH,WW_flow,WH_flow,flow_div,o_dev,FD,o_img,o_flow)) goto done;
+    if(!init_flow_pipes(cfg,single_gpu,want_pfg,WW,WH,WW_flow,WH_flow,flow_div,o_dev,FD,o_img,o_flow)){ ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"flow-pipes"); goto done; }
 
     // ── Upscale pipeline (G) (E1 → present/present_init.cpp) ───────────────────
-    if(!init_upscale(cfg,o_dev,o_img,o_igpu)) goto done;
+    if(!init_upscale(cfg,o_dev,o_img,o_igpu)){ ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"upscale"); goto done; }
     // ── iGPU convert+pack + B/G unpack pipelines (E1 → capture/capture_init.cpp) ──
-    if(!init_igpu_pipes(cfg,NAT_W,NAT_H,nat_bpp,WW,WH,o_dev,o_host,o_img,o_flow,o_igpu)) goto done;
+    if(!init_igpu_pipes(cfg,NAT_W,NAT_H,nat_bpp,WW,WH,o_dev,o_host,o_img,o_flow,o_igpu)){ ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"igpu-pipes"); goto done; }
     // ── warp-at-presenter pipeline (A, the bridge owner) (E1 → warp_blend/warp_blend_init.cpp) ──
     init_wap(cfg,WW,WH,WW_warp,WH_warp,o_dev,o_flow,o_wap);
     // ── gme-gpu pipeline + use_* re-finalization (E1 → flow/flow_init.cpp) ─────
@@ -553,7 +553,7 @@ int main(int argc, char** argv) {
     // producer-side bridge below IS the present path.
     // ── Producer side: D3D11 shared bridge texture + VK-A import + --async-present slot-1 +
     //    the --rfp/--motion-fallback co-arm guards (E1 → present/present_init.cpp) ──────────
-    if(!init_bridge_slots(cfg,d,pc,o_dev,o_br)) goto done;
+    if(!init_bridge_slots(cfg,d,pc,o_dev,o_br)){ ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"bridge-slots"); goto done; }
 
     // ── Main loop — 3 worker threads + main/pump ───────────────────
     {
@@ -1099,6 +1099,12 @@ int main(int argc, char** argv) {
     }
 
 done:
+    // 2026-09-06: a latched VK_ERROR_DEVICE_LOST is NOT a clean quit. globals.cpp:14-17 prints its own
+    // line and sets g_quit, and the unwind then fell through to `return 0` — so the launcher showed
+    // "process finished (code 0)" for a run that died. Name it and latch it. (This is the second half of
+    // the --fg-gpu primary defect: with convert wrongly on CG_IGPU under single-GPU, the C-thread
+    // submitted on A.q against the present thread and lost the device inside the first frames.)
+    if(g_device_lost.load()) ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_LOST);
     // Teardown in reverse-init order (all checks guard against null).
     // On a LOST device, vkDeviceWaitIdle is unreliable (Khronos: it may itself return VK_ERROR_DEVICE_LOST)
     // -> skip the idle-wait when the loss is already known and go straight to the null-guarded destroys
@@ -1274,6 +1280,10 @@ done:
     }
     vkDestroyInstance(inst,nullptr);
     d3d_shutdown(d);
-    return 0;
+    // 2026-09-06: EVERY `goto done` init failure used to land on this single `return 0`, so a run that
+    // never presented a frame was indistinguishable from a clean quit to the launcher (ui/src-tauri/
+    // src/lib.rs reports the child's code verbatim). The exit-code contract is now: 0 clean, 1 fatal
+    // (init bail or device loss), 2 argument-parse error, 3 layer-registry parity failure.
+    return ra::compat::g_fatal_reason ? 1 : 0;
 }
 // Made with my soul - Swately <3

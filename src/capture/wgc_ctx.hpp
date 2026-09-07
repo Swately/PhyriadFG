@@ -39,6 +39,21 @@ IDirect3DDxgiInterfaceAccess : ::IUnknown {
     struct WgcCtx {
         wgc::Direct3D11CaptureFramePool pool{nullptr};
         wgc::GraphicsCaptureSession     session{nullptr};
+        // B-6: the capture ITEM, held here so the Closed() registration outlives init_wgc_backend's
+        // local com_ptr. Released with the ctx at teardown, AFTER running=false + the Sleep(100) drain.
+        wgc::GraphicsCaptureItem        item{nullptr};
+        // ── Source-lifecycle latches (QOL audit I-3/B-1/E-4 + B-6). Written by the FREE-THREADED WGC
+        // callbacks, read by whoever asks; every one of them is false/0 on the happy path, so the
+        // steady path only ever reads a cold atomic. They exist because the pipeline is sized ONCE at
+        // init: a source that resizes or dies has no recovery path, only a clean exit.
+        std::atomic<int32_t> base_w{0};            // FIRST delivered frame's ContentSize (0 = not latched yet)
+        std::atomic<int32_t> base_h{0};            // NOT the pool size — see the note at the detect site
+        std::atomic<bool>   size_changed{false};   // a later frame's ContentSize differs from the baseline
+        std::atomic<bool>   source_closed{false};  // GraphicsCaptureItem::Closed fired (window/display gone)
+        std::atomic<bool>   bail_said{false};      // one-shot: EXACTLY one reason is emitted from a callback
+        // I-8: the MinUpdateInterval currently applied to `session`, in 100ns units. Written at init and
+        // by the 1 Hz monitor re-check, which re-applies only when the derived value actually CHANGES.
+        std::atomic<long long> mui_100ns{0};
         std::atomic<bool>   frame_ready{false};
         std::atomic<uint64_t> arrived{0};   // every FrameArrived — vs processed = the drop rate
         std::atomic<uint64_t> ringfull{0};  // FrameArrived drops when the staging ring is full (w-r>=RING_N) — the SILENT drop arrived++ masks; printed as ringfull=N/s in [ra-cap] (WGC free-threaded callback → atomic)
@@ -79,3 +94,4 @@ IDirect3DDxgiInterfaceAccess : ::IUnknown {
         ID3D11DeviceContext*  cctx=nullptr;        // its immediate context (null when off)
     };
 #endif // _MSC_VER
+// Made with my soul - Swately <3

@@ -34,6 +34,11 @@ bool PresentStage::init(void* wgc_target_hwnd) {
     const Config& cfg = cfg_; pp::PresentSurface& ra_surface = surface; std::atomic<bool>& g_quit_threads = g_quit_threads_;
     pp::PresentSurfaceDesc psd{};
     psd.monitor_index=cfg.pres_mon; psd.width=0; psd.height=0;  // full present-monitor extent
+    // The EXACT binding: cfg.pres_hmon is pres_outputs[pres_mon].hmon, resolved in capture_init. It wins
+    // over monitor_index inside the pillar, so the DXGI present-candidate index the FG printed and the
+    // panel the surface opens on can no longer disagree (pick_monitor's ordering is bypassed). nullptr
+    // (a detached candidate with no HMONITOR) falls back to monitor_index exactly as before.
+    psd.monitor_handle=cfg.pres_hmon;
     psd.waitable=cfg.present_waitable; psd.sync_interval=(uint8_t)cfg.present_sync;  // B (default-off byte-identical)
     psd.present_colorspace=(uint8_t)cfg.present_colorspace;  // (default-off byte-identical)
     psd.present_format=(uint8_t)cfg.present_format;           // (default-off byte-identical) request the FP16 scRGB swapchain (the bridge above was built FP16 iff cfg.present_format==1)
@@ -42,7 +47,12 @@ bool PresentStage::init(void* wgc_target_hwnd) {
         // captured game's HWND as the foreground-yield reference. Default-off
         // → psd.style stays DcompCt + game_hwnd stays null → byte-identical to the overlay.
         psd.style=pp::Style::OwnWindow;
-        psd.game_hwnd=(void*)wgc_target_hwnd;   // null in monitor-capture mode → yield keys off our window only
+        psd.game_hwnd=(void*)wgc_target_hwnd;   // null in monitor-capture mode → the plane is UNBOUND
+        // State the binding once, at init: it decides whether the plane yields at all, and the yield
+        // transition log downstream is meaningless without it (I-5).
+        std::printf(psd.game_hwnd
+            ? "[ra] own-window: plane BOUND to the captured window — it yields the panel while another app is in front.\n"
+            : "[ra] own-window: plane UNBOUND (monitor capture — no --window target) — it never yields; quit PhyriadFG to release the panel.\n");
     }
     auto cr=pp::PresentSurface::create(psd);
     if(!cr){
@@ -55,10 +65,15 @@ bool PresentStage::init(void* wgc_target_hwnd) {
     }
     ra_surface=std::move(*cr); surface_ready=true;
     // Print the REAL style (the old line said "dcomp-ct+WDA" hardcoded — under
-    // --present-own-window it misreported the own flip plane as the overlay).
+    // --present-own-window it misreported the own flip plane as the overlay). The yield clause is
+    // read from psd.game_hwnd rather than hardcoded: since I-5 an UNBOUND plane never yields, and
+    // the old fixed wording contradicted the own-window line printed immediately above it.
+    const char* style_txt =
+        !cfg.present_own_window ? "dcomp-ct+WDA"
+        : psd.game_hwnd         ? "OWN-WINDOW flip plane (displayed only while the game/our window is FOREGROUND — watch the yield lines)"
+                                : "OWN-WINDOW flip plane (UNBOUND — displayed for the whole run; it never yields)";
     std::printf("[ra] present: PresentSurface %s — click_through=%s capture_excluded=%s\n",
-        cfg.present_own_window?"OWN-WINDOW flip plane (displayed only while the game/our window is FOREGROUND — watch the yield lines)":"dcomp-ct+WDA",
-        ra_surface.is_click_through()?"yes":"no", ra_surface.capture_excluded()?"yes":"no");
+        style_txt, ra_surface.is_click_through()?"yes":"no", ra_surface.capture_excluded()?"yes":"no");
     // The producer bridge texture is FP16 iff cfg.present_format==1 (above), and the swapchain
     // was requested FP16 with the SAME flag. If the surface's soft fallback dropped to BGRA8 on
     // this rig (FP16 composition refused) while the bridge is FP16, the formats DISAGREE → the

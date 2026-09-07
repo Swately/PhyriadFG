@@ -14,6 +14,18 @@ enum ConvertGpu { CG_IGPU, CG_PRIMARY };               // where to run convert+p
 enum OutputClock { OC_TIMER };       // the timer is the only output clock
 struct Config {
     int   cap_mon=0, pres_mon=-1;
+    bool  cap_mon_explicit=false;   // --monitor was given EXPLICITLY (the pin_test_set pattern at cli.cpp:206).
+                                    // Distinguishes the launcher default (--monitor is never emitted when it
+                                    // equals 0) from a deliberate output choice, so (a) the --window monitor
+                                    // derivation in capture_init may select the present monitor on the default
+                                    // path while an explicit --monitor still wins, and (b) the DDA --window
+                                    // no-match branch can keep a whole-monitor run alive only when the operator
+                                    // actually named the output.
+    void* pres_hmon=nullptr;        // HMONITOR of the RESOLVED present monitor (pres_outputs[pres_mon].hmon),
+                                    // filled by capture_init and handed to PresentSurfaceDesc::monitor_handle so
+                                    // the presenter binds the exact panel instead of re-deriving an index in
+                                    // pick_monitor's own EnumDisplayMonitors ordering. Opaque void* (cli.hpp
+                                    // stays <windows.h>-free); nullptr = fall back to the index path.
     float res_ceil=32.f, conf_improv=0.20f, agreement=0.05f;
     int   fg_factor=2;
     bool  no_upscale=false, lanczos=false;
@@ -94,14 +106,33 @@ struct Config {
                                    // --capture-api dd conserva la ruta DDA de monitor completo.
     char  window_substr[256]={};  // non-empty → window-only capture via WGC (default), o el MONITOR completo
                                   // de esa ventana vía DDA con --capture-api dd (resolved in main()→cap_mon).
+                                  // LOSSY identity: a title snapshot, matched first-hit by substring. The two
+                                  // fields below carry the identity the launcher already holds and today discards.
+    uint32_t window_pid=0;        // --window-pid N: owning process id of the capture target. 0 = unset. STABLE
+                                  // across title changes and across window re-creation inside the same process.
+    uint64_t window_hwnd=0;       // --hwnd N: the exact top-level HWND (decimal) the launcher enumerated.
+                                  // 0 = unset. EXACT but perishable — the consumer MUST verify IsWindow() and
+                                  // fall through when it is dead.
+                                  // RESOLUTION ORDER (the contract capture_init implements):
+                                  //   window_hwnd (only when IsWindow) → window_pid → window_substr.
+                                  // With window_pid set, window_substr degrades to a TIE-BREAK among that
+                                  // process's windows instead of being the whole identity.
     bool  dpi_probe=false;        // --dpi-probe: read-only diagnostic — logs GetClientRect / GetDpiForWindow /
                                   // cap_item.Size() / first frame.ContentSize() to diagnose the high-DPI capture-crop.
                                   // Default off → byte-identical.
     FgGpu    fg_gpu=FG_AUTO;      // FG routing (auto|primary|assist)
     ConvertGpu convert_gpu=CG_IGPU; // iGPU fused convert+pack when available
     bool  igpu_field=false;          // --igpu-field: iGPU image-derived contour field on G.q2 (2nd dispatch after
-                                    // convert). DEFAULT ON; --no-igpu-field disables. Needs the iGPU convert path
-                                    // (auto-disabled if absent); a cascade dependency for bg_snap/band_xfade.
+                                    // convert). DEFAULT **OFF** — the initializer is the truth. `--igpu-field`
+                                    // arms it; `--bg-snap` / `--band-xfade` / `--band-xfade-strength` / `--afill`
+                                    // / `--igpu-field-verify` each auto-arm it (cli.cpp:315,354,356,750,754);
+                                    // `--no-igpu-field` is the explicit off. Needs the iGPU convert path
+                                    // (auto-disabled if absent, core_init.cpp:426-435).
+                                    // CONSEQUENCE, stated here because four surfaces used to hide it: on a BARE
+                                    // run apply_cascades' `if(!c.igpu_field)` block (cli.cpp:192-197) turns
+                                    // bg_snap, band_xfade and afill OFF and prints two [ra] cascade lines, even
+                                    // though their own initializers below are true/1.0f. Corrected 2026-09-06
+                                    // (QoL C-2, direction b: docs match the code).
     bool  igpu_field_verify=false;  // --igpu-field-verify: CPU Sobel oracle vs the GPU field (the byte gate). Implies
                                     // --igpu-field.
     uint32_t igpu_field_thr=24;     // occ_class edge-band threshold (Sobel magnitude 0..255).
@@ -115,7 +146,9 @@ struct Config {
                                     // DEFAULT 6. Affects only the --afill visualizer.
     bool  bg_snap=true;             // --bg-snap: the warp READS the iGPU contour field (binding 11) and at the boundary
                                     // band snaps BACKGROUND-side MVs to the gme model → kills the optical-flow
-                                    // disocclusion "gravity". DEFAULT ON; --no-bg-snap disables (auto-enables
+                                    // disocclusion "gravity". Initializer TRUE, but a bare run CASCADES IT OFF —
+                                    // igpu_field is default-false and this reads the field. --bg-snap arms both
+                                    // (cli.cpp:315); --no-bg-snap disables (auto-enables
                                     // igpu_field; needs the iGPU convert path + gme).
     float bg_snap_strength=1.0f;    // --bg-snap-strength: the snap weight scale, parse-clamped [0,4] (1=soft, 2-4=
                                     // progressively hard; the shader clamps w=strength·band·bg to [0,1] so >1
@@ -132,7 +165,10 @@ struct Config {
     bool  vblend_exact=false;   // --vblend-exact: EXACT velocity-continuity — pay +1 pair of present lead so the REAL
                                 // next-pair MV is in the ring, and tilt toward it (not the 2*mv-mv_prev prediction).
                                 // DEFAULT OFF (adds ~1 source-frame latency). Implies --vblend.
-    float band_xfade=1.0f;          // --band-xfade: 0 = OFF, >0 = strength. DEFAULT ON (1.0); --no-band-xfade sets 0.
+    float band_xfade=1.0f;          // --band-xfade: 0 = OFF, >0 = strength. Initializer 1.0f, but a bare run
+                                    // CASCADES IT TO 0 — igpu_field is default-false and this reads the field.
+                                    // --band-xfade / --band-xfade-strength arm both (cli.cpp:354,356).
+                                    // --no-band-xfade sets 0.
                                     // In the image-field disocclusion band (bg-side) blend the result toward
                                     // blend_result (the un-warped cross-fade) = gravity cancellation (static bg →
                                     // clean, object stays sharp). Reuses binding-11 (the iGPU field) + blend_result;
@@ -380,7 +416,20 @@ struct Config {
     float cphase_gain=1.0f;         // --cphase-gain G∈[0,1]: seam-slope match strength (0=linear/off, 1=full match).
     // The output clock is unconditionally the timer (the panel's cadence).
     OutputClock output_clock=OC_TIMER;
-    int   refresh_hz=240;           // output-clock tick rate (overrides the panel Hz)
+    int   refresh_hz=240;           // output-clock tick rate. This 240 is now the FALLBACK ONLY: capture_init
+                                    // derives it from the PRESENT monitor's enumerated refresh (OutInfo.hz via
+                                    // EnumDisplaySettingsEx) unless --refresh-hz was given, which is what
+                                    // STAGE39_OUTPUT_CLOCK_DESIGN.md specified and what was never implemented.
+                                    // It survives as the value only when the panel reports nothing usable.
+    bool  refresh_hz_set=false;     // --refresh-hz was given EXPLICITLY (the pin_test_set pattern at cli.cpp:206)
+                                    // -> the panel derivation must not overwrite the operator's override.
+    bool  refresh_hz_from_panel=false; // capture_init derived refresh_hz from pres_outputs[pres_mon].hz. Drives the
+                                    // honest SOURCE word in the output-clock line: that line must never claim
+                                    // "the panel" for a number nothing read off a panel.
+    bool  target_output_fps_auto=false; // --target-output-fps auto was requested. It resolves to refresh_hz, and
+                                    // parse-time refresh_hz is now only a provisional value, so the resolution is
+                                    // re-run in capture_init after the panel derivation. Without this latch the
+                                    // cap would silently keep the pre-derivation 240.
     int   cap_fps=0;                // --cap-fps N: throttle WGC capture to N fps (MinUpdateInterval=1/N). 0 = default
                                     // 8ms (~125/s cap). LOW N (e.g. 15) → fewer real frames → the FG interpolates MANY
                                     // MORE frames per real pair → the disocclusion crescent shows across many more
@@ -1051,6 +1100,13 @@ static constexpr float kObjRimSpreadMin = 2.0f;   // px — rim MV spread that a
 
 // CLI entry points (definitions in cli.cpp).
 void print_help(const char* a0);
+// Did the operator ask for a WINDOW target at all? Any ONE of the three identity flags means yes.
+// Every capture-source decision must ask THIS, not "was a title given" -- keying on the title alone
+// is what made `--window-pid N` on its own fall through to whole-monitor capture in silence.
+inline bool wants_window_target(const Config& c){
+    return c.window_substr[0] != 0 || c.window_pid != 0 || c.window_hwnd != 0;
+}
+
 bool parse_args(int argc, char** argv, Config& c);
 // The central resolver.
 // apply_cascades: the order-independent dependency cascades (the post-parse normalization) PLUS the

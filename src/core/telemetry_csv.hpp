@@ -20,6 +20,8 @@
 #include <string>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>   // std::filesystem::exists -- the --csv overwrite probe (C-8)
+#include <system_error>  // std::error_code: the probe answers instead of throwing
 #include <cmath>
 #include <algorithm>
 
@@ -206,6 +208,15 @@ namespace tele_detail {
 inline bool TelemetryCsv::start(const std::string& path, const std::string& app, unsigned int pid,
                                 const std::string& nvNameA, const std::string& nvNameB) {
     path_ = path; app_ = app; pid_ = pid; nvNameA_ = nvNameA; nvNameB_ = nvNameB;
+    // E-6: the Application column carries the --window substring, which the launcher fills with the
+    // target's FULL live title (ui/src/main.js:790), and write_row() writes field 1 unquoted. A ',' or
+    // '"' in a title therefore adds or eats a CSV field and shifts every later column, silently: the
+    // in-repo consumer tools/r4b/r4b_parse.py:27 fixes column INDICES from the header and swallows the
+    // mismatch in `except (ValueError, IndexError): pass`, so phyriadfg_fresh quietly reads the wrong
+    // column instead of raising. Strip once here rather than RFC4180-quoting field 1 at write_row(),
+    // because quoting would change the column's text for every parser that reads it correctly today.
+    // CR/LF are stripped for the same reason at a worse severity: one would split the row in two.
+    for (char& c : app_) if (c == ',' || c == '"' || c == '\r' || c == '\n') c = '_';
     // stats path: strip a trailing .csv, append -stats.csv
     stats_path_ = path_;
     if (stats_path_.size() >= 4 && stats_path_.substr(stats_path_.size() - 4) == ".csv")
@@ -213,6 +224,20 @@ inline bool TelemetryCsv::start(const std::string& path, const std::string& app,
     stats_path_ += "-stats.csv";
     LARGE_INTEGER fq; QueryPerformanceFrequency(&fq); qfreq_ = (double)fq.QuadPart;
     LARGE_INTEGER q0; QueryPerformanceCounter(&q0); qpc0_ = q0.QuadPart;
+    // C-8 (CSV half): this open is "wb", so a quick relaunch or an auto-restart silently truncates the
+    // previous run's rows. The fix is deliberately NOT a rename: `--csv <path>` is contracted to produce
+    // exactly <path> (tools/r4b/r4b_parse.py derives <tag>.csv from the log name, and every operator
+    // script assumes it), so uniquifying here would break more than it fixes -- that half belongs to the
+    // launcher, which is the only layer that knows a restart is in flight. What this DOES fix is the
+    // silence, and the compound hazard the C-7/C-8 verifier named: a stats file left over from an older
+    // run sitting next to a truncated run.csv with no marker. Deleting the stale -stats.csv up front means
+    // a hard-killed run leaves an honest ABSENCE instead of the previous run's summary.
+    std::error_code _ec;   // the probe must not throw: a bad path is the fopen below's problem
+    if (std::filesystem::exists(path_, _ec)) {
+        std::printf("[ra] --csv: '%s' already existed -- OVERWRITING (the previous run's rows are gone)\n",
+                    path_.c_str());
+    }
+    std::remove(stats_path_.c_str());   // never let an older run's stats sit beside fresh rows
     fp_ = std::fopen(path_.c_str(), "wb");
     if (!fp_) { std::printf("[ra] --csv: cannot open '%s' for writing\n", path_.c_str()); return false; }
     ring_.resize(CAP);                 // heap-allocate the SPSC ring before the producer can run

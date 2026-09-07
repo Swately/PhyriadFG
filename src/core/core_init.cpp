@@ -232,11 +232,30 @@ bool init_devices(Config& cfg, VkPhysicalDevice pA, VkPhysicalDevice pB, VkPhysi
     // Resolve in favour of FG: force convert back to the iGPU. This runs BEFORE the use_igpu_convert=
     // line so the iGPU path re-evaluates correctly (and the "unavailable -> primary" note still fires if
     // the iGPU/format conditions do not hold — in which case primary-FG is disabled later anyway).
-    if(cfg.fg_gpu==FG_PRIMARY && cfg.convert_gpu==CG_PRIMARY){
+    // 2026-09-06 FIX (the operator's fast-death): this override is a MULTI-GPU resolution and must not
+    // fire under single_gpu. Line 149 already set CG_PRIMARY there ON PURPOSE — under single-GPU the
+    // convert rides A.q2 serialized against F by a_q2_mtx (ingest.cpp:79-82), and the primary-FG path
+    // this override protects does not even exist (main.cpp:339 forces want_pfg=false once single_gpu is
+    // derived). Flipping convert back to CG_IGPU there re-enabled the iGPU-convert path, which is wired
+    // to device B — a zero-initialised VDev{} under single-GPU. Two deaths followed: the host bridge
+    // failing at core_init.cpp:500 (hbuf_import on B) when NAT==WW, or, when NAT!=WW, cfg.convert_gpu
+    // staying CG_IGPU so ingest.cpp:79's crash guard missed and the convert submitted on A.q against the
+    // present thread -> DEVICE_LOST. Gate on !single_gpu; say plainly that the flag is inert instead.
+    // NOT the failure path, for whoever reads this next: core_init.cpp:96's `B=MISSING` guard is
+    // UNREACHABLE DEAD CODE — line 82 already returns on !pA, so past it !pB implies single_gpu true and
+    // that branch can never be entered. It is left in place deliberately (removing it is a cleanup, not
+    // a fix); do not mistake it for where the single-GPU `--fg-gpu primary` run died.
+    if(cfg.fg_gpu==FG_PRIMARY && cfg.convert_gpu==CG_PRIMARY && !single_gpu){
         std::printf("[ra] --fg-gpu primary + --convert-gpu primary both target A.q2 (only one non-present submitter per queue) — forcing convert to iGPU; flow keeps A.q2.\n");
         cfg.convert_gpu=CG_IGPU;
+    } else if(cfg.fg_gpu==FG_PRIMARY && single_gpu){
+        std::printf("[ra] --fg-gpu primary: INERT on the single-GPU topology (primary-FG is forced off once single_gpu is derived). Convert stays on A.q2 (serialized vs the flow by a_q2_mtx); the iGPU-convert path needs device B and is not available here.\n");
     }
-    use_igpu_convert=(cfg.convert_gpu==CG_IGPU&&have_igpu&&NAT_W==WW&&NAT_H==WH&&(route==RT_PASS||route==RT_HDR));
+    // The iGPU-convert path is STRUCTURALLY device-B dependent (hRP_b / hRP_b_dev at core_init.cpp:500-501,
+    // unpipe_create(B,...) at capture_init.cpp:66, Bframe ingest), and B is never created under single_gpu
+    // (core_init.cpp:128 skips vdev_create(pB,B)). Making that a term here means no future edit can reach
+    // the path with a null B — belt-and-suspenders over the gate above, not a substitute for it.
+    use_igpu_convert=(cfg.convert_gpu==CG_IGPU&&!single_gpu&&have_igpu&&NAT_W==WW&&NAT_H==WH&&(route==RT_PASS||route==RT_HDR));
     if(cfg.convert_gpu==CG_IGPU&&!use_igpu_convert)
         std::printf("[ra] igpu-convert: unavailable (no iGPU or NAT!=WW) -> primary\n");
     if(use_igpu_convert)

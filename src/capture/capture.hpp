@@ -2,7 +2,8 @@
 // PhyriadFG capture layer. The CAPTURE-side D3D11/DXGI interop + the iGPU convert/unpack pipelines:
 //   - OutInfo / D3D     : the D3D11 device + DXGI output-duplication wrapper (struct state).
 //   - d3d_init          : create the D3D11 device, enumerate outputs, optionally DuplicateOutput.
-//   - find_window_by_substr : the find-window-by-title helper (WGC --window; MSVC only).
+//   - find_window_by_substr : the capture-target resolver (pid > HWND > title substring; WGC --window;
+//                             MSVC only). Accumulates every match, then chooses deterministically.
 //   - d3d_shutdown / d3d_staging / d3d_staging_on : teardown + CPU-readback staging textures.
 //   - ConvPackPipe      : the iGPU fused convert+pack pipeline (cpipe_create/cpipe_destroy).
 //   - UnpackPipe        : the packed→RGBA8 unpack pipeline (unpipe_create/unpipe_destroy).
@@ -46,8 +47,16 @@ bool d3d_init(D3D& d,int ci,bool want_dup=true,int gpu_thread_prio=0);
 // kills it). Releases the dead dup + re-DuplicateOutput on the persisted output index. true=ok.
 bool dda_rearm(D3D& d);
 #ifdef _MSC_VER
-// Find the first visible window whose title contains substr (EnumWindows helper).
-HWND find_window_by_substr(const char* substr);
+// Resolve the capture-target window. Priority: (1) want_pid when non-zero, (2) want_hwnd when non-null
+// and still alive+visible, (3) the title substring. Each stage falls through when its candidate set is
+// empty. The enumeration accumulates ALL matches and then chooses deterministically -- exact
+// case-insensitive title equality first, else the largest client rect, ties by enumeration order.
+// Windows owned by the calling process are never candidates; the compare is case-insensitive (ASCII
+// folding); titles are read with GetWindowTextW so non-ASCII titles do not alias through CP_ACP. When
+// more than one window matched, the candidate list and the chosen title+pid are printed. Returns
+// nullptr when nothing matched (an EMPTY substr with no pid/hwnd now matches nothing -- the old
+// strstr semantics matched the first titled window). Full contract + rationale: capture.cpp.
+HWND find_window_by_substr(const char* substr, DWORD want_pid = 0, HWND want_hwnd = nullptr);
 // Map an HMONITOR to the DXGI output INDEX on the capture (primary) adapter — for --window → DDA-on-its-monitor.
 // Returns -1 if no match (e.g. the window is on a non-primary GPU's display). Startup-only (throwaway device).
 int d3d_output_index_for_monitor(HMONITOR hm);
@@ -81,3 +90,5 @@ void run_capture(FgContext& ctx);
 // NEWEST converts the freshest raw slot, publishing c_seq promptly on each convert. Joined BEFORE
 // any convert/Vulkan teardown. Never spawned when --ingest-async is off.
 void run_convert_worker(FgContext& ctx);
+
+// Made with my soul - Swately <3
