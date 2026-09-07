@@ -200,6 +200,40 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-022 · Three shipped regressions, and the one that mattered was flagged UNVERIFIED before it shipped
+- **class:** shipped defect · **date:** 2026-09-06 · **recurrences:** 1 · **status:** corrected
+- **evidence:** the operator downloaded the release and it broke in three ways, all readable in his own
+  `observer-live.log`. The worst: `[error] Failed to start '...': The handle is invalid. (os error 6)`,
+  seven times in a row. After a single Stop the launcher could never spawn again. Cause: C-7's stop
+  called `AttachConsole` to reach a console-less child; `AttachConsole`/`FreeConsole` **replace and then
+  close the calling process's own standard handles**, and Rust duplicates the inherited stdin into every
+  child, so `CreateProcess` failed forever after.
+- **the shape to recognise — a call can succeed and still poison the process.** That code was careful: it
+  checked every return value and every failure path fell back to the old behaviour. The reviewer verified
+  the axis the author was thinking about. The damage was a PROCESS-WIDE SIDE EFFECT on state neither of
+  them was looking at. "Every error path is handled" is not the same claim as "this call changes nothing
+  else", and only the second one protects the code that runs afterwards.
+- **the part with no excuse:** its own designer wrote **"THE DESIGNER COULD NOT VERIFY the Win32 premise"**
+  into the plan, and the reconciler carried that forward, and it shipped anyway. An UNVERIFIED marker
+  travelled through a design, a reconciliation, an implementation and a release without ever converting
+  into either a test or a removal. That is the failure — not the Win32 subtlety, which is genuinely
+  obscure. **A premise marked unverified is a blocking item, not a footnote.**
+- **the other two, briefly:** a mid-run resize guard treated a ONE-PIXEL flutter as fatal (`1920x1080 ->
+  1920x1079`), killing sessions — its own behaviour note had PREDICTED exactly that ("any app that
+  transiently changes its client size by even one pixel now terminates the run") and it shipped
+  unchanged; and the launcher re-validated the picked window BY TITLE, discarding the pid at precisely
+  the moment a rename made the pid the only thing worth having — see [[P-021]], the same defect one layer
+  up, twice in one batch.
+- **corrective:** the console path is REMOVED rather than repaired (its benefit was already reachable via
+  `--duration`/`--max-frames`, as its own reviewer had noted); the resize guard now fires only on a GROW
+  past the built size; identity is re-validated by handle then pid, never by title. The standing rule this
+  earns: **an "unverified" or "predicted failure" note in a design is a gate, and the only ways past it
+  are a test that executes the path or a decision not to ship it.**
+- **method note:** all three were invisible to reading, to the compiler, to 47 ctest cases, to three build
+  gates AND to my own bounded runs — because my runs never STOPPED and restarted, never resized a source,
+  and never let a window rename itself. The operator found them in about a minute of ordinary use. A
+  verification plan that only exercises the happy path start-to-finish is not a verification plan.
+
 ### P-021 · A new identity was added to the resolver and five sites still asked the old question
 - **class:** regression caught before shipping · **date:** 2026-09-06 · **recurrences:** 1 · **status:** corrected
 - **evidence:** the QoL batch gave the capture target two stable identities, `--window-pid` and `--hwnd`,
