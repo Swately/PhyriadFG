@@ -127,13 +127,43 @@ is killed and whose replacement dies immediately is indistinguishable from *"no 
 launcher then wedged, which is *"no dejó apagarlo aun con el FG apagado"* — the FG was indeed off, and
 the launcher was asserting otherwise.
 
-**What is still UNVERIFIED: why his new child died.** The wedge requires a death inside ~600 ms, so
-one occurred, but this session has not reproduced it and does not claim a cause. Two fast fatal exits
-are quoted in the tree and are candidates, neither confirmed for this run:
-`src/core/core_init.cpp:96` — `need primary GPU (LUID) + assist discrete (or --force-single-gpu).
-B=MISSING` → `return 1`, and `src/core/main.cpp:208` — `return cfg.parse_failed ? 2 : 0`, which
-`--fg-gpu`'s own validator reaches at `cli.cpp:503` (`unknown '%s' (auto|primary|assist)`). Settling
-it costs one console run of `phyriad_fg.exe` with the exact value he selected.
+**WHY HIS NEW CHILD DIED — measured 2026-09-06, and the answer is the machine.** The rig enumerates
+three GPUs to Windows but only **two to Vulkan**:
+
+    vulkaninfo --summary   ->  GPU0 = RTX 4090 (DISCRETE)
+                               GPU1 = AMD Radeon(TM) Graphics (INTEGRATED)
+    nvidia-smi -L          ->  GPU 0: NVIDIA GeForce RTX 4090   (one line, the only line)
+    Win32_PnPEntity        ->  NVIDIA GeForce GTX 1080 Ti | Status=Error | ConfigManagerErrorCode=31
+
+**The GTX 1080 Ti is in driver error 31** ("Windows cannot load the drivers required for this device"),
+so it is invisible to Vulkan. Feeding that into `core_init.cpp`'s selection loop: `pA` = the 4090 (it
+carries the LUID), `pG` = the Radeon (INTEGRATED), and `pB` — which is only ever assigned from a
+**DISCRETE** device that is not `pA` — stays null. Therefore
+`single_gpu = force_single_gpu || (pA && !pB)` is **true**.
+
+**To PhyriadFG this is a single-GPU machine**, and the audit's `fggpu` dimension found independently
+that on exactly such a rig `--fg-gpu primary` *"previously either killed the process during init
+(host-bridge failure on device B, which does not exist) or corrupted the convert queue routing into a
+device-loss"* — the `:235` override re-arming a device-B-dependent path that `:149` had deliberately
+disabled. That is the frame-gen GPU control the operator changed, on the topology that makes it fatal,
+dying where a fatal init dies: in milliseconds, inside the 600 ms window.
+
+Two corrections this measurement forces:
+
+- **`core_init.cpp:96` is NOT the cause and cannot be.** Reading it: `:82` already returns on `!pA`, so
+  past that point `!pB` implies `single_gpu`, and the guard `if(!single_gpu && !pB)` is false in both
+  branches. It is **unreachable dead code** — a defensive error path that can never print. This session
+  named it as a candidate before reading it closely; the audit's integrator reached the same verdict
+  independently.
+- **The earlier WINDOW_NOT_FOUND hypothesis is demoted, not discarded.** A restart does re-resolve the
+  window by a stale title (E-1), which is also a millisecond death inside the same window, so it
+  remains a live second path to the identical wedge. It is not the favoured one: it is not tied to the
+  control he touched, and `--fg-gpu primary` on a single-GPU topology is.
+
+**A machine-level fact worth acting on separately from any of this:** the 1080 Ti — the discrete card
+PhyriadFG's whole two-device design calls "assist" — is not working. While it stays in error 31 the
+assist path cannot run at all, `--fg-gpu assist` has no device to route to, and every measurement taken
+on this rig is a single-GPU measurement.
 
 **Fix, from the agents and unapplied.** Make the guard child-scoped rather than time-scoped: put the
 child's epoch in the `fg-exit` payload and ignore only events older than the epoch the restart just
