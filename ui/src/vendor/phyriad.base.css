@@ -1,0 +1,574 @@
+/*
+ * phyriad-base — the minimal base layer that consumes the tokens.
+ * Import AFTER phyriad.tokens.css. Ships three layout primitives and nothing
+ * else: a small text site genuinely needs Center, Flow and Cluster.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Mobile Safari/Chrome flash a grey or blue box on tap; on an ink-and-oxide
+     page it reads as a glitch. :focus-visible already carries the feedback.
+     The property inherits, so html is the one place to set it. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  /* Reserve the scrollbar always: without it, a page that grows past one screen
+     shifts horizontally the moment the bar appears, and every 100vw calculation
+     is off by its width. */
+  scrollbar-gutter: stable;
+}
+
+body {
+  /* svh, not vh or dvh. `vh` on mobile means the LARGE viewport (toolbars
+     hidden), so a 100vh box overflows by the toolbar height on first paint.
+     `dvh` re-lays-out on every toolbar collapse, shifting content while the
+     user scrolls. `svh` is the smallest viewport: worst case is a strip of
+     extra space, and content is never clipped. */
+  min-height: 100svh;
+  background: var(--phy-paper);
+  color: var(--phy-ink);
+  /* One long URL or token would break reflow at 320px (WCAG technique C33);
+     the cheapest reflow insurance there is. */
+  overflow-wrap: anywhere;
+  font-family: var(--phy-font-prose);
+  font-size: var(--phy-text-base);
+  line-height: var(--phy-leading-prose);
+  -webkit-font-smoothing: antialiased;
+  /* Old-style figures where the face has them: numerals sit in the text line
+     instead of shouting. Falls back silently when unavailable. */
+  font-variant-numeric: oldstyle-num;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Metadata, labels, code and anything tabular is UI/mono, not prose. The class
+   contrast IS the hierarchy — which is why headings need not shout in weight. */
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--phy-font-mono);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Headings: tight leading, and the last two levels differentiate by class and
+   rule rather than by size — two steps of 1.2 apart read as ambiguous. */
+h1,
+h2,
+h3 {
+  line-height: var(--phy-leading-tight);
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--phy-text-xl);
+}
+
+h2 {
+  font-size: var(--phy-text-lg);
+}
+
+h3 {
+  font-size: var(--phy-text-md);
+}
+
+p {
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--phy-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+  transition: color var(--phy-transition);
+}
+
+a:focus-visible,
+:focus-visible {
+  outline: 2px solid var(--phy-accent);
+  outline-offset: 2px;
+}
+
+hr {
+  border: 0;
+  border-top: var(--phy-rule-width) solid var(--phy-rule);
+}
+
+/* ---- Primitive 1: Center ------------------------------------------------
+ * Measure-constrained wrapper. Intrinsic: no media query, the min() does the
+ * whole job — the gutter is subtracted from the viewport, not branched on. */
+.phy-center {
+  width: min(100% - (2 * var(--phy-space-l)), var(--phy-measure));
+  margin-inline: auto;
+}
+
+/* ---- Primitive 2: Flow --------------------------------------------------
+ * Vertical rhythm without a baseline grid. Strict baseline grids do not
+ * survive images, code blocks and fluid type on the web; the owl selector
+ * gives most of the perceived rhythm in three lines, and any child can
+ * override its own leading gap. */
+.phy-flow > * + * {
+  margin-block-start: var(--phy-flow-space, var(--phy-flow-within));
+}
+
+/* A heading belongs to what FOLLOWS it, so it takes its distance from what
+   precedes — the proximity rule, encoded rather than eyeballed. */
+.phy-flow > :is(h2, h3) {
+  --phy-flow-space: var(--phy-flow-between);
+}
+
+.phy-flow > :is(h2, h3) + * {
+  --phy-flow-space: var(--phy-space-s);
+}
+
+/* ---- Primitive 3: Cluster -----------------------------------------------
+ * Wrapping inline group: tags, metadata rows, nav. */
+.phy-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--phy-cluster-gap, var(--phy-space-s));
+  align-items: baseline;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- The twelve-column grid --------------------------------------------
+ * 2 sidebar + 8 content + 2 sidebar, with a bleed track outside.
+ *
+ * Placement is by NAMED LINE in CSS (`col 3 / span 8`), never a span class in
+ * the markup: layout intent stays out of the HTML, which is the specific thing
+ * classic column systems are criticised for.
+ *
+ * Default placement is PROSE — 5 columns from the start of the content area.
+ * The content area is 8 columns wide and that is too wide to read, so prose
+ * takes the part of it that is not, and anything that is not prose opts wider.
+ *
+ * `.phy-grid-wrap` is required and is not decoration: the grid cannot query its
+ * own width, so the container driving the narrow-mode collapse must be its
+ * parent.
+ */
+.phy-grid-wrap {
+  container-type: inline-size;
+  /* Capped and centred (1.1.0): past --phy-page-max the columns stop growing and
+     the whole grid sits in the middle of the viewport. Practice, read first-hand:
+     cap the LINE (the measure, already) and cap the CONTAINER — otherwise a
+     wide screen leaves the text orphaned at the left (Baymard; Butterick;
+     web.dev "clamping" layouts). */
+  max-inline-size: var(--phy-page-max);
+  margin-inline: auto;
+}
+
+.phy-grid {
+  display: grid;
+  /* Twelve FLUID columns across the whole page, not a fixed-width grid centred
+     in it. The columns divide the viewport; they do not sit in the middle of
+     it. `minmax(0, 1fr)` rather than `1fr` so a wide child cannot push a track
+     past its share. */
+  grid-template-columns: [full-start] repeat(12, [col] minmax(0, 1fr)) [full-end];
+  column-gap: var(--phy-grid-gap);
+  padding-inline: var(--phy-grid-margin);
+}
+
+/* Re-exposes the parent's SAME columns to a descendant, so a section nested
+   inside main lands on the identical lines as the header outside it. The span
+   is deliberately NOT set here: `.phy-subgrid` composes with the span classes. */
+.phy-subgrid {
+  display: grid;
+  grid-template-columns: subgrid;
+}
+
+/* --- Level 1: PAGE placement (children of .phy-grid) ---------------------
+ * A subgrid re-exposes only the lines it spans, renumbered from 1. So the page
+ * grid and the content area cannot share one placement vocabulary: `col 3`
+ * means column 3 of the page at this level and column 3 OF THE CONTENT AREA
+ * one level down. Two levels, two sets of rules, named for what they place. */
+
+/* Default at page level is prose: 5 columns from the start of the content area,
+   CAPPED at the reading measure.
+   The cap is not redundant with the span — it is what makes fluid columns
+   survive a large display. Measured: 5 fluid columns run 499px at a 1280px
+   viewport (63 characters, fine) and 758px at 1900px (96 characters, unreadable).
+   The column places the text; the measure keeps it legible. */
+.phy-grid > * {
+  grid-column: col 3 / span 5;
+  max-inline-size: var(--phy-measure);
+}
+
+/* The whole content area — grids, figures, tables, anything not read as prose.
+   Uncapped: those are not read line by line, so width helps them. */
+.phy-grid > .phy-content {
+  grid-column: col 3 / span 8;
+  max-inline-size: none;
+}
+
+/* The two sidebars. In narrow mode everything stacks in DOM ORDER, which is why
+   a navigation sidebar belongs BEFORE the content in the markup and a
+   table-of-contents sidebar after it. */
+.phy-grid > .phy-side-start {
+  grid-column: col 1 / span 2;
+  max-inline-size: none;
+}
+
+.phy-grid > .phy-side-end {
+  grid-column: col 11 / span 2;
+  max-inline-size: none;
+}
+
+/* Edge to edge, past the page margin the grid holds. */
+.phy-grid > .phy-bleed {
+  grid-column: full-start / full-end;
+  max-inline-size: none;
+  margin-inline: calc(-1 * var(--phy-grid-margin));
+}
+
+/* --- Level 2: CONTENT placement (children of any content subgrid) --------
+ * A subgrid spanning the 8 content columns re-exposes them as lines 1..8, so
+ * its children place against those. Written against `.phy-subgrid` rather than
+ * `.phy-content.phy-subgrid` so a section nested inside main can subgrid again
+ * and its own children still land correctly. */
+.phy-subgrid > * {
+  grid-column: col 1 / span 5;
+  max-inline-size: var(--phy-measure);
+}
+
+.phy-subgrid > .phy-full {
+  grid-column: col 1 / span 8;
+  max-inline-size: none;
+}
+
+/* ---- Centred layout mode (1.2.0) -------------------------------------------
+ * For a page WITHOUT sidebars. The default places reading blocks at five of the
+ * eight content columns — the right shape beside a sidebar, and measured on a
+ * no-sidebar site at 1846 px: 50 characters wide, 122 px left of centre. Here
+ * every reading block spans the content area, caps at the measure and centres;
+ * .phy-full keeps the full content width and .phy-wide still breaks out. Set
+ * by AppShell's `layout="centered"` (data-layout on .phy-grid-wrap). */
+/* Wide mode only: below 52rem the stacking rule above must win, and this
+   selector would otherwise beat it on specificity (measured: 181px blocks in a
+   272px main at 320px). */
+@container (width >= 52rem) {
+  [data-layout='centered'] .phy-subgrid > * {
+    grid-column: col 1 / span 8;
+    inline-size: 100%;
+    max-inline-size: var(--phy-measure);
+    justify-self: center;
+  }
+
+  [data-layout='centered'] .phy-subgrid > .phy-full {
+    max-inline-size: none;
+  }
+}
+
+/* Narrow mode: the column system yields. Twelve fixed columns cannot divide a
+   phone screen, so every child takes everything available and the grid degrades
+   to a single column with gutters, stacking in DOM order.
+   The column gaps go with them: once nothing straddles a gap, eleven invisible
+   gaps still eat the width. */
+@container (width < 52rem) {
+  .phy-grid {
+    column-gap: 0;
+  }
+
+  .phy-grid > *,
+  .phy-grid > .phy-content,
+  .phy-grid > .phy-side-start,
+  .phy-grid > .phy-side-end,
+  .phy-subgrid > *,
+  .phy-subgrid > .phy-full {
+    grid-column: col 1 / span 12;
+    max-inline-size: none;
+  }
+}
+
+/* ---- Query container (opt-in) ------------------------------------------
+ * A component cannot query its own size — asking "how wide am I?" from inside
+ * the thing whose width the answer would change is circular. So a component
+ * that must adapt to the SPACE IT WAS HANDED needs a wrapper that declares
+ * itself a container, and the rules are written against a child.
+ *
+ * This is opt-in on purpose and MUST NOT be defaulted onto Stack/Cluster/Grid:
+ * `container-type: inline-size` applies inline-size containment, which is
+ * exactly what a Cluster that shrink-wraps its content depends on NOT having.
+ *
+ * `container-type: size` is deliberately absent from this substrate: it
+ * contains both axes, so the element can no longer take its block size from
+ * its contents and collapses to zero height in normal flow. */
+.phy-container {
+  container-type: inline-size;
+}
+
+/* ---- Break out of the measure ------------------------------------------
+ * The 60ch measure is a READING constraint. It is correct for prose and wrong
+ * for everything that is not prose: a card grid, a diagram, a wide table. On a
+ * large display, confining those to the text column wastes the screen and, in
+ * a grid, forces one column where three would fit.
+ *
+ * This widens a block symmetrically around its parent's centre without needing
+ * the parent to be a grid — so it works at any depth, with no `display:
+ * contents` (whose accessibility-tree behaviour is still not uniform) and no
+ * restructuring of the document.
+ *
+ * `max(100%, …)` is the guard that matters: without it the block would SHRINK
+ * below its container on a phone, where the viewport term is the smaller one.
+ * The gutter subtraction keeps it off the screen edges; `scrollbar-gutter:
+ * stable` above is what stops 100vw's scrollbar inclusion from causing a jump.
+ */
+.phy-wide {
+  --phy-wide-w: max(100%, min(var(--phy-wide-max, 62rem), 100vw - 2 * var(--phy-space-l)));
+  width: var(--phy-wide-w);
+  margin-inline: calc(50% - var(--phy-wide-w) / 2);
+}
+
+/* ---- Scroll region ------------------------------------------------------
+ * For the things that cannot reflow: a wide diagram, a table, a code block.
+ * Wrapping them beats shrinking them to illegibility inside the measure.
+ *
+ * The consumer MUST also give it role="region" + aria-label, and tabindex="0"
+ * ONLY while it actually overflows — a permanent tabindex on a region that fits
+ * is an empty tab stop. (axe: scrollable-region-focusable.)
+ *
+ * The affordance is carried by background-attachment: the two solid gradients
+ * are `local` (they scroll away with the content) and the two shadows are
+ * `scroll` (pinned) — so the shadow is only visible on the side that still has
+ * content off-screen, and vanishes entirely when nothing overflows. No JS. */
+.phy-scroll-x {
+  /* A containing block: absolute descendants (the visually-hidden recipe) stay
+     inside the clip instead of leaking document scroll (measured, 0.12.0). */
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  background:
+    linear-gradient(to right, var(--phy-paper), transparent) 0 0 / 2rem 100% no-repeat,
+    linear-gradient(to left, var(--phy-paper), transparent) 100% 0 / 2rem 100% no-repeat,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.16), transparent) 0 0 / 0.7rem 100%
+      no-repeat,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.16), transparent) 100% 0 / 0.7rem 100%
+      no-repeat;
+  background-color: var(--phy-paper);
+  background-attachment: local, local, scroll, scroll;
+}
+
+.phy-scroll-x:focus-visible {
+  outline: 2px solid var(--phy-accent);
+  outline-offset: 3px;
+}
+
+/* ---- Touch target -------------------------------------------------------
+ * WCAG 2.5.8 (AA) asks 24x24 CSS px. Links inside a sentence are exempt —
+ * hierarchy of prose would break if every one grew — but a standalone ACTION
+ * link is not, so it gets the hit area via padding, which enlarges the target
+ * rather than merely separating it. */
+.phy-target {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  padding-block: var(--phy-space-3xs);
+}
+
+@media (pointer: coarse) {
+  .phy-target {
+    min-block-size: 44px;
+  }
+}
+
+/* ---- Utility: the UI/metadata class ------------------------------------- */
+.phy-meta {
+  font-family: var(--phy-font-mono);
+  font-size: var(--phy-text-xs);
+  line-height: var(--phy-leading-ui);
+  color: var(--phy-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Skip link ---------------------------------------------------------- */
+.phy-skip {
+  position: absolute;
+  left: -999px;
+}
+
+.phy-skip:focus {
+  position: static;
+  display: inline-block;
+  padding: var(--phy-space-xs);
+}
+
+/* Screen-reader-only. The one hiding technique that stays IN the accessibility
+   tree: display:none and visibility:hidden both remove content from it, which
+   is the opposite of the point. 1px box + clip-path because width/height 0 gets
+   some screen readers to skip the node too. Kept as a single class on purpose —
+   the reveal-on-focus variant is the skip link's own business (.phy-skip). */
+.phy-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Adopted rich text — markdown output, CMS HTML, anything the page did not
+   write by hand. Gives a foreign blob the system's rhythm: measure cap,
+   heading scale, list/blockquote/code dress. Built from zero on our own
+   tokens (operator doctrine 2026-08-29: high-performance substrate, external
+   ideas adopted selectively only where we implement them better). */
+.phy-prose {
+  max-inline-size: var(--phy-measure);
+  font-family: var(--phy-font-prose);
+  line-height: var(--phy-leading-prose);
+  color: var(--phy-ink);
+}
+.phy-prose > * + * {
+  margin-block-start: var(--phy-space-m);
+}
+.phy-prose h1,
+.phy-prose h2,
+.phy-prose h3,
+.phy-prose h4 {
+  font-family: var(--phy-font-prose);
+  line-height: var(--phy-leading-tight);
+  margin-block-start: var(--phy-space-xl);
+}
+.phy-prose h1 {
+  font-size: var(--phy-text-xl);
+}
+.phy-prose h2 {
+  font-size: var(--phy-text-lg);
+}
+.phy-prose h3 {
+  font-size: var(--phy-text-md);
+}
+.phy-prose h4 {
+  font-size: var(--phy-text-base);
+  font-weight: 600;
+}
+.phy-prose ul,
+.phy-prose ol {
+  padding-inline-start: 1.5em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--phy-space-2xs);
+}
+.phy-prose blockquote {
+  margin-inline: 0;
+  padding-inline-start: var(--phy-space-m);
+  border-inline-start: 2px solid var(--phy-rule);
+  color: var(--phy-ink-muted);
+}
+.phy-prose code {
+  font-family: var(--phy-font-mono);
+  font-size: 0.9em;
+  background: var(--phy-paper-2);
+  padding-inline: var(--phy-space-3xs);
+}
+.phy-prose pre {
+  background: var(--phy-paper-2);
+  padding: var(--phy-space-s);
+  overflow-x: auto;
+}
+.phy-prose pre code {
+  background: none;
+  padding: 0;
+}
+.phy-prose img {
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+/* ---- Finish (0.10.0) ----------------------------------------------------
+ * Selection is the INVERSE — paper text on ink. The default blue was the one
+ * colour on the page the system did not choose; "ink on paper-2" was rejected
+ * by computation (1.08:1, invisible). Inverts with the theme for free. */
+::selection {
+  background: var(--phy-ink);
+  color: var(--phy-paper);
+}
+
+/* Windows High Contrast (forced colors) erases background colours and paints
+ * backplates; this identity separates surfaces by background-lightness deltas,
+ * so background-only surfaces would vanish. Give them a border in a system
+ * colour keyword (never a hex: the user chose their palette). Components own
+ * the same rule in their own modules (Skeleton, Empty, Box). */
+@media (forced-colors: active) {
+  .phy-prose code,
+  .phy-prose pre {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ---- Finish (0.11.0) ----------------------------------------------------
+ * Every anchor target keeps one step of room above it when jumped to; the
+ * property only acts on scrollIntoView / fragment navigation, so [id] is a safe
+ * net (an input with an id is unaffected by it otherwise). */
+[id] {
+  scroll-margin-block-start: var(--phy-scroll-margin);
+}
+
+/* Hyphenation is what a serif text system does on paper — but only where the
+ * measure is short enough for rags and rivers to show. Needs the page `lang`,
+ * which phyriad-react's AppShell audits at boot. */
+@media (width < 48rem) {
+  .phy-prose {
+    hyphens: auto;
+  }
+}
+
+/* ---- Vertical scroll region (0.12.0) --------------------------------------
+ * The vertical twin of .phy-scroll-x, for panels and lists inside a window
+ * that scroll on their own. Same contract: the element is focusable and named
+ * by the component that applies the class; overscroll is contained so a wheel
+ * at the end of the list does not scroll the page; the shadow affordance
+ * appears only on the side that still has content. */
+.phy-scroll-y {
+  /* A containing block: absolute descendants (the visually-hidden recipe) stay
+     inside the clip instead of leaking document scroll (measured, 0.12.0). */
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  min-block-size: 0;
+  max-block-size: var(--phy-scroll-max, 100%);
+  background:
+    linear-gradient(to bottom, var(--phy-paper), transparent) 0 0 / 100% 2rem no-repeat,
+    linear-gradient(to top, var(--phy-paper), transparent) 0 100% / 100% 2rem no-repeat,
+    radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / 0.16), transparent) 0 0 / 100% 0.7rem
+      no-repeat,
+    radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 0.16), transparent) 0 100% / 100% 0.7rem
+      no-repeat;
+  background-color: var(--phy-paper);
+  background-attachment: local, local, scroll, scroll;
+}
+
+.phy-scroll-y:focus-visible {
+  outline: 2px solid var(--phy-accent);
+  outline-offset: -2px;
+}
+
+/* While a splitter drags, text must not get selected under the pointer.
+ * Applied by the component for the drag's duration only. */
+.phy-dragging,
+.phy-dragging * {
+  user-select: none;
+}
+
+/* Made with my soul - Swately <3 */

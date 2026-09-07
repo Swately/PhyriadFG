@@ -1,25 +1,35 @@
-/* PhyriadFG launcher — dark control panel (LSFG-spirit). */
+/* PhyriadFG launcher — on the container's web substrate (phyriad-tokens 1.3.0, palette `maid`).
+ *
+ * Every name below is an ALIAS onto a substrate role. Nothing downstream in this file changed shape: it
+ * already said `var(--accent)` and never `#36d1b7`, which is the only reason a re-skin is a token block
+ * and not a rewrite. The palette is chosen in index.html with one attribute.
+ *
+ * What the substrate rules out, and this file therefore no longer does: a radius, a shadow, a glow and a
+ * gradient. Its tokens file states the reason — "separation comes from the rule and the space" — a soft
+ * radius plus a diffuse shadow on every surface being the most recognisable template signature there is.
+ */
 :root {
-  --bg: #0d1014;
-  --bg-2: #141921;
-  --card: #1a212c;
-  --card-2: #202938;
-  --border: #2a3442;
-  --border-soft: #232c38;
-  --text: #e6edf3;
-  --text-dim: #8b97a6;
-  --text-faint: #5e6a78;
-  --accent: #36d1b7;
-  --accent-2: #2bb89f;
-  --accent-glow: rgba(54, 209, 183, 0.25);
-  --danger: #e25563;
-  --danger-2: #c8404e;
-  --ok: #44d07b;
-  --radius: 12px;
-  --radius-sm: 8px;
-  font-family: "Segoe UI", Inter, system-ui, Arial, sans-serif;
-  font-size: 14px;
-  color-scheme: dark;
+  --bg: var(--phy-paper);
+  --bg-2: var(--phy-paper-2);
+  --card: var(--phy-paper-2);
+  --card-2: var(--phy-paper);
+  --border: var(--phy-rule);
+  --border-soft: var(--phy-rule);
+  --text: var(--phy-ink);
+  --text-dim: var(--phy-ink-muted);
+  /* the substrate carries two ink levels where this file had three; faint collapses onto muted */
+  --text-faint: var(--phy-ink-muted);
+  --accent: var(--phy-accent);
+  --accent-2: var(--phy-ok);
+  --accent-glow: transparent;      /* no shadows: the rule and the accent carry state instead */
+  --danger: var(--phy-error);
+  --danger-2: var(--phy-error);
+  --ok: var(--phy-ok);             /* added to the substrate at 1.3.0 for exactly this pair of buttons */
+  --radius: var(--phy-radius);
+  --radius-sm: var(--phy-radius);
+  font-family: var(--phy-font-ui);
+  font-size: var(--phy-text-sm);
+  color-scheme: light dark;        /* was dark-only; the launcher follows the OS now */
 }
 
 * {
@@ -34,7 +44,7 @@ body {
 }
 
 body {
-  background: radial-gradient(1200px 600px at 80% -10%, #18202b 0%, var(--bg) 55%);
+  background: var(--bg);
   color: var(--text);
   display: flex;
   flex-direction: column;
@@ -48,7 +58,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
+  background: none;
   border-bottom: 1px solid var(--border-soft);
   position: sticky;
   top: 0;
@@ -65,9 +75,8 @@ body {
 .brand .dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: var(--radius);
   background: var(--accent);
-  box-shadow: 0 0 12px var(--accent-glow);
   align-self: center;
 }
 
@@ -129,7 +138,7 @@ body {
   font-size: 12px;
   font-weight: 600;
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
 }
 
@@ -139,10 +148,10 @@ body {
 }
 
 .state-pill.running {
-  color: #07140f;
-  background: var(--accent);
+  color: var(--phy-accent-on);
+  background: var(--ok);
   border-color: var(--accent);
-  box-shadow: 0 0 14px var(--accent-glow);
+  box-shadow: none;
 }
 
 /* ── Layout ────────────────────────────────────────────── */
@@ -195,7 +204,7 @@ body {
   height: 14px;
   background: var(--accent);
   border-radius: 2px;
-  box-shadow: 0 0 8px var(--accent-glow);
+  box-shadow: none;
 }
 
 .row {
@@ -264,7 +273,8 @@ input[type="text"] {
 select:focus,
 input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  outline: var(--phy-rule-width) solid var(--phy-accent);
+  outline-offset: 2px;
 }
 
 .text-input.raw {
@@ -345,8 +355,8 @@ select {
 .slider {
   position: absolute;
   inset: 0;
-  background: #38424f;
-  border-radius: 999px;
+  background: var(--phy-rule);
+  border-radius: var(--radius);
   transition: background 0.18s;
 }
 
@@ -357,8 +367,10 @@ select {
   width: 18px;
   left: 3px;
   top: 3px;
-  background: #cdd6e0;
-  border-radius: 50%;
+  background: var(--phy-paper);
+  border-radius: var(--radius);
+  outline: var(--phy-rule-width) solid var(--phy-rule);
+  outline-offset: -1px;
   transition: transform 0.18s, background 0.18s;
 }
 
@@ -368,7 +380,7 @@ select {
 
 .switch input:checked + .slider::before {
   transform: translateX(18px);
-  background: #07140f;
+  background: var(--phy-accent-on);
 }
 
 /* ── Buttons ───────────────────────────────────────────── */
@@ -399,9 +411,9 @@ select {
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: #07140f;
-  box-shadow: 0 4px 16px var(--accent-glow);
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--phy-accent-on);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -410,7 +422,8 @@ select {
 
 .btn-danger {
   background: var(--danger);
-  color: #fff;
+  border-color: var(--danger);
+  color: var(--phy-accent-on);
 }
 
 .btn-danger:hover:not(:disabled) {
@@ -491,7 +504,7 @@ select {
 }
 
 .log .line {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  border-bottom: var(--phy-rule-width) solid var(--border);
   padding: 1px 0;
 }
 
@@ -519,12 +532,71 @@ select {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2c3744;
-  border-radius: 6px;
+  background: var(--phy-rule);
+  border-radius: var(--radius);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a4759;
+  background: var(--phy-ink-muted);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ── The base layer is written for PROSE; two rules make it safe for a control panel ────
+ * `phyriad.base.css` sets `overflow-wrap: anywhere` on the body, and says why: one long URL would break
+ * reflow at 320px (WCAG C33). In a paragraph that is correct. In a flex row whose other child is a
+ * <select> carrying "wgc (Windows Graphics Capture)", it is not: the label is allowed to shrink to one
+ * character and breaks vertically, one letter per line. Found by rendering the real window, not the
+ * preview — the preview's synthetic group had no <select> in it.
+ *
+ * A label is not prose and must not break inside a word; a control must not eat the row it sits in. */
+.row-label,
+.row-label .name,
+.row-label .flagname,
+.field-label {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.row-label {
+  /* the label gets the leftover width; the control shrinks first. The mono face is wider than the sans
+     this file was laid out with, so without this the longest flag name squeezes its own label. */
+  flex: 1 1 auto;
+}
+.row-control {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.row-control select {
+  min-width: 0;
+}
+.row-control select {
+  max-width: 100%;
+}
+
+/* ── Type: three faces doing three jobs (substrate 1.3.0) ─────────────────
+ * This file used one sans for everything. The substrate's hierarchy is UI / mono / prose, and this window
+ * has exactly those three kinds of text: chrome, machine tokens, and one line of prose in the hint.
+ * Flag names, the command preview, the log and the rate readouts are MACHINE TEXT and take the mono face —
+ * which is also what stops a flag name from looking like a label. */
+h1 {
+  font-size: var(--phy-text-md);
+}
+.group h2,
+.row-label .name {
+  font-size: var(--phy-text-sm);
+}
+.flagname,
+.cmd-preview,
+.log,
+.fps-val,
+.text-input,
+.row-control input[type="number"] {
+  font-family: var(--phy-font-mono);
+}
+.hint {
+  font-family: var(--phy-font-prose);
+  font-size: var(--phy-text-xs);
+  line-height: var(--phy-leading-prose);
+}
+
+/* Made with my soul - Swately <3 */

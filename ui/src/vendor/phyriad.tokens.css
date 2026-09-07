@@ -1,0 +1,255 @@
+/*
+ * phyriad-tokens — the container's web design tokens.
+ *
+ * One decision runs through all of it: this is a TEXT system for technical
+ * readers. Identity comes from type, measure and rhythm, not from ornament.
+ *
+ * Every value here is deliberate; `testbench.mjs` enforces the ones that can be
+ * checked mechanically (contrast, zoom-safe fluid type, accent hue, no shadows).
+ *
+ * Consume: @import this file, then phyriad.base.css. Nothing else is required.
+ */
+:root {
+  /* ---- Scheme -----------------------------------------------------------
+   * Both schemes declared: the user agent picks the OS preference with zero
+   * JavaScript, and native controls + scrollbars follow it. The data-theme
+   * attribute (bottom of this file) is the explicit override. */
+  color-scheme: light dark;
+
+  /* ---- Type faces -------------------------------------------------------
+   * System fonts only: zero downloads, zero external requests, instant paint.
+   * The identity choice is PROSE IN A SERIF. A generated template reaches for
+   * Inter; a text face with real italics is the single cheapest way to not look
+   * like one, and it costs nothing because these ship with the OS.
+   * UI/mono carry metadata, labels and code — the contrast between the two
+   * classes is the hierarchy, not weight alone. */
+  --phy-font-prose:
+    'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  --phy-font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --phy-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', monospace;
+
+  /* ---- Fluid type scale -------------------------------------------------
+   * Ratio 1.2 (a dense page cannot afford 1.618), five usable steps.
+   * Each clamp() is computed as:
+   *     slope     = (max_px - min_px) / (max_vw - min_vw)
+   *     intercept = (min_px - slope * min_vw) / 16      -> the rem term
+   *     clamp(min, intercept*1rem + slope*100vw, max)
+   * over 320px -> 1280px.
+   * The rem term is NOT optional: a preferred value of pure vw ignores the
+   * user's browser font-size and cannot reach 200% text zoom — a WCAG 1.4.4
+   * failure. Max/min is held at 1.125x here, far under the ~2.5x ceiling. */
+  --phy-text-xs: clamp(0.75rem, 0.7292rem + 0.1042vw, 0.8125rem); /* 12 -> 13 */
+  --phy-text-sm: clamp(0.875rem, 0.8542rem + 0.1042vw, 0.9375rem); /* 14 -> 15 */
+  --phy-text-base: clamp(1rem, 0.9583rem + 0.2083vw, 1.125rem); /* 16 -> 18 */
+  --phy-text-md: clamp(1.2rem, 1.15rem + 0.25vw, 1.35rem); /* 19.2 -> 21.6 */
+  --phy-text-lg: clamp(1.44rem, 1.38rem + 0.3vw, 1.62rem); /* 23 -> 26 */
+  --phy-text-xl: clamp(1.728rem, 1.656rem + 0.36vw, 1.944rem); /* 27.6 -> 31 */
+
+  /* ---- Line height ------------------------------------------------------
+   * Unitless so it inherits proportionally. Longer measure and smaller size
+   * both want more leading; headings invert. */
+  --phy-leading-prose: 1.55; /* body at ~60ch */
+  --phy-leading-ui: 1.45;
+  --phy-leading-tight: 1.15; /* 1.5rem+ headings */
+
+  /* ---- Measure ----------------------------------------------------------
+   * In `ch`, and deliberately so: the type scale above is FLUID, and `ch`
+   * scales with the element's font-size while `rem` does not. A rem measure
+   * would hold the column fixed while the text grows, so the character count
+   * would drop exactly where the viewport is widest. `ch` keeps it constant.
+   *
+   * Calibrated against this stack, measured in-browser rather than assumed:
+   * the average lowercase glyph is 7.19px where "0" is 8.17px (16.35px text),
+   * so "0" runs 13.6% wide — not the 20-30% the usual "set 58-62ch for a real
+   * 66-character measure" advice assumes, because that advice was written about
+   * sans faces. Here 60ch lands at ~68 characters: inside Bringhurst's 45-75,
+   * a touch above his 66 optimum, which suits a technical page. */
+  --phy-measure: 60ch;
+  --phy-measure-narrow: 45ch;
+
+  /* ---- Column system ----------------------------------------------------
+   * TWELVE FLUID columns across the WHOLE PAGE, laid out as
+   * 2 sidebar + 8 content + 2 sidebar:
+   *
+   *   col   1  2 | 3  4  5  6  7  8  9 10 | 11 12
+   *         side |         content        |  side
+   *              | prose |
+   *
+   * The columns DIVIDE the viewport; they are not a fixed-width block centred
+   * in it. There is therefore no column-width token — a column is 1fr of what
+   * the page has, and only the gap between columns and the margin outside them
+   * are fixed.
+   *
+   * The consequence that has to be handled rather than ignored: fluid columns
+   * make prose wider on a larger screen, and prose has a legibility ceiling
+   * that a column does not. Measured at 5 columns: 499px at a 1280px viewport
+   * (63 characters, fine) but 758px at 1900px (96) and 1033px at 2560px (130) —
+   * both unreadable. So prose is PLACED by the column and CAPPED by the
+   * measure; anything that is not read line by line (grids, figures, sidebars)
+   * is uncapped, because width helps those.
+   *
+   * The honest cost, stated where it lives: twelve columns cannot divide a
+   * phone screen. The system yields below a threshold and every child takes all
+   * twelve, stacking in DOM order. That single query is the price of the column
+   * system, and it is a CONTAINER query on the grid's wrapper, not a device
+   * breakpoint. */
+  /* The page's maximum width. The twelve columns divide the VIEWPORT up to this
+   * cap and then stop growing, centred — the reading column no longer ends up
+   * at the left third of a wide screen (measured at 1846 px before 1.1.0: text
+   * from x = 328 with 1000 px empty beside it). 80rem = 1280 px: the widest
+   * page at which eight content columns still hold a 60ch measure plus a wide
+   * figure without either looking lost. A consumer with no sidebars may lower
+   * it (the portfolio uses 64rem) — it is the one lever for distribution. */
+  --phy-page-max: 80rem;
+
+  --phy-grid-gap: var(--phy-space-l);
+  --phy-grid-margin: var(--phy-space-l);
+
+  /* ---- Space ------------------------------------------------------------
+   * Multiplicative, ratio 1.5 from a 1rem base. Perception of spacing is
+   * roughly logarithmic: on a linear 4px scale 24 and 28 are indistinguishable
+   * while 4 and 8 are a doubling. Nine steps, all nameable.
+   *
+   * FLUID since 0.9.0 (S8.1): each step is its 0.8.0 value at a 320px viewport
+   * and x1.125 at 1280px — the same growth and range as --phy-text-base, so
+   * space and type breathe together (m IS the text base: 16 -> 18). Uniform
+   * growth keeps every ratio in the scale identical at both ends, which is
+   * what keeps the proximity rule below true at both ends. Every preferred
+   * value keeps a rem term (WCAG 1.4.4 zoom). The formulas are evaluated at
+   * both ends by testbench.mjs, not trusted from the comment. */
+  --phy-space-3xs: clamp(0.25rem, 0.2396rem + 0.0521vw, 0.2813rem); /* 4 -> 4.5 */
+  --phy-space-2xs: clamp(0.375rem, 0.3594rem + 0.0781vw, 0.4219rem); /* 6 -> 6.75 */
+  --phy-space-xs: clamp(0.5rem, 0.4792rem + 0.1042vw, 0.5625rem); /* 8 -> 9 */
+  --phy-space-s: clamp(0.75rem, 0.7188rem + 0.1563vw, 0.8438rem); /* 12 -> 13.5 */
+  --phy-space-m: clamp(1rem, 0.9583rem + 0.2083vw, 1.125rem); /* 16 -> 18 */
+  --phy-space-l: clamp(1.5rem, 1.4375rem + 0.3125vw, 1.6875rem); /* 24 -> 27 */
+  --phy-space-xl: clamp(2.25rem, 2.1563rem + 0.4688vw, 2.5313rem); /* 36 -> 40.5 */
+  --phy-space-2xl: clamp(3.375rem, 3.2344rem + 0.7031vw, 3.7969rem); /* 54 -> 60.75 */
+  --phy-space-3xl: clamp(5rem, 4.7917rem + 1.0417vw, 5.625rem); /* 80 -> 90 */
+
+  /* Space PAIRS (Utopia's idea): one token that is the lower step at 320px and
+   * the upper step at 1280px, with no breakpoint in between. A pair spans two
+   * steps, so its ratio against a step CHANGES across the range — computed
+   * against m: s-m 0.75->1.0, m-l 1.0->1.5, l-xl 1.5->2.25, xl-2xl 2.25->3.38,
+   * 2xl-3xl 3.38->5.0. Only xl-2xl and 2xl-3xl keep "between >= 2 x within"
+   * at the narrow end; the smaller pairs are rhythm WITHIN a group. */
+  --phy-space-s-m: clamp(0.75rem, 0.625rem + 0.625vw, 1.125rem); /* 12 -> 18 */
+  --phy-space-m-l: clamp(1rem, 0.7708rem + 1.1458vw, 1.6875rem); /* 16 -> 27 */
+  --phy-space-l-xl: clamp(1.5rem, 1.1563rem + 1.7188vw, 2.5313rem); /* 24 -> 40.5 */
+  --phy-space-xl-2xl: clamp(2.25rem, 1.7344rem + 2.5781vw, 3.7969rem); /* 36 -> 60.75 */
+  --phy-space-2xl-3xl: clamp(3.375rem, 2.625rem + 3.75vw, 5.625rem); /* 54 -> 90 */
+
+  /* Proximity: space BETWEEN groups is >= 2x the space WITHIN one. These two
+   * are the flow defaults that encode that rule. */
+  --phy-flow-within: var(--phy-space-m);
+  --phy-flow-between: var(--phy-space-xl);
+
+  /* ---- Color ------------------------------------------------------------
+   * One neutral ramp + one accent. Semantic roles only — no literal color name
+   * ever appears in a component.
+   * Paper, not white: pure #fff under pure #000 causes halation. The neutrals
+   * carry a trace of the accent's warmth so the greys do not read cold.
+   * Contrast ratios below are computed by testbench.mjs, not asserted here.
+   *
+   * TWO SCHEMES since 0.10.0: every colour is light-dark(light, dark), so the
+   * dark variant is the palette itself and every element is dark-ready by
+   * construction (no component may name a literal colour). The page "turns
+   * over": ink becomes paper. Dark paper is a warm near-black, never #000 —
+   * halation again. The oxide is lifted for dark (#e0836a, hue 12.7deg, still
+   * outside the 240-300deg band) because #8a3324 on near-black is ~2.5:1.
+   * Which half applies is decided by color-scheme (below): the OS preference by
+   * default, or the data-theme attribute on <html>. Engines before mid-2024 do
+   * not know light-dark(): there the colour falls to the UA default (black on
+   * white) — legible, unstyled, and stated as the boundary. */
+  --phy-paper: light-dark(#faf9f6, #16150f);
+  --phy-paper-2: light-dark(#f2f0ea, #211f19);
+  --phy-ink: light-dark(#16150f, #faf9f6);
+  --phy-ink-muted: light-dark(#5f5c52, #aaa597);
+  --phy-rule: light-dark(#ddd9cf, #3d3a32);
+
+  /* Oxide. Deliberately OUTSIDE the 240-300deg hue band that indigo/violet
+   * template gradients live in — the testbench fails the build if it drifts
+   * back in. Warm, quiet, and it belongs next to hardware. */
+  --phy-accent: light-dark(#8a3324, #e0836a);
+  --phy-accent-on: light-dark(#faf9f6, #16150f);
+
+  /* Error. A true red, deliberately distinct from the brownish oxide so
+   * "wrong" and "link" never read as the same family. Contrast on both papers
+   * is COMPUTED by the testbench PAIRS, not asserted here. */
+  --phy-error: light-dark(#a3242e, #f0868c);
+
+  /* Success. ADDED 1.3.0. Until now the palette had a failure colour and nothing for success, so a
+   * consumer with two primary actions (a Start and a Stop) had to fill both from the same hue family:
+   * measured at 31 apart in light and 38 in dark (RGB euclidean), separable only by the label. A green is
+   * the one hue far from both the oxide and the red, and the testbench gates it like the rest. */
+  --phy-ok: light-dark(#2f6238, #7fbb8c);
+
+  /* ---- Surfaces ---------------------------------------------------------
+   * Radius zero and no shadow, as a rule and not a default: separation comes
+   * from a 1px hairline and a background-lightness delta. Soft 16px corners
+   * plus a large diffuse shadow on every surface is the most recognizable
+   * template signature there is. */
+  --phy-radius: 0;
+  --phy-rule-width: 1px;
+
+  /* ---- Scroll targets ---------------------------------------------------
+   * Anchor jumps (TOC, skip link, in-page links) land the target flush at the
+   * top edge — under nothing today, under any consumer sticky header tomorrow.
+   * One step of breathing room, applied to every [id] in the base layer. */
+  --phy-scroll-margin: var(--phy-space-l);
+
+  /* ---- Motion -----------------------------------------------------------
+   * Interaction only. No entrance animation, no scroll reveal, no stagger. */
+  --phy-transition: 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --phy-transition: 0ms;
+  }
+}
+
+/* The explicit override. Absent attribute = follow the OS. Set by the
+ * consumer's boot script before first paint and by phyriad-react's
+ * useColorScheme store afterwards; a consumer that wants ONE look forever
+ * sets it statically in index.html and never mounts the toggle. */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* ---- Palettes ---------------------------------------------------------
+ * The ROLES above are the contract; their VALUES are a palette. A second palette redefines the nine
+ * colour roles and nothing else — no new role, no component rule, no size — so a consumer switches the
+ * whole look with one attribute and every component follows without knowing.
+ *
+ *   <html data-palette="maid">        one word, in the consumer's index.html
+ *
+ * ABSENT ATTRIBUTE = OXIDE, byte for byte. That is the compatibility promise: a project that vendored
+ * this file before palettes existed renders identically after them.
+ *
+ * Each palette declares BOTH schemes, because light-dark() is what makes the scheme free; a palette that
+ * only works in the dark is half a palette. The testbench gates every palette x scheme pair.
+ *
+ * ---- maid ----
+ * The classical (kurashikaru) Victorian maid uniform, not the moe version: a warm-black wool dress, a
+ * starched cotton apron and collar that is not #fff, ecru lace a shade deeper than the apron, and the one
+ * saturated thing in the whole outfit — the burgundy ribbon at the throat. Household livery of the period
+ * supplies the bottle green. In dark the ribbon has to lift to #d98da0 to clear 4.5:1 on near-black and
+ * reads rosier than burgundy — the same lift the oxide takes (#8a3324 -> #e0836a), stated because it is
+ * a change of mood and not only of value. */
+:root[data-palette='maid'] {
+  --phy-paper: light-dark(#f5f2ea, #141110);      /* starched apron / the dress by gaslight */
+  --phy-paper-2: light-dark(#eae4d7, #1e1a17);    /* ecru lace, one shade deeper */
+  --phy-ink: light-dark(#191411, #f2ece2);        /* the wool: a WARM black, never #000 */
+  --phy-ink-muted: light-dark(#655c53, #a89d90);  /* the taupe a washed black turns */
+  --phy-rule: light-dark(#d6cdbd, #3a332c);       /* lace thread */
+  --phy-accent: light-dark(#6d1f2e, #d98da0);     /* THE COLLAR RIBBON */
+  --phy-accent-on: light-dark(#f5f2ea, #141110);
+  --phy-error: light-dark(#b23a2f, #f0897c);      /* hotter and lighter than the ribbon, on purpose */
+  --phy-ok: light-dark(#2f5b41, #82b795);         /* household livery bottle green */
+}
+
+/* Made with my soul - Swately <3 */
