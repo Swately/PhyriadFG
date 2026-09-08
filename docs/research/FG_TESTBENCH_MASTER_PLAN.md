@@ -1,9 +1,31 @@
 # FG_TESTBENCH_MASTER_PLAN — a controlled FG test environment (one deterministic source · three measurement axes)
 
+> ## ⚠ 2026-09-08 — THE INSTRUMENTS ARE NOT MISSING. THEY ARE IN THE CONTAINER.
+>
+> This document says the testbench is "not built". That reading is wrong and it cost this project
+> months of thinking it had no input→photon axis. PhyriadFG was split out of the container and **left
+> its testbench behind**; the code was never deleted, only stranded on the other side of the split,
+> and `git log --all --diff-filter=A` in THIS repo finds nothing because it was never committed HERE.
+>
+> Verified first-hand on 2026-09-08, by path and by running it:
+>
+> | what | where it actually lives | state |
+> |---|---|---|
+> | **TB-C12** minigame (input→photon) | `F:\Phyriad\catalog\cpp\render\vulkan\bench\testbench_minigame\` — `main.cpp` 64,215 B + `latency_tap.hpp` + `gfx_present_load.hpp` + `interactive_scene.hpp` + CMakeLists + shaders | **builds standalone today** (MSVC 19.44 + Vulkan 1.4.357, `cmake -S … -B build-tbmg -G Ninja -DCMAKE_BUILD_TYPE=Release`) and **PASSES its own determinism gate**: `--sim-selftest` → 4000 ticks, replay per-tick state-hash EXACT, autopilot session-hash `eedb9a51087c8dd3` |
+> | `fg_latency_scorer.py` | `F:\Phyriad\scripts\fg_latency_scorer.py` (37,283 B) | present, unrun against this project |
+> | `fg_testbench_fluidity.py` (TB-C9) | `F:\Phyriad\scripts\fg_testbench_fluidity.py` (16,825 B) | present, unrun against this project |
+>
+> So the correct action for the unbuilt axes is **wire, not build**. The one thing still genuinely
+> missing is the operator: `--input --latency-csv <path>` needs live raw input (a hand on the
+> keyboard) and the ground truth is his S24 slow-mo. Everything up to that point runs headless.
+>
+> The paths in the body below (`apps/render_assistant/src/main.cpp`, `../canon/…`) predate the
+> 2026-09-03 restructure and no longer resolve. The reasoning is still good; the addresses are not.
+
 > **Diátaxis type:** Planning / design (Explanation). **Status:** `designed` — the testbench is
 > **not built**; this document is the conceptual spine, not a record of shipped code. Per-component
 > standing is tagged inline (the *reused* assets are `shipping`/`measured`; the *new* components are
-> `designed`).
+> `designed`). **Superseded in part by the banner above.**
 > **Plan tier:** **Tier 2 (risk-bearing)** per [`PLAN_TIER_PROTOCOL.md`](../canon/PLAN_TIER_PROTOCOL.md)
 > §1.1 trigger 1 (crash / device-loss / TDR): the **TB-C3 SaturationLoad** sustains graphics-queue + present
 > pressure on the same GPU to a held target utilization — a load that can plausibly **TDR the GPU or
