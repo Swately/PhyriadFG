@@ -152,6 +152,21 @@ This is the predicted behaviour, and it is the reason to trust the measure:
 input's 0.03411** — on the L2-style number it *improved* the image, while widening every edge 2.28×.
 An L2 metric would have accepted it. The conjunctive verdict rejects it.
 
+The same ranking on the **noise** corpus reaches the same order and the same verdicts, compressed by
+the background floor (DI-3 worst discrepancy 5.9 %):
+
+| arm | staircase | vs input | width ratio | band err | verdict |
+|---|---|---|---|---|---|
+| `alias` | 2.1× | +0 % | 0.53× | 0.03413 | no gain |
+| `blur_norm` | 2.1× | **+0 %** | 3.19× | 0.05212 | no gain / BLURRED |
+| `blur_iso` | 1.8× | −16 % | 1.94× | **0.03367** | BLURRED |
+| `box3` | 1.7× | −18 % | 2.00× | 0.04203 | BLURRED |
+| `blur_tan` | 1.6× | −24 % | 0.88× | 0.02337 | ACCEPT |
+
+Over real content the normal-direction blur buys **literally nothing** (+0 %) while still widening
+every edge 3.19×, and the L2 inversion is larger, not smaller: `blur_iso` beats the input by 0.00046
+on `band_err` while widening 1.94×.
+
 ## 6. What this sets up, and the number that decides the project
 
 The best fixed blur recovers **31 %** of the staircase. That is the bar. A2's least-squares kernel
