@@ -263,6 +263,22 @@ set_tests_properties(cli_missing_value_exits_2 PROPERTIES WILL_FAIL TRUE)
 add_test(NAME cli_help_exits_0 COMMAND phyriad_fg --help)
 set_tests_properties(cli_help_exits_0 PROPERTIES PASS_REGULAR_EXPRESSION "LAYERS \\(the registry")
 
+# 7b. P-021, the regression the QoL fix batch introduced and the operator did not have to find twice:
+#     --window-pid (or --hwnd) ALONE silently captured the whole monitor, because five call sites asked
+#     `cfg.window_substr[0]` — "was a TITLE given?" — when the question is "was a TARGET given, by any of
+#     the three means?". `wants_window_target()` (cli.hpp) is that question; these two assert it at the
+#     one place a CPU-only test can reach it, the resolved-config dump.
+#     SEEN RED, not assumed: with the predicate reverted to `c.window_substr[0]` (cli.cpp:805,807) both
+#     go red, because NEITHER branch fires and the line is never printed. The third case is the control —
+#     with no target of any kind the line must NOT appear, so a predicate stuck at `true` fails too.
+#     What these do NOT cover: the capture_init.cpp half of P-021, which needs a live WGC session.
+add_test(NAME window_pid_alone_is_a_window_target COMMAND phyriad_fg --dump-config --window-pid 12345)
+set_tests_properties(window_pid_alone_is_a_window_target PROPERTIES PASS_REGULAR_EXPRESSION "captura solo-de-la-ventana")
+add_test(NAME hwnd_alone_is_a_window_target COMMAND phyriad_fg --dump-config --hwnd 12345)
+set_tests_properties(hwnd_alone_is_a_window_target PROPERTIES PASS_REGULAR_EXPRESSION "captura solo-de-la-ventana")
+add_test(NAME no_target_is_not_a_window_target COMMAND phyriad_fg --dump-config)
+set_tests_properties(no_target_is_not_a_window_target PROPERTIES FAIL_REGULAR_EXPRESSION "captura solo-de-la-ventana")
+
 # 8. NEGATIVE: the layer generator's body checks (R3) must REFUSE to generate from a malformed row body. The script
 #    copies the shader tree, breaks one body, and asserts the generator exits 3 — the check R3 saw red by hand.
 add_test(NAME layer_gen_rejects_bad_body COMMAND ${CMAKE_COMMAND}
