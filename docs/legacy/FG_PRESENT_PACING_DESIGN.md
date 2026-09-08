@@ -4,7 +4,7 @@
 > (research-grounded; the verdict is architectural). **Audience:** the operator (a product decision)
 > + the next implementer.
 >
-> **Evidence base:** the measured gap is [`FG_LSFG_HEADTOHEAD_MEASURED.md`](FG_LSFG_HEADTOHEAD_MEASURED.md)
+> **Evidence base:** the measured gap is [`FG_LSFG_HEADTOHEAD_MEASURED.md`](../research/FG_LSFG_HEADTOHEAD_MEASURED.md)
 > §1/§5 (our MASD 12.7 ms vs LSFG's 0.026 ms; we present "Composed: Flip", LSFG "Hardware Composed:
 > Independent Flip"). The architecture analysis is the deep-research workflow `wq1srry60` (100 agents,
 > 23/25 claims confirmed against **Microsoft primary docs** — `comp-swapchain`, `dxgi-flip-model`,

@@ -1,7 +1,7 @@
 # RENDER_ASSISTANT — ready-to-dispatch stage kickoffs
 
 **Date.** 2026-06-07. **Status.** ONGOING — dispatch queue. **Type.** How-to (procedure).
-**Parent.** [`RENDER_ASSISTANT_PLAN.md`](../RENDER_ASSISTANT_PLAN.md) §8.
+**Parent.** [`RENDER_ASSISTANT_PLAN.md`](RENDER_ASSISTANT_PLAN.md) §8.
 
 The operator delegated stage selection: the supervisor decides the sequence and pre-stages the Sonnet
 kickoffs here so the operator dispatches immediately. Sequence toward LSFG-parity:

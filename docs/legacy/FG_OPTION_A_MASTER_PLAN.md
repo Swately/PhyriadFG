@@ -7,10 +7,10 @@
 > invariant — is at stake). Per [`canon/PLAN_TIER_PROTOCOL.md`](../canon/PLAN_TIER_PROTOCOL.md) this plan
 > is one leg of a **mutually-linked triad**:
 > - [`FG_OPTION_A_IMPLEMENTATION_STRATEGIES.md`](FG_OPTION_A_IMPLEMENTATION_STRATEGIES.md) — the build steps.
-> - [`FG_OPTION_A_RISK_REGISTER.md`](FG_OPTION_A_RISK_REGISTER.md) — the failure modes + mitigation-as-code.
+> - [`FG_OPTION_A_RISK_REGISTER.md`](../research/FG_OPTION_A_RISK_REGISTER.md) — the failure modes + mitigation-as-code.
 >   **No risk may remain `open` at commit; no commit while any is open.**
 >
-> **Evidence base (the single-sources):** [`FG_LSFG_HEADTOHEAD_MEASURED.md`](FG_LSFG_HEADTOHEAD_MEASURED.md)
+> **Evidence base (the single-sources):** [`FG_LSFG_HEADTOHEAD_MEASURED.md`](../research/FG_LSFG_HEADTOHEAD_MEASURED.md)
 > (the measured gaps + the mechanism control) · [`FG_PRESENT_PACING_DESIGN.md`](FG_PRESENT_PACING_DESIGN.md)
 > (the structural verdict + options A/B/C). This plan productizes option A.
 

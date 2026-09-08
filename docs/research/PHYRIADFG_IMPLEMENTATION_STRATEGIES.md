@@ -180,11 +180,11 @@ A3 dependency ladder: L1 (T0) ∥ L2 (T1) → L3 (T1) → L4 (T2); L5 (T1) cross
 
 ### B1 (COVERED — INPUT_LAG_DREDUCTION + REAL_FAST_PATH strategies)
 - **B1 strategy pointer.** The space-makers are SHIPPED — no new build. → indexes
-  [`INPUT_LAG_DREDUCTION_MASTER_PLAN.md`](INPUT_LAG_DREDUCTION_MASTER_PLAN.md) (the D-reduction arc
+  [`INPUT_LAG_DREDUCTION_MASTER_PLAN.md`](../legacy/INPUT_LAG_DREDUCTION_MASTER_PLAN.md) (the D-reduction arc
   + §6 measured levers + §7 "latency is a budget" + §8 combat decomposition — the live floor is
   the ~11 ms per-pair B-side build gap, NOT F-compute) and
-  [`REAL_FAST_PATH_IMPLEMENTATION_STRATEGIES.md`](REAL_FAST_PATH_IMPLEMENTATION_STRATEGIES.md) +
-  [`REAL_FAST_PATH_RISK_REGISTER.md`](REAL_FAST_PATH_RISK_REGISTER.md). Code sites:
+  [`REAL_FAST_PATH_IMPLEMENTATION_STRATEGIES.md`](../legacy/REAL_FAST_PATH_IMPLEMENTATION_STRATEGIES.md) +
+  [`REAL_FAST_PATH_RISK_REGISTER.md`](../legacy/REAL_FAST_PATH_RISK_REGISTER.md). Code sites:
   `main.cpp:608` (`--rfp-fresh`), `:631` (`--cphase` auto-async), `:720` (`--async-present`,
   STAGE-102 second bridge slot `:3400`), `:731-741` (`--shallow-queue`).
 - **B1·C7 — latency ≤ LSFG + Δ (T0, FG-agnostic). ★ This CITES the C7 probe HOMED under
@@ -205,7 +205,7 @@ A3 dependency ladder: L1 (T0) ∥ L2 (T1) → L3 (T1) → L4 (T2); L5 (T1) cross
 
 ### C1 (COVERED — the FG_SATURATION_STABILITY triad IS this objective)
 - **C1 strategy pointer.** Reuse
-  [`FG_SATURATION_STABILITY_IMPLEMENTATION_STRATEGIES.md`](FG_SATURATION_STABILITY_IMPLEMENTATION_STRATEGIES.md)
+  [`FG_SATURATION_STABILITY_IMPLEMENTATION_STRATEGIES.md`](../legacy/FG_SATURATION_STABILITY_IMPLEMENTATION_STRATEGIES.md)
   S0–S5 verbatim (cited, not duplicated) + the MASTER_PLAN STEP 0–4 + the RISK_REGISTER CR1–CR9 +
   the INTEGRATION (the why). The synchronous present (the C1 target) is at
   **`main.cpp:7013, 7162, 7521`** — `vk_live(vkWaitForFences(A.dev,1,&fBridge,VK_TRUE,UINT64_MAX))`
@@ -532,7 +532,7 @@ WebSocket anywhere (grep = 0).
 - **G1 strategy pointer (T1).** **★ Frontend = Tauri + React** (operator's 2026-06-21 decision,
   `CONTROLPLANE_MASTER_PLAN.md:18`). **`PHYRIADFG_UI_MASTER_PLAN.md:49` is STALE (says ImGui/GLFW —
   pre-pivot) and needs updating in a separate change.** Do not write ImGui. → indexes
-  [`PHYRIADFG_UI_IMPLEMENTATION_STRATEGIES.md`](PHYRIADFG_UI_IMPLEMENTATION_STRATEGIES.md) (the
+  [`PHYRIADFG_UI_IMPLEMENTATION_STRATEGIES.md`](../legacy/PHYRIADFG_UI_IMPLEMENTATION_STRATEGIES.md) (the
   launcher design, window-pick, argv-composition, the slider→flag map, the P0–P6 increments) +
   `CONTROLPLANE_MASTER_PLAN.md` CP2.
   - The slider mechanism is BUILT: `--flow-scale auto` + `--flow-scale-target-mp`

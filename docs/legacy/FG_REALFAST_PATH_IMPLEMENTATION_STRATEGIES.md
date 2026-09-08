@@ -7,7 +7,7 @@
 > `--rfp-window F` flag is already `shipping`** — `main.cpp:621`/`:1133`/`:8478` — so L1's only `designed` delta
 > is the RFP-FR1 safe-ceiling clamp on the already-exposed window).
 > **Linked set:** [`FG_REALFAST_PATH_MASTER_PLAN.md`](FG_REALFAST_PATH_MASTER_PLAN.md) ·
-> [`FG_REALFAST_PATH_RISK_REGISTER.md`](FG_REALFAST_PATH_RISK_REGISTER.md) · this.
+> [`FG_REALFAST_PATH_RISK_REGISTER.md`](../research/FG_REALFAST_PATH_RISK_REGISTER.md) · this.
 > **Prior triad it extends:** [`REAL_FAST_PATH_IMPLEMENTATION_STRATEGIES.md`](REAL_FAST_PATH_IMPLEMENTATION_STRATEGIES.md)
 > (the STAGE-109 `--rfp` strategies — L0's S1-S7 are NOT re-stated; this doc adds L1/L2/L3).
 > **Anchors:** all `file:line` re-confirmed first-hand against `apps/render_assistant/src/main.cpp` in the

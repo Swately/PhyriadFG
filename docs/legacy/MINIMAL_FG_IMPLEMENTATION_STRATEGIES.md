@@ -6,7 +6,7 @@
 > each code reference that is not first-hand-verified in this authoring pass is marked **"to confirm during
 > implementation"**. The present-pillar API references (§3, §6) were read first-hand from the header this pass.
 > **Plan tier:** **Tier-2** — this is the IMPLEMENTATION_STRATEGIES leg of the linked triad with
-> [`MINIMAL_FG_MASTER_PLAN.md`](MINIMAL_FG_MASTER_PLAN.md) (the why/architecture/phases) and
+> [`MINIMAL_FG_MASTER_PLAN.md`](../research/MINIMAL_FG_MASTER_PLAN.md) (the why/architecture/phases) and
 > [`MINIMAL_FG_RISK_REGISTER.md`](MINIMAL_FG_RISK_REGISTER.md) (the risks **MR-1 … MR-8**). Per
 > [`PLAN_TIER_PROTOCOL.md`](../canon/PLAN_TIER_PROTOCOL.md) §2.3 **every strategy cites the MR-ID(s) it
 > mitigates** so a reviewer can trace edit → risk. Cited foundation: `MINIMAL_FG_SOTA_DOSSIER.md`.
@@ -317,7 +317,7 @@ place:
 ## §Links — the triad + the dossier
 
 - **Triad siblings (Tier-2 set, mutually linked per PLAN_TIER_PROTOCOL §2.3):**
-  - master plan — [`MINIMAL_FG_MASTER_PLAN.md`](MINIMAL_FG_MASTER_PLAN.md) (the why, the SOTA verdict, the
+  - master plan — [`MINIMAL_FG_MASTER_PLAN.md`](../research/MINIMAL_FG_MASTER_PLAN.md) (the why, the SOTA verdict, the
     phase plan P0–P5, the §0.1 component IDs).
   - risk register — [`MINIMAL_FG_RISK_REGISTER.md`](MINIMAL_FG_RISK_REGISTER.md) (the risks MR-1 … MR-8; no
     `open` risk may be committed).

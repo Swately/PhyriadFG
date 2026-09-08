@@ -5,7 +5,7 @@
 
 > **Diátaxis type:** how-to (concrete edit sites + the byte-identical discipline + the validation gates).
 > Companion to [`FG_VENDOR_AGNOSTIC_MASTER_PLAN.md`](FG_VENDOR_AGNOSTIC_MASTER_PLAN.md) (the why/phases) and
-> [`FG_VENDOR_AGNOSTIC_RISK_REGISTER.md`](FG_VENDOR_AGNOSTIC_RISK_REGISTER.md) (the Tier-2 failure modes).
+> [`FG_VENDOR_AGNOSTIC_RISK_REGISTER.md`](../legacy/FG_VENDOR_AGNOSTIC_RISK_REGISTER.md) (the Tier-2 failure modes).
 > Each edit site cites the risk ID it mitigates (PLAN_TIER_PROTOCOL §2.3).
 >
 > **Status:** `designed`. Every CURRENT-code line is `[VS]` (verified first-hand this session). Every

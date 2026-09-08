@@ -97,7 +97,7 @@ only), §4 collapses to "no runtime re-init occurs" and the WS-1/WS-2 risks fall
   switch decision is a per-tick scalar threaded like `t`/`extrap` (a push-constant-adjacent scalar), NOT a
   per-slot constant under `--async-present`'s ping-pong (RISK WS-2 residual).
 - **Device-loss-adjacent concurrency.** Destroying + recreating `wapOutA` + re-writing the descriptor is the
-  device-loss-adjacent class [`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §3 names for
+  device-loss-adjacent class [`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](../research/FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §3 names for
   the FLOW lever; the warp case is lighter (one image + one binding, nothing downstream sizes off the warp
   output) but still a Vulkan resource-lifetime mutation that MUST be `vk_live`-guarded (RISK WS-1).
 - **The degrade path if re-init fails.** A failed `wap_out_resize` MUST degrade to the LAST-GOOD `wapOutA`

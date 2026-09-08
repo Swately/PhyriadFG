@@ -27,7 +27,7 @@ Warp-scaling's **runtime form (Shape B,
 ([`main.cpp:2794`](../../apps/render_assistant/src/main.cpp)) **mid-stream, on the crash-sensitive warp/present
 path** — the [`PLAN_TIER_PROTOCOL`](../canon/PLAN_TIER_PROTOCOL.md) §1.1 trigger-1 (device-loss) + trigger-2
 (concurrency on a resource the steady tick reads) surface, the same hazard
-[`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §3 classifies T2 for the analogous FLOW
+[`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](../research/FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §3 classifies T2 for the analogous FLOW
 lever. The risks cluster into three families: **(1) crash / device-loss from re-init** (WS-1), **(2)
 concurrency on the in-flight warp resources** (WS-2), **(3) the dogma cluster** — D-2 zero-alloc hot path
 (WS-3), the re-init stall / freeze floor (WS-4), D-13 correctness of upscaled warp (WS-5), byte-identical-off
@@ -100,7 +100,7 @@ shows no per-tick allocation (validation-layer / a counter). **Status: `open`.**
 
 **Failure mode.** Each runtime switch incurs a destroy+recreate+descriptor-write stall; a thrashing controller
 (or a noisy switch signal) re-inits repeatedly → a visible per-switch hitch, the freeze-floor regression the
-adaptive-flow design warns of ([`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §6
+adaptive-flow design warns of ([`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](../research/FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §6
 R-AFS-2).
 
 **Mitigation as code.** (1) Bound `N ∈ {1,2,4}` and require a **minimum dwell** + hysteresis before a switch
@@ -157,7 +157,7 @@ upscales it back to the bridge/present extent ([`main.cpp:7555`](../../apps/rend
 The game's captured pair-real inputs (`wPrev`/`wCur`) are SAMPLED full-res unchanged
 ([`main.cpp:4329-4332`](../../apps/render_assistant/src/main.cpp)); we never touch the game's swapchain,
 render resolution, or present. The game's per-frame cost is untouched (the
-[`FG_LSFG_HEADTOHEAD_MEASURED.md`](FG_LSFG_HEADTOHEAD_MEASURED.md) §3 identical-cost control is the proof
+[`FG_LSFG_HEADTOHEAD_MEASURED.md`](../research/FG_LSFG_HEADTOHEAD_MEASURED.md) §3 identical-cost control is the proof
 template). This is the §7.2-lever-#1 "minimize OUR slice," never a game cap.
 
 **Verification (to flip → `mitigated`).** Code-review confirms the divisor is applied to `wapOutA`/the
@@ -193,7 +193,7 @@ cold-path/`vk_live` discipline + the no-cap dogma. The three docs cross-link per
 ## Dogma checks
 
 - **No game cap (WS-7).** The divisor is on `wapOutA` (OURS), upscaled by the existing blit; the game's render
-  + per-frame cost are untouched (the [`FG_LSFG_HEADTOHEAD_MEASURED.md`](FG_LSFG_HEADTOHEAD_MEASURED.md) §3
+  + per-frame cost are untouched (the [`FG_LSFG_HEADTOHEAD_MEASURED.md`](../research/FG_LSFG_HEADTOHEAD_MEASURED.md) §3
   control). Slice-minimization, not a game downscale.
 - **Zero-alloc hot path / cold-path re-init (WS-3).** The `wap_out_resize` allocation is a labelled cold path,
   reached only on a switch event on a pair boundary, never the steady tick.

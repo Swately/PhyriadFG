@@ -18,18 +18,18 @@
 > T2 because that path OWNS the displayed scanout plane. See the RISK_REGISTER's *Why T2*.
 > **Triad (mutually linked, PLAN_TIER_PROTOCOL §2.3):**
 > [`FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md`](FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md)
-> · [`FG_PRESENT_TARGET_PACER_RISK_REGISTER.md`](FG_PRESENT_TARGET_PACER_RISK_REGISTER.md).
+> · [`FG_PRESENT_TARGET_PACER_RISK_REGISTER.md`](../research/FG_PRESENT_TARGET_PACER_RISK_REGISTER.md).
 > **Hard gate (PLAN_TIER_PROTOCOL §3):** a T2 change MUST NOT be committed while any risk in its register is
 > `open`; each MUST be `mitigated` (recorded first-hand verification) or explicitly `accepted` (bounded
 > residual, operator-recorded).
 > **Evidence single-sources (this plan CITES, never re-derives, the numbers — FDP §4.6):**
-> - [`FG_OPTION_A_RISK_REGISTER.md`](FG_OPTION_A_RISK_REGISTER.md) Rig-verification log (the soft-pacer line,
+> - [`FG_OPTION_A_RISK_REGISTER.md`](../research/FG_OPTION_A_RISK_REGISTER.md) Rig-verification log (the soft-pacer line,
 >   `:266-267`) — the soft-pacer result (present-MASD 10.49→4.28 ms, display-flip-MASD 9.38→1.79 ms), the
 >   LSFG **~0.004 ms `MsBetweenPresents`-MASD metronome** the hard pacer targets, **and its explicit pointer**
 >   "the hard present-target pacer is the next lever (separate triad)". The same ~0.004 ms figure is recorded
 >   at the `--pace-present` config comment (`apps/render_assistant/src/main.cpp:187`, "the present MASD … was
 >   measured ~7.1ms vs LSFG ~0.004ms").
-> - [`FG_LSFG_HEADTOHEAD_MEASURED.md`](FG_LSFG_HEADTOHEAD_MEASURED.md) — the broader LSFG-vs-Phyriad scorecard;
+> - [`FG_LSFG_HEADTOHEAD_MEASURED.md`](../research/FG_LSFG_HEADTOHEAD_MEASURED.md) — the broader LSFG-vs-Phyriad scorecard;
 >   its pacing line is the **`MsBetweenDisplayChange` MASD = 0.026 ms** (`:23`, a *display-change* metric, NOT
 >   the present-MASD figure above). The hard pacer's stated target is the present-MASD metronome; this doc is
 >   cited for the qualitative "LSFG locks, we over-present" gap, not for the 0.004 ms number.

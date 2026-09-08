@@ -3,7 +3,7 @@
 > **Diátaxis type:** Planning / explanation (a master plan, per
 > [`PLAN_TIER_PROTOCOL.md`](../canon/PLAN_TIER_PROTOCOL.md)).
 > **Status:** `designed` — no capture-layer code shipped under this plan yet. The SOTA grounding is
-> `measured` (third-party, cited) in [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md)
+> `measured` (third-party, cited) in [`MINIMAL_FG_SOTA_DOSSIER.md`](../research/MINIMAL_FG_SOTA_DOSSIER.md)
 > §6.1.1/§6.1.2; the in-tree DDA reuse sites are `verified` first-hand (cited below).
 > **Plan tier:** **Tier-2** (risk-bearing — cross-API D3D11↔Vulkan interop, a crash/deadlock class with
 > first-hand history [the BF6 keyed-mutex deadlock], concurrency [the capture↔present ring + the zero-copy
@@ -11,8 +11,8 @@
 > composed-flip fallback]). The required linked set: this master plan ·
 > [`CAPTURE_LAYER_IMPLEMENTATION_STRATEGIES.md`](CAPTURE_LAYER_IMPLEMENTATION_STRATEGIES.md) ·
 > [`CAPTURE_LAYER_RISK_REGISTER.md`](CAPTURE_LAYER_RISK_REGISTER.md). Cited foundation:
-> [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md) §6.1. **No CR risk may be `open` at commit.**
-> **Parent arc:** the minimal-FG arc ([`MINIMAL_FG_MASTER_PLAN.md`](MINIMAL_FG_MASTER_PLAN.md); this layer
+> [`MINIMAL_FG_SOTA_DOSSIER.md`](../research/MINIMAL_FG_SOTA_DOSSIER.md) §6.1. **No CR risk may be `open` at commit.**
+> **Parent arc:** the minimal-FG arc ([`MINIMAL_FG_MASTER_PLAN.md`](../research/MINIMAL_FG_MASTER_PLAN.md); this layer
 > realizes its component **MC-1 capture**). The durable spine is [`../ACTION_PLAN.md`](../ACTION_PLAN.md)
 > (▷ NOW 2026-06-26d).
 > **Provenance:** the 2026-06-26 capture-rate SOTA barrido (workflow `wvfhoot01`: 6 angles, 3-vote
@@ -152,8 +152,8 @@ consumer side (OFP flow, warp, blend, overlay, present) is untouched.
 
 - Triad siblings: [`CAPTURE_LAYER_IMPLEMENTATION_STRATEGIES.md`](CAPTURE_LAYER_IMPLEMENTATION_STRATEGIES.md) ·
   [`CAPTURE_LAYER_RISK_REGISTER.md`](CAPTURE_LAYER_RISK_REGISTER.md). Cited foundation:
-  [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md) §6.1.
-- Parent: [`MINIMAL_FG_MASTER_PLAN.md`](MINIMAL_FG_MASTER_PLAN.md) (MC-1) · the durable spine
+  [`MINIMAL_FG_SOTA_DOSSIER.md`](../research/MINIMAL_FG_SOTA_DOSSIER.md) §6.1.
+- Parent: [`MINIMAL_FG_MASTER_PLAN.md`](../research/MINIMAL_FG_MASTER_PLAN.md) (MC-1) · the durable spine
   [`../ACTION_PLAN.md`](../ACTION_PLAN.md) (▷ NOW 2026-06-26d).
 - Consumed pillar: the present pillar
   `framework/render/present/include/phyriad/render/present/PresentSurface.hpp` (the FR-RENDER-1 precedent

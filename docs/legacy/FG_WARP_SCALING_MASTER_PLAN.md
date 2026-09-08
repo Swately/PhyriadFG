@@ -13,17 +13,17 @@
 > - [`FG_WARP_SCALING_RISK_REGISTER.md`](FG_WARP_SCALING_RISK_REGISTER.md) — the failure modes + mitigation-as-code.
 >   **No risk may remain `open` at commit; no commit while any is open.**
 >
-> **Evidence base (the single-sources):** [`FG_LSFG_HEADTOHEAD_MEASURED.md`](FG_LSFG_HEADTOHEAD_MEASURED.md)
+> **Evidence base (the single-sources):** [`FG_LSFG_HEADTOHEAD_MEASURED.md`](../research/FG_LSFG_HEADTOHEAD_MEASURED.md)
 > (the measured cost gaps + the flow-scale sweep) · [`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md)
 > §7.1 (the heavy-frame WARP-dominates finding) + §7.2 lever #1 (slice-minimization = the no-cap-dogma
-> expression of "aprovechar, no desperdiciar") · [`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](FG_ADAPTIVE_FLOWSCALE_DESIGN.md)
+> expression of "aprovechar, no desperdiciar") · [`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](../research/FG_ADAPTIVE_FLOWSCALE_DESIGN.md)
 > (the kin lever for FLOW; its §3 establishes init-sized-pipeline re-init = T2, the precedent this plan inherits).
 
 ## §1 — Why (the motivation, each number bucketed)
 
 On **light** titles, `--flow-scale 2` (reduced-res flow) closes PhyriadFG's per-frame cost to LSFG parity —
 `measured` HSR single-GPU on the 4090: iter 2.73→0.94 ms, util 95→56 %, power 294→138 W
-([`FG_LSFG_HEADTOHEAD_MEASURED.md`](FG_LSFG_HEADTOHEAD_MEASURED.md) §2). On **heavy-frame** titles the
+([`FG_LSFG_HEADTOHEAD_MEASURED.md`](../research/FG_LSFG_HEADTOHEAD_MEASURED.md) §2). On **heavy-frame** titles the
 flow-scale lever runs out of leverage. The Option-A §7.1 partial result (`measured`, NVML + `--csv`, BF6 4K
 idle-but-saturated, single-GPU) recorded a present-lambda warp signal of **`warp_ms ≈ 5.91`** at flow-scale 1
 vs **`5.89`** at flow-scale 2, with `MsAddedLat` **124.5 → 122.9 ms** — i.e. cutting the flow grid barely
@@ -102,7 +102,7 @@ both, plus the resource-lifetime handling that makes it T2.
 - **Shape B — RUNTIME warp-pipeline re-init (the T2 in-scope shape this plan productizes).** Switch `N` mid-
   stream by recreating/re-sizing `wapOutA` + re-writing the descriptor binding on a labelled **cold path**
   (never the steady tick, D-2). This is the device-loss-adjacent, concurrency-bearing shape — exactly the
-  hazard [`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §3 classified as T2 for the
+  hazard [`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](../research/FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §3 classified as T2 for the
   analogous FLOW lever (init-sized resource, a runtime resolution change = "a big stall + device-loss-adjacent
   concurrency"). Warp-scaling carries the identical re-init hazard on the warp output + descriptor.
 
@@ -116,7 +116,7 @@ The runtime-re-init stall + the in-flight-resource hazard (Shape B) vs the modes
 ladder of output images (a Shape-A/B hybrid that keeps `{1×,2×,4×}` `wapOutA` images + descriptor sets and
 switches per tick with no re-init). The pre-sized ladder trades a few extra RGBA8 `WW×WH/N²` images (modest)
 for the elimination of the re-init class — the same trade
-[`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §3 weighs for FLOW (where it found the
+[`FG_ADAPTIVE_FLOWSCALE_DESIGN.md`](../research/FG_ADAPTIVE_FLOWSCALE_DESIGN.md) §3 weighs for FLOW (where it found the
 pre-built form is itself architectural because the MV grid sizes the whole downstream — but the warp output
 does NOT size anything downstream, so the warp ladder is genuinely lighter). The second open question is
 **same-frame correctness of the upscaled warp at disocclusion**: the per-pixel commit/rescue/matte decisions

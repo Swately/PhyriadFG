@@ -10,11 +10,11 @@
 > lever's code is IN and its verification was run first-hand. **Supervisor re-verified L3 first-hand 2026-06-24**
 > (build + alias-gate + teardown + a null-at-HSR A/B + no-crash); the BF6-4K rig run (effect + the 30 s-clean) is
 > the remaining operator step.
-> **Linked set (Tier-2 triad):** master-plan [`FG_REALFAST_PATH_MASTER_PLAN.md`](FG_REALFAST_PATH_MASTER_PLAN.md)
-> §5 · strategies [`FG_REALFAST_PATH_IMPLEMENTATION_STRATEGIES.md`](FG_REALFAST_PATH_IMPLEMENTATION_STRATEGIES.md)
+> **Linked set (Tier-2 triad):** master-plan [`FG_REALFAST_PATH_MASTER_PLAN.md`](../legacy/FG_REALFAST_PATH_MASTER_PLAN.md)
+> §5 · strategies [`FG_REALFAST_PATH_IMPLEMENTATION_STRATEGIES.md`](../legacy/FG_REALFAST_PATH_IMPLEMENTATION_STRATEGIES.md)
 > · this register. Each strategy edit MUST cite the risk ID it mitigates; the commit MUST assert every risk
 > `mitigated` or `accepted`.
-> **Reconciles with (does NOT duplicate):** [`REAL_FAST_PATH_RISK_REGISTER.md`](REAL_FAST_PATH_RISK_REGISTER.md)
+> **Reconciles with (does NOT duplicate):** [`REAL_FAST_PATH_RISK_REGISTER.md`](../legacy/REAL_FAST_PATH_RISK_REGISTER.md)
 > (the STAGE-109 `--rfp` register — its CR1-CR5/FR1 govern Lever L0, the BUILT path; this register adds the NEW
 > risks of L1/L2/L3 and INDEXES L0's crash-class invariant as RFP-CR1 without re-deriving it).
 > **Provenance:** authored from the verified-findings pass; `file:line` anchors re-confirmed first-hand against
@@ -76,5 +76,5 @@ clean-runs + default-off byte-identical; a 4K-contended lever, NOT an HSR-heavin
 To be filled at each pre-commit gate. Any risk that ends `accepted` records here the rationale + the residual +
 who accepted it. The KNOWN accepted residual
 inherited from L0 (NOT re-opened here): the `--rfp` **content sawtooth** (fresh real → stale interp) — an
-opt-in visual effect, the cost of the real-tick latency win (see [`REAL_FAST_PATH_RISK_REGISTER.md`](REAL_FAST_PATH_RISK_REGISTER.md)
+opt-in visual effect, the cost of the real-tick latency win (see [`REAL_FAST_PATH_RISK_REGISTER.md`](../legacy/REAL_FAST_PATH_RISK_REGISTER.md)
 RFR-UNIT); L1 widening makes it MORE frequent → eye-validated tolerable is the operator gate, not a register row.

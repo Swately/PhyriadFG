@@ -36,7 +36,7 @@
 > register that measured them and the single source of truth
 > [`docs/planning/BENCHMARK_FAIRNESS.md`](BENCHMARK_FAIRNESS.md).
 >
-> **Annexed flag (do not lose):** [`PHYRIADFG_UI_MASTER_PLAN.md`](PHYRIADFG_UI_MASTER_PLAN.md) is
+> **Annexed flag (do not lose):** [`PHYRIADFG_UI_MASTER_PLAN.md`](../legacy/PHYRIADFG_UI_MASTER_PLAN.md) is
 > **stale** at `:49` (still says ImGui/GLFW — pre-pivot). G1 here is authored as **Tauri + React**
 > per the operator's 2026-06-21 decision (confirmed at
 > [`CONTROLPLANE_MASTER_PLAN.md`](CONTROLPLANE_MASTER_PLAN.md)`:18` — "PhyriadFG's UI is a Tauri +

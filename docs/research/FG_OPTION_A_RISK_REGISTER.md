@@ -6,8 +6,8 @@
 > are `mitigated` (recorded evidence); OA-1/4/7/8/9 are `accepted` (bounded residuals, operator-authorized
 > banking, named deferred tests). **No row remains `open`.** Each risk carries its mitigation **as code**
 > (a named site + the change) and the first-hand verification.
-> **Tier:** **T2.** Sibling of [`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md) +
-> [`FG_OPTION_A_IMPLEMENTATION_STRATEGIES.md`](FG_OPTION_A_IMPLEMENTATION_STRATEGIES.md).
+> **Tier:** **T2.** Sibling of [`FG_OPTION_A_MASTER_PLAN.md`](../legacy/FG_OPTION_A_MASTER_PLAN.md) +
+> [`FG_OPTION_A_IMPLEMENTATION_STRATEGIES.md`](../legacy/FG_OPTION_A_IMPLEMENTATION_STRATEGIES.md).
 > **Hard gate (PLAN_TIER_PROTOCOL):** a T2 change MUST NOT be committed while any risk is `open`; each MUST
 > be `mitigated` (with a recorded first-hand verification) or explicitly `accepted` (bounded residual,
 > operator-recorded). All file:line refs verified first-hand 2026-06-23.
@@ -269,7 +269,7 @@ launches (build-green corroborated at runtime; flags-off path unreached → byte
   on the distinct `MsBetweenDisplayChange`-MASD metric the head-to-head records LSFG **0.026 ms**
   [`FG_LSFG_HEADTOHEAD_MEASURED.md:23`] vs our 1.79 ms paced.)* The soft drift-corrector is necessary-not-sufficient
   → the hard present-target pacer is the next lever (separate triad,
-  [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)). The A/B was not rate-pinned
+  [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)). The A/B was not rate-pinned
   (HSR free-running) → magnitude has a scene confound.
 
 ---

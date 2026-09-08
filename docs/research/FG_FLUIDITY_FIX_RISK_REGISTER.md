@@ -26,8 +26,8 @@
 > operator-recorded). No row may be silently dropped.
 > **Evidence single-sources (this register CITES, never re-derives — FDP §4.6):**
 > - The PACING half is **ADOPTED/INDEXED, not duplicated** from the shipping pacer triad
->   [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) +
->   [`FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md`](FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md) +
+>   [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) +
+>   [`FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md`](../legacy/FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md) +
 >   [`FG_PRESENT_TARGET_PACER_RISK_REGISTER.md`](FG_PRESENT_TARGET_PACER_RISK_REGISTER.md) (`--pace-hard` /
 >   `--pace-present` / `--pace-vblank`, `shipping`). Its `PP-1..PP-7` rows own the present-fence / freeze-floor /
 >   D-2 / no-game-cap mechanism mitigations; the FX rows below **link** to them and add only the *fluidity-fix-
@@ -293,8 +293,8 @@ before the corresponding FX rows may close.
 - **The Tier-2 triad (siblings):** `FG_FLUIDITY_FIX_MASTER_PLAN.md` + `FG_FLUIDITY_FIX_IMPLEMENTATION_STRATEGIES.md`
   (authored by the supervisor — this register is the first leg).
 - **PACING half (adopted, not duplicated):** the pacer triad —
-  [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) /
-  [`FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md`](FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md) /
+  [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) /
+  [`FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md`](../legacy/FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md) /
   [`FG_PRESENT_TARGET_PACER_RISK_REGISTER.md`](FG_PRESENT_TARGET_PACER_RISK_REGISTER.md) (`PP-1..PP-7`).
 - **The measurement axis (TB-C9):** [`FG_FLUIDITY_PACING_SOTA.md`](FG_FLUIDITY_PACING_SOTA.md) (the temporal
   SOTA + the fix direction) · [`FG_TESTBENCH_MASTER_PLAN.md`](FG_TESTBENCH_MASTER_PLAN.md) §2 (TB-C9) +

@@ -4,9 +4,9 @@
 > **Status:** `designed` — **no code is built under this plan; every risk starts `open`** and is tagged
 > **`DESIGN — not yet built`**. A risk reaches `mitigated` ONLY when its code is in **and** its
 > Verification was run first-hand; `accepted` records a residual + the rationale + who accepted it.
-> **Linked set (Tier-2 triad):** master plan [`MINIMAL_FG_MASTER_PLAN.md`](MINIMAL_FG_MASTER_PLAN.md) ·
+> **Linked set (Tier-2 triad):** master plan [`MINIMAL_FG_MASTER_PLAN.md`](../research/MINIMAL_FG_MASTER_PLAN.md) ·
 > strategies [`MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md`](MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md) ·
-> this register. Cited foundation: [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md).
+> this register. Cited foundation: [`MINIMAL_FG_SOTA_DOSSIER.md`](../research/MINIMAL_FG_SOTA_DOSSIER.md).
 > **Component IDs** (canonical, from master-plan §0.1): MC-1 capture · MC-2 flow · MC-3 warp · MC-4 blend ·
 > MC-5 present · SG the render-graph seam. Strategy edits cite the MR-ID they mitigate.
 > **Provenance:** the 2026-06-26 SOTA barrido + the operator's minimalism diagnosis; the parent
@@ -69,7 +69,7 @@ than re-enumerate.
 | Parent register | What it already discharges (reused here) |
 |---|---|
 | [`FG_SATURATION_STABILITY_RISK_REGISTER.md`](FG_SATURATION_STABILITY_RISK_REGISTER.md) | async-present use-after-reset (slot split + back-slot guard), device-loss-through-poll (`vk_live`), torn-present (keyed mutex), byte-identical-off, the operator-gated default-flip pattern. |
-| [`DEVICE_LOST_RECOVERY_RISK_REGISTER.md`](DEVICE_LOST_RECOVERY_RISK_REGISTER.md) | `vk_live` graceful-exit on `VK_ERROR_DEVICE_LOST` → `g_quit` (the device-loss backstop wrapping every submit/wait + async poll). |
+| [`DEVICE_LOST_RECOVERY_RISK_REGISTER.md`](../research/DEVICE_LOST_RECOVERY_RISK_REGISTER.md) | `vk_live` graceful-exit on `VK_ERROR_DEVICE_LOST` → `g_quit` (the device-loss backstop wrapping every submit/wait + async poll). |
 | [`REAL_FAST_PATH_RISK_REGISTER.md`](REAL_FAST_PATH_RISK_REGISTER.md) | the dedicated-slot present path (never present while a warp is in flight) — the canonical async use-after-reset mitigation. |
 | [`THREAD_PROTECTION_RISK_REGISTER.md`](THREAD_PROTECTION_RISK_REGISTER.md) | the no-game-cap discipline (zero foreign-PID affinity/priority calls, verified first-hand) — MR-5 reuses it; closed at commit `45fb505`. |
 

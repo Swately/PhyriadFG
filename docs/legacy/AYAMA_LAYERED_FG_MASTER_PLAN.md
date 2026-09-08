@@ -368,7 +368,7 @@ into a pillar by this document.
 
 ### 9.2 Prior-art and novelty — HONEST, web-unverified
 
-**Verified scope of the in-repo dossier** ([`FG_VFI_PRIOR_ART.md`](FG_VFI_PRIOR_ART.md)):
+**Verified scope of the in-repo dossier** ([`FG_VFI_PRIOR_ART.md`](../research/FG_VFI_PRIOR_ART.md)):
 it is a VFI-**quality** dossier (measurement + ghosting cure). It does **not**
 establish the product landscape for multi-frame gen, FG-on-FG stacking, or
 multi-GPU FG. **Binding fabrication rule:** do **not** cite `FG_VFI_PRIOR_ART.md`

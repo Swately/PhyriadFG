@@ -6,8 +6,8 @@
 > (third-party, cited) and the minimal-core architecture is a design.
 > **Plan tier:** **Tier-2** (risk-bearing — the present-pacing / async-compute / multi-queue rebuild
 > touches the crash / device-loss / concurrency class). The required linked set:
-> this master plan · [`MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md`](MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md)
-> · [`MINIMAL_FG_RISK_REGISTER.md`](MINIMAL_FG_RISK_REGISTER.md). The cited prior-art dossier
+> this master plan · [`MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md`](../legacy/MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md)
+> · [`MINIMAL_FG_RISK_REGISTER.md`](../legacy/MINIMAL_FG_RISK_REGISTER.md). The cited prior-art dossier
 > [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md) is the verifiable-reference foundation.
 > **Provenance:** the 2026-06-26 5-agent SOTA barrido (FSR3 open/documented · LSFG dev-stated + reverse-
 > engineered · academia RIFE/softmax-splatting/AceVFI · GPU-pipeline architecture), conclusion-first +
@@ -157,7 +157,7 @@ The operator then elected **plan-formal-first** (this triad) before the build.
 ## §6 — Tier-2 risk surface (detail → the risk register)
 
 The risk-bearing classes this arc opens (each enumerated, mitigated-as-code, and first-hand-verified in
-[`MINIMAL_FG_RISK_REGISTER.md`](MINIMAL_FG_RISK_REGISTER.md); **no `open` risk may be committed**):
+[`MINIMAL_FG_RISK_REGISTER.md`](../legacy/MINIMAL_FG_RISK_REGISTER.md); **no `open` risk may be committed**):
 
 - **Crash / device-loss:** the new present-pacing + drop path (use-after-reset, device-loss-through-poll) —
   reconciles against the discharged parents (`FG_SATURATION_STABILITY`, `DEVICE_LOST_RECOVERY`, the
@@ -201,8 +201,8 @@ The risk-bearing classes this arc opens (each enumerated, mitigated-as-code, and
 
 ## §9 — Links + registration
 
-- Triad siblings: [`MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md`](MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md) ·
-  [`MINIMAL_FG_RISK_REGISTER.md`](MINIMAL_FG_RISK_REGISTER.md). Cited foundation:
+- Triad siblings: [`MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md`](../legacy/MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md) ·
+  [`MINIMAL_FG_RISK_REGISTER.md`](../legacy/MINIMAL_FG_RISK_REGISTER.md). Cited foundation:
   [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md).
 - Parent arc: the render-assistant / PhyriadFG arc; the durable spine is
   [`../ACTION_PLAN.md`](../ACTION_PLAN.md) (CURRENT POSITION → the minimal-FG arc).

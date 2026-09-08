@@ -9,8 +9,8 @@
 > The soft-pacer baseline (present-MASD 4.28 ms, `FG_OPTION_A_RISK_REGISTER.md:266-267`) and the LSFG ~0.004 ms
 > `MsBetweenPresents`-MASD target remain the references — the hard pacer is a large step, not yet LSFG-class
 > (the vblank phase-lock, deferred to P3, is the path to push further).
-> **Tier:** **T2** sibling of [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)
-> + [`FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md`](FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md).
+> **Tier:** **T2** sibling of [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)
+> + [`FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md`](../legacy/FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md).
 > **Hard gate (PLAN_TIER_PROTOCOL §3):** this change MUST NOT be committed while any risk below is `open`;
 > each MUST be `mitigated` (recorded first-hand verification) or explicitly `accepted` (bounded residual,
 > operator-recorded). All `file:line` refs verified first-hand 2026-06-23.

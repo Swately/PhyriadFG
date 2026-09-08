@@ -8,7 +8,7 @@
 > with [`CAPTURE_LAYER_MASTER_PLAN.md`](CAPTURE_LAYER_MASTER_PLAN.md) and
 > [`CAPTURE_LAYER_RISK_REGISTER.md`](CAPTURE_LAYER_RISK_REGISTER.md) (the risks **CR-1 … CR-10**). Per
 > [`PLAN_TIER_PROTOCOL.md`](../canon/PLAN_TIER_PROTOCOL.md) §2.3 **every strategy cites the CR-ID(s) it
-> mitigates.** Cited foundation: [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md) §6.1.
+> mitigates.** Cited foundation: [`MINIMAL_FG_SOTA_DOSSIER.md`](../research/MINIMAL_FG_SOTA_DOSSIER.md) §6.1.
 > **Component IDs** are the master-plan §0.2 spine (CL-1…CL-6).
 
 ---
@@ -156,7 +156,7 @@ The **CP1 deliverable** is CL-1 + CL-2 + CL-6 — the rate-fix build for the ope
 - **Triad siblings (Tier-2 set, mutually linked per PLAN_TIER_PROTOCOL §2.3):** master plan
   [`CAPTURE_LAYER_MASTER_PLAN.md`](CAPTURE_LAYER_MASTER_PLAN.md) · risk register
   [`CAPTURE_LAYER_RISK_REGISTER.md`](CAPTURE_LAYER_RISK_REGISTER.md) (CR-1 … CR-10; no `open` CR at commit).
-- **Cited foundation:** [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md) §6.1 (the capture-rate
+- **Cited foundation:** [`MINIMAL_FG_SOTA_DOSSIER.md`](../research/MINIMAL_FG_SOTA_DOSSIER.md) §6.1 (the capture-rate
   SOTA — the DWM-compositor ceiling, the Independent-Flip bypass, the zero-copy/timeline-semaphore path, the
   anti-cheat verdict; the URLs).
 - **Reuse sites (first-hand this pass):** `apps/render_assistant/src/main.cpp` `DuplicateOutput`

@@ -6,7 +6,7 @@
 > Verification was run first-hand; `accepted` records a residual + the rationale + who accepted it.
 > **Linked set (Tier-2 triad):** master plan [`CAPTURE_LAYER_MASTER_PLAN.md`](CAPTURE_LAYER_MASTER_PLAN.md) ·
 > strategies [`CAPTURE_LAYER_IMPLEMENTATION_STRATEGIES.md`](CAPTURE_LAYER_IMPLEMENTATION_STRATEGIES.md) ·
-> this register. Cited foundation: [`MINIMAL_FG_SOTA_DOSSIER.md`](MINIMAL_FG_SOTA_DOSSIER.md) §6.1.
+> this register. Cited foundation: [`MINIMAL_FG_SOTA_DOSSIER.md`](../research/MINIMAL_FG_SOTA_DOSSIER.md) §6.1.
 > **Component IDs** (canonical, from master-plan §0.2): CL-1 DDA acquire · CL-2 lock-free SPSC ring ·
 > CL-3 zero-copy · CL-4 composed-flip forcing · CL-5 the `CaptureSurface` seam · CL-6 backend select.
 > **Provenance:** the 2026-06-26 capture-rate SOTA (workflow `wvfhoot01`, 23/26 confirmed) — the failure
@@ -87,7 +87,7 @@ did (R2); CR-10 is a documented-ceiling acceptance once CP2 characterizes the re
 | Parent register | What it already discharges (reused here) |
 |---|---|
 | [`MINIMAL_FG_RISK_REGISTER.md`](MINIMAL_FG_RISK_REGISTER.md) | byte-identical-off (MR-4 → CR-6), no-game-cap (MR-5 → CR-7), the own-window present ceiling (MR-7), the operator-gated default-flip pattern. |
-| [`DEVICE_LOST_RECOVERY_RISK_REGISTER.md`](DEVICE_LOST_RECOVERY_RISK_REGISTER.md) | `vk_live` graceful-exit on `VK_ERROR_DEVICE_LOST` → `g_quit` (the device-loss backstop CR-1 reuses for terminal loss). |
+| [`DEVICE_LOST_RECOVERY_RISK_REGISTER.md`](../research/DEVICE_LOST_RECOVERY_RISK_REGISTER.md) | `vk_live` graceful-exit on `VK_ERROR_DEVICE_LOST` → `g_quit` (the device-loss backstop CR-1 reuses for terminal loss). |
 | [`FG_SATURATION_STABILITY_RISK_REGISTER.md`](FG_SATURATION_STABILITY_RISK_REGISTER.md) | the host-staged lock-free SPSC ring (the proven pattern CL-2 retargets; the keyed-mutex-avoidance precedent CR-3 enforces). |
 | [`THREAD_PROTECTION_RISK_REGISTER.md`](THREAD_PROTECTION_RISK_REGISTER.md) | the no-game-cap discipline (zero foreign-PID affinity/priority calls, verified first-hand; closed `45fb505`) — CR-7 reuses it. |
 

@@ -468,7 +468,7 @@ approaches the architecture allows, reporting the loss region, with one source o
 truth for any ratio ([`BENCHMARK_FAIRNESS.md`](BENCHMARK_FAIRNESS.md)). LSFG's
 240 fps overlay is digitally uncapturable, so the only shared terrain is a
 camera-captured no-reference comparison — that experiment is **not yet done**
-([`FG_VFI_PRIOR_ART.md:417-419`](FG_VFI_PRIOR_ART.md)).
+([`FG_VFI_PRIOR_ART.md:417-419`](../research/FG_VFI_PRIOR_ART.md)).
 
 ---
 
@@ -509,9 +509,9 @@ throughput directly.
   or **external-capture FG** are **novel vs the commercial field** — all
   web-unverified, `conjectured`, flagged for a first-hand web pass (the
   prior-art assessment lives in the master plan + spine §8; the
-  [`FG_VFI_PRIOR_ART.md`](FG_VFI_PRIOR_ART.md) dossier is a VFI-*quality* dossier
+  [`FG_VFI_PRIOR_ART.md`](../research/FG_VFI_PRIOR_ART.md) dossier is a VFI-*quality* dossier
   and **MUST NOT** be cited for any multi-frame-gen / FG-on-FG / multi-GPU
-  landscape claim, [`FG_VFI_PRIOR_ART.md:412-419`](FG_VFI_PRIOR_ART.md)).
+  landscape claim, [`FG_VFI_PRIOR_ART.md:412-419`](../research/FG_VFI_PRIOR_ART.md)).
 - That the iGPU has the **headroom** for STAGE-G1 — the ~58% A-idle / ~42% A-use
   figures are runtime PDH readings, not measured this session for STAGE-G1; P0's
   gate measures it (`designed`).

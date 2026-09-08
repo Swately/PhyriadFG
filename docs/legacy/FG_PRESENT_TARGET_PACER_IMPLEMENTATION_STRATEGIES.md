@@ -8,7 +8,7 @@
 > in the RISK_REGISTER (all risks `mitigated`/`accepted`). **[Reconciled 2026-06-25: previously read 'designed —
 > NOT built', STALE vs the shipping code; the code + registers are authoritative.]**
 > **Tier:** **T2** sibling of [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)
-> + [`FG_PRESENT_TARGET_PACER_RISK_REGISTER.md`](FG_PRESENT_TARGET_PACER_RISK_REGISTER.md).
+> + [`FG_PRESENT_TARGET_PACER_RISK_REGISTER.md`](../research/FG_PRESENT_TARGET_PACER_RISK_REGISTER.md).
 > **Build order is GATED by the RISK register (PLAN_TIER_PROTOCOL §3):** no commit while any risk is `open`.
 > Each edit site below cites the risk **ID** it exists to mitigate (§2.3 traceability).
 

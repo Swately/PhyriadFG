@@ -16,13 +16,13 @@
 > layout is frozen by `static_assert(sizeof(GpuDescriptor) == 128u, "…published cross-process; keep it
 > stable")` (`framework/gpu/include/phyriad/gpu/GpuDescriptor.hpp:61` `[VS]`). Any field change is a
 > schema-format change that a stale reader could mis-map. Therefore this plan ships with a
-> **[`FG_VENDOR_AGNOSTIC_RISK_REGISTER.md`](FG_VENDOR_AGNOSTIC_RISK_REGISTER.md)** and MUST NOT be
+> **[`FG_VENDOR_AGNOSTIC_RISK_REGISTER.md`](../legacy/FG_VENDOR_AGNOSTIC_RISK_REGISTER.md)** and MUST NOT be
 > committed while any risk there is `open` (PLAN_TIER_PROTOCOL §3).
 >
 > **Siblings (one set, mutually linked):** this master plan ·
 > [`FG_VENDOR_AGNOSTIC_IMPLEMENTATION_STRATEGIES.md`](FG_VENDOR_AGNOSTIC_IMPLEMENTATION_STRATEGIES.md)
 > (the per-edit sites + byte-identical discipline) ·
-> [`FG_VENDOR_AGNOSTIC_RISK_REGISTER.md`](FG_VENDOR_AGNOSTIC_RISK_REGISTER.md) (every failure mode + its
+> [`FG_VENDOR_AGNOSTIC_RISK_REGISTER.md`](../legacy/FG_VENDOR_AGNOSTIC_RISK_REGISTER.md) (every failure mode + its
 > mitigation-as-code). The supervisor registers all three in `FORMAL_DOCUMENTS_REGISTER.md` and threads
 > the ACTION_PLAN node — this plan does NOT touch those shared files.
 >

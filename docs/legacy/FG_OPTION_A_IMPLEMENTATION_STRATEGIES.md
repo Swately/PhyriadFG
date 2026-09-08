@@ -4,7 +4,7 @@
 > **Status:** `designed` — NOT built. Every file:line below was **verified first-hand** on 2026-06-23
 > against the current tree; the *new* code is specified, not written.
 > **Tier:** T2 — sibling of [`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md) +
-> [`FG_OPTION_A_RISK_REGISTER.md`](FG_OPTION_A_RISK_REGISTER.md). Build order is gated by the RISK register
+> [`FG_OPTION_A_RISK_REGISTER.md`](../research/FG_OPTION_A_RISK_REGISTER.md). Build order is gated by the RISK register
 > (no commit while any risk is `open`).
 
 ## §1 — The pillar extension (`PresentSurface`)

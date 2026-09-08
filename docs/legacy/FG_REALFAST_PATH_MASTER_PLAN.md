@@ -16,7 +16,7 @@
 > efficiency mandate D-2).
 > **Linked set (Tier-2 triad):** this · strategies
 > [`FG_REALFAST_PATH_IMPLEMENTATION_STRATEGIES.md`](FG_REALFAST_PATH_IMPLEMENTATION_STRATEGIES.md) ·
-> register [`FG_REALFAST_PATH_RISK_REGISTER.md`](FG_REALFAST_PATH_RISK_REGISTER.md).
+> register [`FG_REALFAST_PATH_RISK_REGISTER.md`](../research/FG_REALFAST_PATH_RISK_REGISTER.md).
 > **Builds on (the prior triad it extends, NOT replaces):**
 > [`INPUT_LAG_DREDUCTION_MASTER_PLAN.md`](INPUT_LAG_DREDUCTION_MASTER_PLAN.md) (§5-§8 the measured
 > breakdown) · [`REAL_FAST_PATH_IMPLEMENTATION_STRATEGIES.md`](REAL_FAST_PATH_IMPLEMENTATION_STRATEGIES.md)
@@ -115,7 +115,7 @@ levels per source are carried in the References (§8).
 **Honest caveat from our own bench (`stage31_extrapolation`):** single-GPU external-capture
 forward-extrapolation does NOT reduce the ~12-17 ms interpolation hold for an *interpolated* tick — the output
 still waits for one real frame regardless of motion mode
-([`FG_ARCHITECTURE_DCAD_MASTER_PLAN.md`](FG_ARCHITECTURE_DCAD_MASTER_PLAN.md), `documented`). The latency win
+([`FG_ARCHITECTURE_DCAD_MASTER_PLAN.md`](../research/FG_ARCHITECTURE_DCAD_MASTER_PLAN.md), `documented`). The latency win
 from extrapolation is on the **real-tick / responsiveness** axis (the `--rfp` path), not a global floor cut.
 Confidence gating (residual_ceil, agreement_thresh) is irreplaceable for interpolation; a single-source
 extrapolation accepts every tile blindly → disocclusion artifacts. So extrapolation here is a NARROW,
@@ -211,7 +211,7 @@ This arc is Tier-2: a real present on the wrong path is **use-after-reset → `V
 (crash-class, the STAGE-102 reason the bridge buffers were split), and Lever L2 mutates the hot F-build path
 (concurrency + byte-identical-off dogma at stake). The full failure-mode catalog — each with its mitigation
 **as code** + a first-hand verification — lives in
-[`FG_REALFAST_PATH_RISK_REGISTER.md`](FG_REALFAST_PATH_RISK_REGISTER.md). Summary only here:
+[`FG_REALFAST_PATH_RISK_REGISTER.md`](../research/FG_REALFAST_PATH_RISK_REGISTER.md). Summary only here:
 
 - **RFP-CR1** crash / use-after-reset — any real present MUST go through `rfp_present` (the dedicated async
   bslot path), NEVER the synchronous `do_present_P` (`main.cpp:7188`) / `bridge_present_src` (`:7165-7184`);
@@ -268,7 +268,7 @@ A null/negative or any freeze/crash = STOP and re-evaluate; do not ship a lever 
 - [`main.cpp:8758-8768`](../../apps/render_assistant/src/main.cpp) — the present-side `lat` EMA (`t_present_ret − tcap_r`). **Confirmed.**
 - `main.cpp:8984-8985` (the `[lat-trace]` print), `:8246-8254` (freshage calibration), `:6479-6488` (pickup) — cited from [`INPUT_LAG_DREDUCTION_MASTER_PLAN.md`](INPUT_LAG_DREDUCTION_MASTER_PLAN.md) §8 (read first-hand); the implementer re-confirms the exact lines.
 
-**Internal docs:** [`INPUT_LAG_DREDUCTION_MASTER_PLAN.md`](INPUT_LAG_DREDUCTION_MASTER_PLAN.md) (§5-§8 the measured breakdown) · [`REAL_FAST_PATH_RISK_REGISTER.md`](REAL_FAST_PATH_RISK_REGISTER.md) · [`FG_REARCHITECTURE_MASTER_PLAN.md`](FG_REARCHITECTURE_MASTER_PLAN.md) (the superseded ~108 ms estimate) · [`FG_ARCHITECTURE_DCAD_MASTER_PLAN.md`](FG_ARCHITECTURE_DCAD_MASTER_PLAN.md) (extrapolation does not cut the interp hold) · [`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md) (the distinct game-pacing lever) · [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) (the pacing axis).
+**Internal docs:** [`INPUT_LAG_DREDUCTION_MASTER_PLAN.md`](INPUT_LAG_DREDUCTION_MASTER_PLAN.md) (§5-§8 the measured breakdown) · [`REAL_FAST_PATH_RISK_REGISTER.md`](REAL_FAST_PATH_RISK_REGISTER.md) · [`FG_REARCHITECTURE_MASTER_PLAN.md`](FG_REARCHITECTURE_MASTER_PLAN.md) (the superseded ~108 ms estimate) · [`FG_ARCHITECTURE_DCAD_MASTER_PLAN.md`](../research/FG_ARCHITECTURE_DCAD_MASTER_PLAN.md) (extrapolation does not cut the interp hold) · [`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md) (the distinct game-pacing lever) · [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) (the pacing axis).
 
 **External (SOTA, from the findings sweep; levels honest):**
 - [V3] DLSS 4 added-latency / Multi-Frame-Gen mechanism — research.nvidia.com/labs/adlr/DLSS4 (secondary distillation in the findings, not re-fetched in this pass).

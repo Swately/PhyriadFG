@@ -6,7 +6,7 @@
 > [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174.html)) — keywords bind only where they appear in capitals.
 > **Status:** `designed` — the fix is **not built as a single shipped capability.** Its two halves stand at
 > different maturity (the honesty point of this plan, §1): the **pacing** half is largely `shipping` (it is the
-> [`FG_PRESENT_TARGET_PACER`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) triad, indexed here, NOT re-authored); the
+> [`FG_PRESENT_TARGET_PACER`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) triad, indexed here, NOT re-authored); the
 > **placement** half (the content-clock / interpolation-phase ladder) is `designed`. Calling either the other
 > would be a reporting defect (FDP §4.2). Version anchor: `0.1.0-experimental`, snapshot **2026-06-25**.
 > **Tier:** **T2 (risk-bearing)** per [`PLAN_TIER_PROTOCOL.md`](../canon/PLAN_TIER_PROTOCOL.md) §1.1 — the fix
@@ -24,16 +24,16 @@
 >
 > **Reconcile-not-duplicate (FDP §4.6) — the load-bearing discipline of this plan.** This spine **indexes**,
 > and MUST NOT re-author, three existing bodies of work it builds on:
-> - [`FG_PRESENT_TARGET_PACER`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) triad (MASTER_PLAN +
->   [`_IMPLEMENTATION_STRATEGIES`](FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md) +
+> - [`FG_PRESENT_TARGET_PACER`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) triad (MASTER_PLAN +
+>   [`_IMPLEMENTATION_STRATEGIES`](../legacy/FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md) +
 >   [`_RISK_REGISTER`](FG_PRESENT_TARGET_PACER_RISK_REGISTER.md)) — the **PACING half** (the display metronome).
 >   It is the single source of truth for the pacer's design, numbers, and risk treatment; this plan motivates it
 >   with the now-measurable escalonado and ties it to TB-C9, nothing more.
-> - [`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md) (+ its
+> - [`FG_OPTION_A_MASTER_PLAN.md`](../legacy/FG_OPTION_A_MASTER_PLAN.md) (+ its
 >   [`_RISK_REGISTER`](FG_OPTION_A_RISK_REGISTER.md)) — the own-window present path the metronome runs on, and
 >   the same-display vs own-window present constraint (§3).
 > - the `--async-present` decouple (the render-assistant arc; the
->   [`FG_REALFAST_PATH`](FG_REALFAST_PATH_MASTER_PLAN.md) triad implies it) — the present↔generation-fence
+>   [`FG_REALFAST_PATH`](../legacy/FG_REALFAST_PATH_MASTER_PLAN.md) triad implies it) — the present↔generation-fence
 >   decouple the metronome composes above. Indexed, not re-specified here.
 >
 > **Evidence single-sources (this plan CITES, never re-derives, the numbers — FDP §4.6):**
@@ -86,7 +86,7 @@ them would mis-state what remains to build.
 
 PACING means presenting each frame at a uniform display-interval target — a vblank-phase metronome — so the
 display-interval stddev (TB-C9's pacing number, §0) collapses toward LSFG-class. **This half is already
-designed AND largely built: it is the [`FG_PRESENT_TARGET_PACER`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)
+designed AND largely built: it is the [`FG_PRESENT_TARGET_PACER`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)
 triad**, which this plan ADOPTS and INDEXES per FDP §4.6 — it is NOT re-specified here. Its standing, cited
 from its own register (the single source of truth):
 
@@ -167,7 +167,7 @@ measured TB-C9 drop.
 
 - **No game cap, ever.** The fluidity fix times only OUR own present; it never throttles, caps, downscales, or
   injects into the game. This is the FG-arc operator invariant ("make-space, never recommend-cap"), inherited
-  from the Option A back-pressure-not-cap posture ([`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md)
+  from the Option A back-pressure-not-cap posture ([`FG_OPTION_A_MASTER_PLAN.md`](../legacy/FG_OPTION_A_MASTER_PLAN.md)
   §5) — a provenance invariant, not a numbered CANON dogma.
 - **No byte-identical-off violation.** A present-path change MUST be flag-gated and bit-identical with the flag
   absent (the established `--pace-present` / `--pace-hard` / `--csv` precedent). The TB-C9 columns are
@@ -177,10 +177,10 @@ measured TB-C9 drop.
 - **No LSFG-exact metronome guaranteed on a same display.** Whether a same-display own-window even exposes a
   stable vblank phase to lock to is a per-config measured outcome — if our window is demoted to Composed Flip
   to keep the game WGC-capturable, the achievable floor may be the composed floor, not the LSFG floor
-  ([`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md) §4; the present-constraint annex of FG_OPTION_A).
+  ([`FG_OPTION_A_MASTER_PLAN.md`](../legacy/FG_OPTION_A_MASTER_PLAN.md) §4; the present-constraint annex of FG_OPTION_A).
   The clean both-floors case is the two-monitor split; surfaced honestly, not as a defect.
 - **No input-to-photon latency claim.** `MsAllInputToPhotonLatency` is unmeasurable for external-capture FG
-  ([`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md) §5); pacing/placement (display-clock) is the
+  ([`FG_OPTION_A_MASTER_PLAN.md`](../legacy/FG_OPTION_A_MASTER_PLAN.md) §5); pacing/placement (display-clock) is the
   metric, latency parity is neither promised nor the target. Pinning to a uniform phase costs latency on
   purpose (the smoothness↔latency trade, measured, default-off — the pacer's `+2.2 ms`).
 - **No JND number invented.** No literature gives a ms-level perceptible-pacing or degrees-of-phase threshold
@@ -198,7 +198,7 @@ We target the DLSS-G / FSR3 documented metronome mechanisms (the §5 SOTA analog
 
 **Tier: 2 (risk-bearing).** WHY: the fix touches the FG **present** — the most sensitive path. The pacing
 half's metronome inserts a bounded wait before `Present()` on the **own-window scanout-owning path**
-([`FG_OPTION_A`](FG_OPTION_A_MASTER_PLAN.md)); a mis-timed, overshot, or wedged wait raises the blast radius
+([`FG_OPTION_A`](../legacy/FG_OPTION_A_MASTER_PLAN.md)); a mis-timed, overshot, or wedged wait raises the blast radius
 from "a little jitter" to **"the displayed frame is held"** — the freeze-floor / no-lock-out class
 (PLAN_TIER_PROTOCOL §1.1 trigger 1: crash / hang / freeze; trigger 5: a dogma — freeze-floor + byte-identical-off
 — at stake). The placement half's changes ride the same present path. This is the same crash-class the pacer
@@ -242,15 +242,15 @@ residual, operator-recorded).
 2. **Does pinning `t_use` to the uniform ladder drop the placement RMS without regressing TB-C8?** The placement
    fix is `designed`; the no-spatial-regression conjunction (§2 step 3) is unverified.
 3. **Is a stable vblank phase lockable on a same-display Composed-vs-Independent-Flip own-window?** (§3 floor;
-   inherited open from [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) §4 /
-   PP-6 and [`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md) §4). This caps how close the metronome
+   inherited open from [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) §4 /
+   PP-6 and [`FG_OPTION_A_MASTER_PLAN.md`](../legacy/FG_OPTION_A_MASTER_PLAN.md) §4). This caps how close the metronome
    can get on one monitor.
 4. **Does the software TB-C9 number agree with the TB-C6 photon camera, and with the operator's eye?** The
    software↔photon cross-check and the eye-veto (§2 step 4) are the validity gate; neither is run yet for the
    fix.
 5. **Clock-domain safety.** The metronome clock, the content-clock NCO, and the TSC spin primitive are distinct
    domains; the placement fix MUST bridge by duration, never by mixing epochs (the same constraint the pacer
-   carries, [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) §3 Clock domain)
+   carries, [`FG_PRESENT_TARGET_PACER_MASTER_PLAN.md`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md) §3 Clock domain)
    — to be discharged in the RISK_REGISTER.
 
 ---
@@ -261,12 +261,12 @@ residual, operator-recorded).
   [`FG_TESTBENCH_MASTER_PLAN.md`](FG_TESTBENCH_MASTER_PLAN.md) §2 (TB-C9).
 - The fix direction (uniform metronome + correct phase), the display-time rule, the proprietary-LSFG / JND
   gaps → [`FG_FLUIDITY_PACING_SOTA.md`](FG_FLUIDITY_PACING_SOTA.md).
-- The PACING half (indexed, not re-authored) → the [`FG_PRESENT_TARGET_PACER`](FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)
-  triad ([`_IMPLEMENTATION_STRATEGIES`](FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md) ·
+- The PACING half (indexed, not re-authored) → the [`FG_PRESENT_TARGET_PACER`](../legacy/FG_PRESENT_TARGET_PACER_MASTER_PLAN.md)
+  triad ([`_IMPLEMENTATION_STRATEGIES`](../legacy/FG_PRESENT_TARGET_PACER_IMPLEMENTATION_STRATEGIES.md) ·
   [`_RISK_REGISTER`](FG_PRESENT_TARGET_PACER_RISK_REGISTER.md)).
-- The own-window present path + the same-display present constraint → [`FG_OPTION_A_MASTER_PLAN.md`](FG_OPTION_A_MASTER_PLAN.md)
+- The own-window present path + the same-display present constraint → [`FG_OPTION_A_MASTER_PLAN.md`](../legacy/FG_OPTION_A_MASTER_PLAN.md)
   (+ [`_RISK_REGISTER`](FG_OPTION_A_RISK_REGISTER.md)); the present↔fence decouple → the `--async-present` /
-  [`FG_REALFAST_PATH_MASTER_PLAN.md`](FG_REALFAST_PATH_MASTER_PLAN.md) work.
+  [`FG_REALFAST_PATH_MASTER_PLAN.md`](../legacy/FG_REALFAST_PATH_MASTER_PLAN.md) work.
 - The pacing/latency floors + why the metronome is software-on-DWM not VRR →
   [`FG_CADENCE_LATENCY_PRIOR_ART.md`](FG_CADENCE_LATENCY_PRIOR_ART.md).
 - The objectives this fix closes (C6 pacing jitter on the panel clock; C11 controlled testbench A/B) →

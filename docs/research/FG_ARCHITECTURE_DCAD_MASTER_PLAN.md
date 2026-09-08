@@ -12,7 +12,7 @@
 > plan CORRECTS one of its findings, §11), [`HOLONIC_CONFORMANCE_AUDIT.md`](HOLONIC_CONFORMANCE_AUDIT.md),
 > [`FG_VFI_PRIOR_ART.md`](FG_VFI_PRIOR_ART.md), [`FG_CADENCE_LATENCY_PRIOR_ART.md`](FG_CADENCE_LATENCY_PRIOR_ART.md),
 > [`FG_SATURATION_PRIOR_ART.md`](FG_SATURATION_PRIOR_ART.md), [`GPU_MULTI_GPU_PRIOR_ART.md`](GPU_MULTI_GPU_PRIOR_ART.md).
-> **Supersedes the FRAMING** of [`AYAMA_LAYERED_FG_MASTER_PLAN.md`](AYAMA_LAYERED_FG_MASTER_PLAN.md) (the holonic
+> **Supersedes the FRAMING** of [`AYAMA_LAYERED_FG_MASTER_PLAN.md`](../legacy/AYAMA_LAYERED_FG_MASTER_PLAN.md) (the holonic
 > tri-tier plan): the partition is now by MEASURED capability, not by a named device holarchy.
 
 ## §0 — The pivot (the operator's redirect)
@@ -374,7 +374,7 @@ responsiveness claim is stale-fit extrapolation, not fresh-input reprojection.
   arm's own STAGE-114 design comments (which framed the affine lead as the *fix*; it is depthless-unsafe for the
   translation/zoom components). Reconcile before defaulting it on (Phase 6).
 - **The partition is by MEASURED capability, not a named holarchy** — superseding the framing of
-  [`AYAMA_LAYERED_FG_MASTER_PLAN.md`](AYAMA_LAYERED_FG_MASTER_PLAN.md) and discharging the holonic conformance verdict
+  [`AYAMA_LAYERED_FG_MASTER_PLAN.md`](../legacy/AYAMA_LAYERED_FG_MASTER_PLAN.md) and discharging the holonic conformance verdict
   into a concrete, falsifiable, general design.
 - **The single-GPU user — the majority — is the load-bearing case and is unrun + unmeasured today.** Every prior plan
   optimized the author's 3-device rig; "perfect for any GPU" starts by making the one-GPU case run and measuring its

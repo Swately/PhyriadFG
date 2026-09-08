@@ -4,8 +4,8 @@
 # FG_VENDOR_AGNOSTIC_RISK_REGISTER — Tier-2 risks for the E1 de-vendoring
 
 > **Diátaxis type:** reference (the enumerated failure modes + mitigation-as-code + verification).
-> Companion of [`FG_VENDOR_AGNOSTIC_MASTER_PLAN.md`](FG_VENDOR_AGNOSTIC_MASTER_PLAN.md) and
-> [`FG_VENDOR_AGNOSTIC_IMPLEMENTATION_STRATEGIES.md`](FG_VENDOR_AGNOSTIC_IMPLEMENTATION_STRATEGIES.md).
+> Companion of [`FG_VENDOR_AGNOSTIC_MASTER_PLAN.md`](../research/FG_VENDOR_AGNOSTIC_MASTER_PLAN.md) and
+> [`FG_VENDOR_AGNOSTIC_IMPLEMENTATION_STRATEGIES.md`](../research/FG_VENDOR_AGNOSTIC_IMPLEMENTATION_STRATEGIES.md).
 > Required because this change is **Tier 2** (PLAN_TIER_PROTOCOL §1.1): it changes a **cross-process-
 > published POD** (`GpuDescriptor`, `static_assert(sizeof==128, "…published cross-process; keep it stable")`
 > `[VS] GpuDescriptor.hpp:61`) — a data-format/irreversibility trigger §1.1(4) — and touches Vulkan

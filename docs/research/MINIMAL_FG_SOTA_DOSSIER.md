@@ -464,8 +464,8 @@ the corpus records them; rows marked "partial" had only a partial pointer in the
 ## §9 — Links
 
 - Consumes nothing; consumed by [`MINIMAL_FG_MASTER_PLAN.md`](MINIMAL_FG_MASTER_PLAN.md) and its
-  siblings [`MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md`](MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md) ·
-  [`MINIMAL_FG_RISK_REGISTER.md`](MINIMAL_FG_RISK_REGISTER.md).
+  siblings [`MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md`](../legacy/MINIMAL_FG_IMPLEMENTATION_STRATEGIES.md) ·
+  [`MINIMAL_FG_RISK_REGISTER.md`](../legacy/MINIMAL_FG_RISK_REGISTER.md).
 - Process spec obeyed: [`../canon/FORMAL_DOCUMENT_PROTOCOL.md`](../canon/FORMAL_DOCUMENT_PROTOCOL.md).
 - Registration in [`../FORMAL_DOCUMENTS_REGISTER.md`](../FORMAL_DOCUMENTS_REGISTER.md) is handled with
   the triad at the P0 close (do not edit it from this file).

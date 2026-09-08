@@ -1,8 +1,8 @@
 # STAGE-39 OUTPUT-CLOCK — design (the present clock becomes the monitor's)
 
 **Date.** 2026-06-10. **Status.** PROPOSED — design only (no code touched). **Type.** Design (explanation + how-to).
-**Parent.** [`RENDER_ASSISTANT_PLAN.md`](../RENDER_ASSISTANT_PLAN.md) §9 + §9-coda. **Sibling kickoffs.**
-[`ongoing/RENDER_ASSISTANT_KICKOFFS.md`](RENDER_ASSISTANT_KICKOFFS.md) (STAGE-39c, 40a — the generation-ring + B-copy levers this builds atop).
+**Parent.** [`RENDER_ASSISTANT_PLAN.md`](../../legacy/RENDER_ASSISTANT_PLAN.md) §9 + §9-coda. **Sibling kickoffs.**
+[`ongoing/RENDER_ASSISTANT_KICKOFFS.md`](../../legacy/RENDER_ASSISTANT_KICKOFFS.md) (STAGE-39c, 40a — the generation-ring + B-copy levers this builds atop).
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT, MAY are to be interpreted per BCP 14 (RFC 2119/8174).
 Every code anchor below was read first-hand in `apps/render_assistant/src/main.cpp` at the cited line; line
