@@ -36,8 +36,18 @@ def build(d, K, arm, out, scores_json, start, count):
     if scores_json:
         blob = json.load(open(scores_json, encoding='utf-8'))
         key = next((k for k in blob if k.endswith('|k%d' % K) and os.path.normpath(k.split('|k')[0]) == os.path.normpath(d)), None)
-        if key and arm in blob[key]['rows']:
-            rows = {r['mid']: r for r in blob[key]['rows'][arm]}
+        if key:
+            # the arm the scores were filed under may predate the per-k naming (fg vs fg_k4)
+            akey = arm if arm in blob[key]['rows'] else next((a for a in blob[key]['rows'] if a.startswith('fg')), None)
+            if akey:
+                rows = {r['mid']: r for r in blob[key]['rows'][akey]}
+    # a live arm's align.json says which generated frames bridged a CUT (real pair not k apart --
+    # the looped player's seam); those are shown, marked, and never carry a score
+    cuts = set()
+    ap_ = os.path.join(d, 'arms', arm, 'align.json')
+    if os.path.exists(ap_):
+        cuts = {r['mid'] for r in json.load(open(ap_, encoding='utf-8'))['rows']
+                if 'mid' in r and not r.get('pair_ok', True) and 'skipped' not in r and 'dup_of' not in r}
     last_real = ((n - 1) // K) * K
     lo, hi = max(0, start), min(last_real, start + count - 1 if count else last_real)
     frames = []
@@ -63,12 +73,12 @@ def build(d, K, arm, out, scores_json, start, count):
             if not real:
                 tpath = 'seq/f_%06d_t.png' % i
                 SR.png(os.path.join(out, tpath), SR.u8(truth))
-        rec = {'i': i, 'real': real, 'c': cpath, 't': tpath, 'missing': missing}
+        rec = {'i': i, 'real': real, 'c': cpath, 't': tpath, 'missing': missing, 'cut': i in cuts}
         if not real:
             tr = trs[i]
             rec.update({'phase': tr['phase'], 'N': tr['N'], 'N1': tr['N1']})
             r = rows.get(i)
-            if r:
+            if r and i not in cuts:
                 objs = r['objects']
                 m = lambda key: float(np.nanmean([objs[k][key] for k in objs])) if objs else None
                 rec['s'] = {'pos': m('pos_err'), 'shape': m('shape_err'), 'halluc': m('halluc_px'),
@@ -127,13 +137,13 @@ function draw(){const f=F[cur];const a=load(f.c),b=load(f.t);
  if(diff&&!f.real&&b.complete&&b.naturalWidth){cx.drawImage(a,0,0);const A=cx.getImageData(0,0,W,H);cx.drawImage(b,0,0);const B=cx.getImageData(0,0,W,H);
   const o=cx.createImageData(W,H);for(let p=0;p<A.data.length;p+=4){const d=Math.min(255,4*(Math.abs(A.data[p]-B.data[p])+Math.abs(A.data[p+1]-B.data[p+1])+Math.abs(A.data[p+2]-B.data[p+2]))/3);o.data[p]=d;o.data[p+1]=Math.max(0,d-60);o.data[p+2]=Math.max(0,d-120);o.data[p+3]=255}cx.putImageData(o,0,0)}
  else cx.drawImage(im,0,0);
- badge.textContent=f.real?'REAL':(f.missing?'NOT CAPTURED — truth shown':'GENERATED');badge.className=f.real?'real':'gen';
+ badge.textContent=f.real?'REAL':(f.missing?'NOT CAPTURED — truth shown':(f.cut?'GENERATED ACROSS A CUT — not scored':'GENERATED'));badge.className=f.real?'real':'gen';
  cv.style.opacity=f.missing?'0.45':'1';
  idx.textContent='#'+f.i+(f.real?'':'  φ '+fmt(f.phase,2));
  mode.textContent=(diff&&!f.real?'|candidate − truth| ×4':useT?'TRUTH in place':'')+(playing?'  ▶':'');
  let h='';
  if(f.real)h='<b>real frame</b> <span class="k">source index '+f.i+' — the FG saw this one</span>';
- else{h='<b>generated</b> between real <b>'+f.N+'</b> → <b>'+f.N1+'</b>, phase '+fmt(f.phase,3);
+ else{h='<b>generated</b> between real <b>'+f.N+'</b> → <b>'+f.N1+'</b>, phase '+fmt(f.phase,3)+(f.cut?' — <span class="bad">the two real frames were not k apart (the loop seam): a CUT, no interpolation truth exists</span>':'');
   if(f.s){const s=f.s;h+='<br>pos <b>'+fmt(s.pos,3)+'</b> px · shape <b>'+fmt(s.shape,3)+'</b> px · halluc <b>'+fmt(s.halluc,0)+'</b> px² (lead '+fmt(s.lead,1)+') · missing <b>'+fmt(s.missing,0)+'</b> px² · sharp <b>'+fmt(s.sharp,3)+'</b>'+(s.sharp!=null&&s.sharp<0.9?' <span class="bad">BLUR</span>':'')+' · class-0 '+fmt(s.disocc_px,0)+' px'}}
  info.innerHTML=h;rate.textContent=fps+' fps auto · '+(loop?'loop':'stop at end');drawTL()}
 function drawTL(){const w=tl.clientWidth,h=tl.clientHeight;if(tlc.width!==w||tlc.height!==h){tlc.width=w;tlc.height=h}
