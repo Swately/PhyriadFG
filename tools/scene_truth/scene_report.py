@@ -168,18 +168,22 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near):
                 arm must reproduce.
     """
     tlike, clike = object_like(truth, bg), object_like(cand, bg)
+    valid = np.ones(ids.shape, bool)              # the barcode strip is outside EVERY term, not only the masks
+    if STRIP is not None:
+        x0, x1, y0, y1 = STRIP
+        valid[y0:y1, x0:x1] = False
     row = {'mask_iou': float((tlike & (ids > 0)).sum() / max((tlike | (ids > 0)).sum(), 1))}
     ct, cc = lum(truth), lum(cand)
-    det = cls == 3
+    det = (cls == 3) & valid
     row['l2_det'] = float(np.sqrt(((cc - ct)[det] ** 2).mean())) if det.any() else float('nan')
-    far_bg = (ids == 0) & ~dilate(ids > 0, NEAR_R)
+    far_bg = (ids == 0) & ~dilate(ids > 0, NEAR_R) & valid
     row['bg_err'] = float(np.sqrt(((cc - ct)[far_bg] ** 2).mean())) if far_bg.any() else float('nan')
-    d0 = cls == 0
+    d0 = (cls == 0) & valid
     row['disocc_px'] = int(d0.sum())
     row['disocc'] = float(np.sqrt(((cc - ct)[d0] ** 2).mean())) if d0.any() else float('nan')
     row['graceful'] = float(np.sqrt(((cc - lum(nearest))[d0] ** 2).mean())) if d0.any() else float('nan')
     tb = (ids > 0) & ~erode4(ids > 0)
-    tband = dilate(tb, 1)
+    tband = dilate(tb, 1) & valid
     gt, gc = grad_mag(ct), grad_mag(cc)
     row['sharp'] = float(gc[tband].mean() / max(gt[tband].mean(), 1e-9)) if tband.any() else float('nan')
     per = {}
@@ -306,18 +310,39 @@ def png(path, rgb8):
 
 
 # ── a whole arm over a corpus at multiplier K ────────────────────────────────────────────────────
+def exact_phase(d, arm):
+    """mid -> the FG's OWN phase for a live arm, from align.json. Absent for synthetic arms."""
+    p = os.path.join(d, 'arms', arm, 'align.json')
+    if not os.path.exists(p):
+        return {}
+    return {r['mid']: r for r in json.load(open(p, encoding='utf-8'))['rows']
+            if 'mid' in r and 'skipped' not in r and 'dup_of' not in r}
+
+
 def score_arm(d, K, arm, frames=None):
     t, sc = load_corpus(d)
     W, H = t['width'], t['height']
     bg = Z.Scene([], W, H, t['fov_deg'], t['seed']).render(0.0, t['ss'])[0]
+    ex = exact_phase(d, arm)
     rows = []
     for tr in triples(d, K)[:frames]:
         cand = arm_frame(t, sc, d, tr, arm)
         if cand is None:
             continue
         tm, tA, tB = t['t'][tr['mid']], t['t'][tr['N']], t['t'][tr['N1']]
-        truth = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % tr['mid']), W, H)
-        ids = load_id(d, tr['mid'], W, H)
+        if tr['mid'] in ex:
+            # A LIVE arm is scored against the truth AT ITS OWN PHASE, rendered on demand: the FG's t
+            # need not sit on the base grid, and comparing to the nearest base frame would charge the
+            # FG up to half a base frame of motion that is the alignment's, not its own.
+            e = ex[tr['mid']]
+            tA, tB = t['t'][e['N']], t['t'][e['N1']]
+            tm = tA + e['t'] * (tB - tA)
+            truth, (ids, _, _) = sc.render(tm, t['ss'])
+            if STRIP is not None:
+                Z.draw_barcode(truth, tr['mid'])          # the strip is masked anyway; keep the bytes alike
+        else:
+            truth = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % tr['mid']), W, H)
+            ids = load_id(d, tr['mid'], W, H)
         cls = sc.visibility(tm, tA, tB)
         k, _, L = sc.labels(tm)
         uvA, _ = sc.reproject(k, L, tA); uvB, _ = sc.reproject(k, L, tB)
@@ -326,10 +351,16 @@ def score_arm(d, K, arm, frames=None):
         for kk in sorted(int(x) for x in np.unique(ids) if 0 < x < 255):
             v = fl[ids == kk].mean(axis=0); n = np.linalg.norm(v)
             motion[kk] = (v / (n + 1e-12), float(n))
-        near_i = tr['N'] if tr['phase'] <= 0.5 else tr['N1']
+        if tr['mid'] in ex:
+            e = ex[tr['mid']]
+            near_i = e['N'] if e['t'] <= 0.5 else e['N1']
+            phase = e['t']
+        else:
+            near_i = tr['N'] if tr['phase'] <= 0.5 else tr['N1']
+            phase = tr['phase']
         nearest = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % near_i), W, H)
         r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H))
-        r.update({'mid': tr['mid'], 'near': near_i, 'phase': tr['phase'], 'k': K})
+        r.update({'mid': tr['mid'], 'near': near_i, 'phase': phase, 'k': K, 'exact_phase': tr['mid'] in ex})
         rows.append(r)
     return rows
 
