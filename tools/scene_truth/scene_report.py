@@ -324,7 +324,7 @@ def score_arm(d, K, arm, frames=None):
     W, H = t['width'], t['height']
     bg = Z.Scene([], W, H, t['fov_deg'], t['seed']).render(0.0, t['ss'])[0]
     ex = exact_phase(d, arm)
-    rows = []
+    rows, cut = [], 0
     for tr in triples(d, K)[:frames]:
         cand = arm_frame(t, sc, d, tr, arm)
         if cand is None:
@@ -335,6 +335,14 @@ def score_arm(d, K, arm, frames=None):
             # need not sit on the base grid, and comparing to the nearest base frame would charge the
             # FG up to half a base frame of motion that is the alignment's, not its own.
             e = ex[tr['mid']]
+            if not e.get('pair_ok', True):
+                # The two real frames were NOT k apart -- the player looped, or the FG paired across a
+                # drop. What the FG bridged there is a CUT, and a cut has no interpolation truth: the
+                # first live run's single catastrophic frame (2,865 px^2, a doubled sphere) was exactly
+                # this, the loop seam, and was nearly recorded as a hallucination on continuous motion.
+                # Counted, never scored.
+                cut += 1
+                continue
             tA, tB = t['t'][e['N']], t['t'][e['N1']]
             tm = tA + e['t'] * (tB - tA)
             truth, (ids, _, _) = sc.render(tm, t['ss'])
@@ -362,6 +370,9 @@ def score_arm(d, K, arm, frames=None):
         r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H))
         r.update({'mid': tr['mid'], 'near': near_i, 'phase': phase, 'k': K, 'exact_phase': tr['mid'] in ex})
         rows.append(r)
+    if cut:
+        print('%s/%s k=%d: %d frame(s) whose real pair was NOT %d apart (a cut) counted and excluded'
+              % (os.path.basename(os.path.normpath(d)), arm, K, cut, K))
     return rows
 
 

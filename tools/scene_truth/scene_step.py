@@ -51,15 +51,19 @@ def build(d, K, arm, out, scores_json, start, count):
             if tr is None:
                 continue
             cand = SR.arm_frame(t, sc, d, tr, arm)
-            if cand is None:
-                sys.exit('arm %r has no frame %d and is not synthetic' % (arm, i))
+        missing = (not real) and cand is None       # the live FG's --qdump SAMPLES: not every tick is dumped
         cpath = 'seq/f_%06d_c.png' % i
-        SR.png(os.path.join(out, cpath), SR.u8(cand))
         tpath = cpath
-        if not real:
+        if missing:
             tpath = 'seq/f_%06d_t.png' % i
             SR.png(os.path.join(out, tpath), SR.u8(truth))
-        rec = {'i': i, 'real': real, 'c': cpath, 't': tpath}
+            cpath = tpath
+        else:
+            SR.png(os.path.join(out, cpath), SR.u8(cand))
+            if not real:
+                tpath = 'seq/f_%06d_t.png' % i
+                SR.png(os.path.join(out, tpath), SR.u8(truth))
+        rec = {'i': i, 'real': real, 'c': cpath, 't': tpath, 'missing': missing}
         if not real:
             tr = trs[i]
             rec.update({'phase': tr['phase'], 'N': tr['N'], 'N1': tr['N1']})
@@ -123,7 +127,8 @@ function draw(){const f=F[cur];const a=load(f.c),b=load(f.t);
  if(diff&&!f.real&&b.complete&&b.naturalWidth){cx.drawImage(a,0,0);const A=cx.getImageData(0,0,W,H);cx.drawImage(b,0,0);const B=cx.getImageData(0,0,W,H);
   const o=cx.createImageData(W,H);for(let p=0;p<A.data.length;p+=4){const d=Math.min(255,4*(Math.abs(A.data[p]-B.data[p])+Math.abs(A.data[p+1]-B.data[p+1])+Math.abs(A.data[p+2]-B.data[p+2]))/3);o.data[p]=d;o.data[p+1]=Math.max(0,d-60);o.data[p+2]=Math.max(0,d-120);o.data[p+3]=255}cx.putImageData(o,0,0)}
  else cx.drawImage(im,0,0);
- badge.textContent=f.real?'REAL':'GENERATED';badge.className=f.real?'real':'gen';
+ badge.textContent=f.real?'REAL':(f.missing?'NOT CAPTURED — truth shown':'GENERATED');badge.className=f.real?'real':'gen';
+ cv.style.opacity=f.missing?'0.45':'1';
  idx.textContent='#'+f.i+(f.real?'':'  φ '+fmt(f.phase,2));
  mode.textContent=(diff&&!f.real?'|candidate − truth| ×4':useT?'TRUTH in place':'')+(playing?'  ▶':'');
  let h='';
