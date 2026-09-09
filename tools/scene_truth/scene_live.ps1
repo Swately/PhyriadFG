@@ -55,6 +55,11 @@ $nlive = (Get-ChildItem $qd -Filter '*_live.rgba' -ErrorAction SilentlyContinue 
 Write-Host ("[scene-live] FG exited {0}; triples on disk: {1}" -f $proc.ExitCode, $nlive)
 if ($nlive -eq 0) { throw "the FG wrote no triples - check the capture target and --qdump" }
 
-& python (Join-Path $here 'scene_align.py') --qdump $qd --run $Run --k $K --arm fg
-& python (Join-Path $here 'scene_report.py') --run $Run --k $K --arm truth --arm nearest --arm oracle2 --arm fg `
+# ONE ARM DIRECTORY PER K. Arms are indexed by BASE frame, and the mids of k=2, 4 and 8 overlap (every
+# odd frame is a k=2 mid AND a k=4 mid AND a k=8 mid), so a shared arms/fg/ let a later run overwrite an
+# earlier run's frames and its align.json -- seen: the k=8 run replaced k=2's, and a concurrent scorer
+# read the mixture. fg_k<K> keeps every run's output intact and the scorer reads only its own.
+$arm = "fg_k{0}" -f $K
+& python (Join-Path $here 'scene_align.py') --qdump $qd --run $Run --k $K --arm $arm
+& python (Join-Path $here 'scene_report.py') --run $Run --k $K --arm truth --arm nearest --arm oracle2 --arm $arm `
     --md (Join-Path $Run ("fg_k{0}.md" -f $K)) --json (Join-Path $Run ("fg_k{0}.json" -f $K))
