@@ -23,17 +23,7 @@ import scene_report as SR   # noqa: E402
 TERMS = ('pos_err', 'shape_err', 'halluc_px', 'missing_px')
 
 
-def png(path, rgb8):
-    H, W = rgb8.shape[:2]
-    raw = b''.join(b'\x00' + rgb8[y].tobytes() for y in range(H))
-    def ch(t, d):
-        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
-    open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 2, 0, 0, 0))
-                           + ch(b'IDAT', zlib.compress(raw, 6)) + ch(b'IEND', b''))
-
-
-def u8(x):
-    return np.clip(np.rint(x * 255), 0, 255).astype(np.uint8)
+png, u8 = SR.png, SR.u8            # one writer, shared with the stepper
 
 
 def overlay(cand, truth, bg, ids, cls):
@@ -70,9 +60,11 @@ def build(json_path, out_dir, term, K, crop):
             for val, r, ok, o in flat[:K]:
                 mid = r['mid']
                 truth = SR.load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % mid), W, H)
-                cand = SR.load_rgb(os.path.join(d, 'arms', arm, 'f_%06d.rgba' % mid), W, H)
-                ids = SR.load_id(d, mid, W, H)
                 N, N1 = mid - int(round(r['phase'] * k)), mid - int(round(r['phase'] * k)) + k
+                cand = SR.arm_frame(t, sc, d, {'mid': mid, 'N': N, 'N1': N1, 'phase': r['phase']}, arm)
+                if cand is None:
+                    continue
+                ids = SR.load_id(d, mid, W, H)
                 cls = sc.visibility(t['t'][mid], t['t'][N], t['t'][N1])
                 ys, xs = np.nonzero(ids == ok)
                 if len(xs) == 0:

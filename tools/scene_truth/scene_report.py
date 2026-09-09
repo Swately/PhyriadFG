@@ -234,30 +234,75 @@ def bilinear(img, uv):
             + img[y0 + 1, x0] * (1 - fx) * fy + img[y0 + 1, x0 + 1] * fx * fy)
 
 
-def make_arms(d, K, names):
-    t, sc = load_corpus(d)
+SYNTH = ('truth', 'nearest', 'blend', 'oracle2', 'blur')
+
+
+def synth_frame(t, sc, d, tr, name):
+    """One synthetic arm's frame for one triple, computed in memory from the corpus alone.
+
+    These are pure functions of the corpus, so they are NOT stored by default (a full sweep would
+    otherwise write ~900 MB of recomputable pixels per k); --keep-arms materialises them for
+    consumers that read files. Nothing is lost: the bytes are identical either way.
+    """
     W, H = t['width'], t['height']
+    fr = lambda i: load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % i), W, H)
+    truth = fr(tr['mid'])
+    if name == 'truth':
+        return truth
+    A, B = fr(tr['N']), fr(tr['N1'])
+    if name == 'nearest':
+        return A if tr['phase'] <= 0.5 else B
+    if name == 'blend':
+        return 0.5 * (A + B)
+    if name == 'blur':
+        return gauss_blur(truth)
+    if name == 'oracle2':
+        tm, tA, tB = t['t'][tr['mid']], t['t'][tr['N']], t['t'][tr['N1']]
+        k, _, L = sc.labels(tm)
+        cls = sc.visibility(tm, tA, tB)
+        uvA, _ = sc.reproject(k, L, tA); uvB, _ = sc.reproject(k, L, tB)
+        return np.where((cls & 1).astype(bool)[..., None], bilinear(A, uvA),
+                        np.where((cls & 2).astype(bool)[..., None], bilinear(B, uvB),
+                                 A if tr['phase'] <= 0.5 else B))
+    raise KeyError(name)
+
+
+def arm_frame(t, sc, d, tr, name):
+    """A candidate frame: a materialised arms/<name>/ file if present (the FG's own output lives
+    there), else a synthetic arm in memory, else None."""
+    p = os.path.join(d, 'arms', name, 'f_%06d.rgba' % tr['mid'])
+    if os.path.exists(p):
+        return load_rgb(p, t['width'], t['height'])
+    if name in SYNTH:
+        return synth_frame(t, sc, d, tr, name)
+    return None
+
+
+def make_arms(d, K, names):
+    """Materialise synthetic arms to arms/<name>/ (--keep-arms). Same bytes the scorer uses."""
+    t, sc = load_corpus(d)
+    names = [n for n in names if n in SYNTH]
     for n in names:
         os.makedirs(os.path.join(d, 'arms', n), exist_ok=True)
     for tr in triples(d, K):
-        tm = t['t'][tr['mid']]; tA = t['t'][tr['N']]; tB = t['t'][tr['N1']]
-        fr = lambda i: load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % i), W, H)
-        truth, A, B = fr(tr['mid']), fr(tr['N']), fr(tr['N1'])
-        out = {}
-        if 'truth' in names:   out['truth'] = truth
-        if 'nearest' in names: out['nearest'] = A if tr['phase'] <= 0.5 else B
-        if 'blend' in names:   out['blend'] = 0.5 * (A + B)
-        if 'blur' in names:    out['blur'] = gauss_blur(truth)
-        if 'oracle2' in names:
-            k, _, L = sc.labels(tm)
-            cls = sc.visibility(tm, tA, tB)
-            uvA, _ = sc.reproject(k, L, tA); uvB, _ = sc.reproject(k, L, tB)
-            out['oracle2'] = np.where((cls & 1).astype(bool)[..., None], bilinear(A, uvA),
-                                      np.where((cls & 2).astype(bool)[..., None], bilinear(B, uvB),
-                                               A if tr['phase'] <= 0.5 else B))
-        for n, img in out.items():
-            Z.to_rgba(img).tofile(os.path.join(d, 'arms', n, 'f_%06d.rgba' % tr['mid']))
-    print('%s: arms %s written for k=%d' % (d, ', '.join(names), K))
+        for n in names:
+            Z.to_rgba(synth_frame(t, sc, d, tr, n)).tofile(os.path.join(d, 'arms', n, 'f_%06d.rgba' % tr['mid']))
+    print('%s: arms %s materialised for k=%d' % (d, ', '.join(names), K))
+
+
+def u8(x):
+    return np.clip(np.rint(x * 255), 0, 255).astype(np.uint8)
+
+
+def png(path, rgb8):
+    """Lossless PNG from RGB8, stdlib only — for the pages; the corpus itself stays raw RGBA8."""
+    import struct, zlib
+    H, W = rgb8.shape[:2]
+    raw = b''.join(b'\x00' + rgb8[y].tobytes() for y in range(H))
+    def ch(tag, dat):
+        return struct.pack('>I', len(dat)) + tag + dat + struct.pack('>I', zlib.crc32(tag + dat) & 0xffffffff)
+    open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 2, 0, 0, 0))
+                           + ch(b'IDAT', zlib.compress(raw, 6)) + ch(b'IEND', b''))
 
 
 # ── a whole arm over a corpus at multiplier K ────────────────────────────────────────────────────
@@ -267,12 +312,11 @@ def score_arm(d, K, arm, frames=None):
     bg = Z.Scene([], W, H, t['fov_deg'], t['seed']).render(0.0, t['ss'])[0]
     rows = []
     for tr in triples(d, K)[:frames]:
-        cp = os.path.join(d, 'arms', arm, 'f_%06d.rgba' % tr['mid'])
-        if not os.path.exists(cp):
+        cand = arm_frame(t, sc, d, tr, arm)
+        if cand is None:
             continue
         tm, tA, tB = t['t'][tr['mid']], t['t'][tr['N']], t['t'][tr['N1']]
         truth = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % tr['mid']), W, H)
-        cand = load_rgb(cp, W, H)
         ids = load_id(d, tr['mid'], W, H)
         cls = sc.visibility(tm, tA, tB)
         k, _, L = sc.labels(tm)
@@ -339,8 +383,7 @@ def table(d_label, K, arms, results, floor):
 # ── the gate ─────────────────────────────────────────────────────────────────────────────────────
 def gate(d, K):
     print('GATE on %s at k=%d — five arms with predicted signatures; every check seen RED first.' % (d, K))
-    arms = ['truth', 'nearest', 'blend', 'oracle2', 'blur']
-    make_arms(d, K, arms)
+    arms = list(SYNTH)                      # computed in memory; nothing is written by the gate
     t, _ = load_corpus(d); W, H = t['width'], t['height']
     R = {a: score_arm(d, K, a) for a in arms}
     S = {a: summarize(R[a]) for a in arms}
@@ -407,7 +450,9 @@ def main():
     ap.add_argument('--run', action='append', required=True, metavar='DIR', help='corpus dir; twice for DI-3')
     ap.add_argument('--k', type=int, action='append', default=None, help='multiplier(s); default 4')
     ap.add_argument('--arm', action='append', default=None, help='arm dir name(s) under <corpus>/arms/')
-    ap.add_argument('--make-arms', action='store_true', help='build the five synthetic arms first')
+    ap.add_argument('--keep-arms', '--make-arms', dest='keep_arms', action='store_true',
+                    help='materialise the synthetic arms to arms/<name>/ (off by default: they are '
+                         'computed in memory and are pure functions of the corpus)')
     ap.add_argument('--gate', action='store_true', help='run the red-first gate on the first --run')
     ap.add_argument('--frames', type=int, default=None)
     ap.add_argument('--md'); ap.add_argument('--json')
@@ -420,8 +465,8 @@ def main():
     out = {}
     for d in a.run:
         for K in ks:
-            if a.make_arms:
-                make_arms(d, K, [x for x in arms if x in ('truth', 'nearest', 'blend', 'oracle2', 'blur')])
+            if a.keep_arms:
+                make_arms(d, K, arms)
             R = {x: score_arm(d, K, x, a.frames) for x in arms}
             S = {x: summarize(R[x]) for x in arms}
             fl = S.get('truth') or next(v for v in S.values() if v)

@@ -448,6 +448,10 @@ def main():
                     help='bake the 16-bit frame index into every frame (marker_zoo\'s strip) and write the '
                          '`sequence`/`fps` manifest lines, so play_frames.ps1 can present the corpus to the '
                          'LIVE FG and marker_extract can align what came back (TB-C7). The scorer masks the strip.')
+    ap.add_argument('--labels', action='store_true',
+                    help='also write the depth / flow / flowb planes (1.1 GB of a 1.3 GB corpus at 640x360). '
+                         'OFF by default: every consumer re-derives them from the geometry, bit-identically '
+                         '(G1), so nothing is lost. frames/ and id/ are always written.')
     ap.add_argument('--verify', action='store_true')
     a = ap.parse_args()
 
@@ -462,7 +466,7 @@ def main():
     sc = make_scene(a.scene, W, H, a.fov, a.seed)
     n = int(round(a.fps * a.seconds))
     dt = 1.0 / a.fps
-    for sub in ('frames', 'id', 'depth', 'flow', 'flowb'):
+    for sub in (('frames', 'id', 'depth', 'flow', 'flowb') if a.labels else ('frames', 'id')):
         os.makedirs(os.path.join(a.out, sub), exist_ok=True)
 
     truth = {'renderer': 'scene_zoo v1', 'scene': a.scene, 'width': W, 'height': H, 'fov_deg': a.fov,
@@ -489,9 +493,10 @@ def main():
             sys.exit('barcode round-trip failed on frame 0')
         rgba.tofile(os.path.join(a.out, 'frames', 'f_%06d.rgba' % i))
         k.astype(np.uint8).tofile(os.path.join(a.out, 'id', 'f_%06d.u8' % i))
-        z.astype(np.float32).tofile(os.path.join(a.out, 'depth', 'f_%06d.f32' % i))
-        sc.flow(t, dt, k, L).tofile(os.path.join(a.out, 'flow', 'f_%06d.f32' % i))
-        sc.flow(t, -dt, k, L).tofile(os.path.join(a.out, 'flowb', 'f_%06d.f32' % i))
+        if a.labels:
+            z.astype(np.float32).tofile(os.path.join(a.out, 'depth', 'f_%06d.f32' % i))
+            sc.flow(t, dt, k, L).tofile(os.path.join(a.out, 'flow', 'f_%06d.f32' % i))
+            sc.flow(t, -dt, k, L).tofile(os.path.join(a.out, 'flowb', 'f_%06d.f32' % i))
         if i < a.bmp:
             write_bmp(os.path.join(a.out, 'frames', 'f_%06d.bmp' % i), rgba)
         if (i + 1) % 24 == 0 or i + 1 == n:
