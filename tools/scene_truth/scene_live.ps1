@@ -23,6 +23,7 @@ param(
   [int]$Triples = 400,
   [string]$FgExe = "",
   [string]$Title = 'RA Motion Zoo',
+  [switch]$NoScore,        # capture + align only; score later (lets several captures run back to back)
   [switch]$Loop            # loop the sequence. Without it the player CLOSES after the last frame, so the
                            # corpus must outlast 3 s + Seconds or the FG captures nothing (seen: 0 triples
                            # on a 1 s corpus). With it, the FG sees a CUT at every seam; the scorer counts
@@ -61,5 +62,6 @@ if ($nlive -eq 0) { throw "the FG wrote no triples - check the capture target an
 # read the mixture. fg_k<K> keeps every run's output intact and the scorer reads only its own.
 $arm = "fg_k{0}" -f $K
 & python (Join-Path $here 'scene_align.py') --qdump $qd --run $Run --k $K --arm $arm
+if ($NoScore) { Write-Host "[scene-live] -NoScore: aligned into arms\$arm; score with scene_report.py --arm $arm"; exit 0 }
 & python (Join-Path $here 'scene_report.py') --run $Run --k $K --arm truth --arm nearest --arm oracle2 --arm $arm `
     --md (Join-Path $Run ("fg_k{0}.md" -f $K)) --json (Join-Path $Run ("fg_k{0}.json" -f $K))

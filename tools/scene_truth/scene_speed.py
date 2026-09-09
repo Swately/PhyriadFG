@@ -40,8 +40,8 @@ def load_points(pattern, arm='fg'):
             speed = float(t.get('speed', 1.0)); seed = t.get('seed')
             for o in sorted(set(k for r in rows for k in r['objects'])):
                 rs = [r['objects'][o] for r in rows if o in r['objects']]
-                if len(rs) < 8:
-                    continue
+                if len(rs) < 5:
+                    continue                       # n is printed on every row; a thin point reads as thin
                 g = lambda f: float(np.nanmean([x[f] for x in rs]))
                 pts.append({'corpus': os.path.basename(os.path.normpath(corpus)), 'seed': seed, 'k': K,
                             'speed': speed, 'obj': int(o), 'n': len(rs), 'disp': g('disp_src_px'),
