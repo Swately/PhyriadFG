@@ -371,6 +371,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('dir')
     ap.add_argument('--triples', type=int, default=0, help='limit to the first N triples (0 = all)')
+    ap.add_argument('--ids', help='comma-separated triple ids to process (e.g. q000054,q000117); others skipped')
     ap.add_argument('--json', help='write the per-triple results to this JSON file')
     ap.add_argument('--save-worst', help='directory for the |diff| map of the worst triple (raw u8)')
     ap.add_argument('--mv-plane', default='mv',
@@ -412,6 +413,9 @@ def main():
     W, H = size
     if a.triples:
         rows = rows[:a.triples]
+    if a.ids:
+        want = set(x.strip() for x in a.ids.split(',') if x.strip())
+        rows = [r for r in rows if r['id'] in want]
     print(f'record: {a.dir}\n  {W}x{H}, {len(rows)} triples')
 
     results = []
