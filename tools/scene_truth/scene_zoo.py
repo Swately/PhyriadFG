@@ -62,7 +62,8 @@ import numpy as np
 # collected, and this module is IMPORTED by the scorer, which has already set its own stdout
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'motion_truth'))
-from marker_zoo import write_bmp   # noqa: E402  (proven primitive, reused)
+from marker_zoo import write_bmp, draw_barcode, decode_barcode   # noqa: E402  (proven primitives, reused)
+from marker_zoo import BC_X0, BC_Y0, BC_Y1, BC_W                # noqa: E402  (the strip the scorer must mask)
 
 EPS = 1e-6
 
@@ -443,6 +444,10 @@ def main():
     ap.add_argument('--bmp', type=int, default=0, help='also write the first N frames as BMP, for a glance')
     ap.add_argument('--manifest-k', type=int, action='append', default=[],
                     help='write held-out triples (prev/mid/next) for multiplier K, gt-emit format')
+    ap.add_argument('--barcode', action='store_true',
+                    help='bake the 16-bit frame index into every frame (marker_zoo\'s strip) and write the '
+                         '`sequence`/`fps` manifest lines, so play_frames.ps1 can present the corpus to the '
+                         'LIVE FG and marker_extract can align what came back (TB-C7). The scorer masks the strip.')
     ap.add_argument('--verify', action='store_true')
     a = ap.parse_args()
 
@@ -471,10 +476,17 @@ def main():
                                        'flowb': 'f32 H*W*2 backward'}},
              't': [i * dt for i in range(n)]}
 
+    truth['barcode'] = bool(a.barcode)
+    if a.barcode:
+        truth['barcode_strip'] = {'x0': BC_X0 - 1, 'x1': BC_X0 + BC_W + 1, 'y0': BC_Y0 - 1, 'y1': BC_Y1 + 1}
     for i in range(n):
         t = i * dt
         rgb, (k, z, L) = sc.render(t, a.ss)
+        if a.barcode:
+            draw_barcode(rgb, i)                      # broadcasts over the 3 channels: black/white blocks
         rgba = to_rgba(rgb)
+        if a.barcode and i == 0 and decode_barcode(rgba) != 0:
+            sys.exit('barcode round-trip failed on frame 0')
         rgba.tofile(os.path.join(a.out, 'frames', 'f_%06d.rgba' % i))
         k.astype(np.uint8).tofile(os.path.join(a.out, 'id', 'f_%06d.u8' % i))
         z.astype(np.float32).tofile(os.path.join(a.out, 'depth', 'f_%06d.f32' % i))
@@ -489,6 +501,8 @@ def main():
     with open(os.path.join(a.out, 'manifest.txt'), 'w', encoding='utf-8') as f:
         f.write('# scene_truth corpus — scene=%s seed=%d ss=%d\nsize %d %d\nbase_fps %g\nframes %d\n'
                 % (a.scene, a.seed, a.ss, W, H, a.fps, n))
+        if a.barcode:                                 # the two lines play_frames.ps1 parses
+            f.write('sequence frames/f_ %d\nfps %g\n' % (n, a.fps))
     for K in a.manifest_k:
         with open(os.path.join(a.out, 'manifest_k%d.txt' % K), 'w', encoding='utf-8') as f:
             f.write('# held-out triples for multiplier %d: source = every %d-th base frame\nsize %d %d\n'

@@ -77,8 +77,11 @@ def lum(rgb):
 
 
 def load_corpus(d):
+    global STRIP
     t = json.load(open(os.path.join(d, 'truth.json')))
     sc = Z.Scene(t['objects'][1:], t['width'], t['height'], t['fov_deg'], t['seed'])
+    s = t.get('barcode_strip')
+    STRIP = (s['x0'], s['x1'], s['y0'], s['y1']) if s else None
     return t, sc
 
 
@@ -97,8 +100,15 @@ def triples(d, K):
 
 
 # ── masks and geometry ───────────────────────────────────────────────────────────────────────────
+STRIP = None            # (x0, x1, y0, y1) of a baked barcode strip, set per corpus; masked out of every term
+
+
 def object_like(rgb, bg):
-    return np.abs(rgb - bg).max(axis=-1) > OBJ_TAU
+    m = np.abs(rgb - bg).max(axis=-1) > OBJ_TAU
+    if STRIP is not None:
+        x0, x1, y0, y1 = STRIP
+        m[y0:y1, x0:x1] = False
+    return m
 
 
 def erode4(m):
