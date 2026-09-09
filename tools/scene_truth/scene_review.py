@@ -104,7 +104,7 @@ button{cursor:pointer} .card{display:grid;grid-template-columns:repeat(4,%dpx) 1
 textarea{width:100%%;max-width:420px;margin-top:6px;font:inherit;background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px}
 .legend{font-size:12px;color:var(--mut)} .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:middle}
 """ % (crop, crop, crop)
-    parts = ['<title>scene_truth review</title><style>%s</style>' % css,
+    parts = ['<!doctype html><meta charset="utf-8"><title>scene_truth review</title><style>%s</style>' % css,
              '<header><h1>scene_truth — the worst %d per arm, by <code>%s</code></h1>' % (K, esc(term)),
              '<div class="sub">%d cards. Name the FORM of each failure; labels stay in this browser and export as JSON.</div>' % len(cards),
              '<div class="legend">overlay: <i style="background:#2bd06a"></i>truth ∧ candidate <i style="background:#e8332b"></i>candidate only (hallucinated) '

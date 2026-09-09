@@ -100,7 +100,7 @@ canvas{max-width:100%%;max-height:100%%;image-rendering:pixelated}
 #prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--gen);transform-origin:left;transform:scaleX(0)}
 """
     data = json.dumps(frames)
-    parts = ['<title>scene_truth step · %s k=%d %s</title><style>%s</style>' % (html.escape(corpus), K, html.escape(arm), css),
+    parts = ['<!doctype html><meta charset="utf-8"><title>scene_truth step · %s k=%d %s</title><style>%s</style>' % (html.escape(corpus), K, html.escape(arm), css),
              '<div id="wrap"><header><h1>%s · k = %d · arm <code>%s</code></h1>' % (html.escape(corpus), K, html.escape(arm)),
              '<span class="sub">%d frames · %d×%d · real every %d</span></header>' % (len(frames), W, H, K),
              '<div id="stage"><canvas id="cv" width="%d" height="%d"></canvas><div id="badge"></div><div id="idx"></div><div id="mode"></div><div id="prog"></div></div>' % (W, H),
