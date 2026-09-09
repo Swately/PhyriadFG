@@ -20,9 +20,9 @@ the alignment's; the truth was rendered on demand instead.
 
 It is **not** the shipping path: `--qdump` forces the sync present and **samples** (8 phase bins,
 ≥ 8 ticks apart) — 351 triples in 20 s, 136 unique after the 1 s loop repeated pairs, **133 scored**
-after one cut pair was excluded (§4). And it is one run, one seed: **DI-3 is satisfied for the
-synthetic curve (§3) and, at the time of writing, NOT yet for the FG row** — the seed-11 live run is
-in flight and this file is to be amended with it before the row is cited as a result.
+after one cut pair was excluded (§4). **DI-3 is satisfied for both the synthetic curve (§3) and the
+FG row itself (§2b):** a second live run on a corpus of a different seed, same protocol, agrees on
+every citable term within 13 %.
 
 ## 2. The row (k = 4, 133 frames, exact phase, cut pairs excluded)
 
@@ -69,6 +69,37 @@ there 1.67 px → 0.37 px across phase, attributed to the MV consensus pass. An 
 scorer and corpus reproduce its shape. That is the strongest validation this tool has: it did not
 know the finding, and found it.
 
+## 2b. DI-3 — the same row on a second seed
+
+Second corpus: `mixed`, seed 11 (a different backdrop texture and object placement noise), same
+binary, same protocol (looped, `--qdump`, k = 4), 342 triples, 132 aligned, 3 cut pairs excluded,
+**128 scored**. Full table: `B1_FG_k4_seed11.md`.
+
+| term (fg) | seed 7 | seed 11 | dev |
+|---|---|---|---|
+| pos_err px | 0.216 | 0.212 | 2.2 % |
+| shape_err px | 0.145 | 0.137 | 5.9 % |
+| halluc px² | 52.3 | 51.2 | 2.1 % |
+| lead px | +8.55 | +8.82 | 3.1 % |
+| missing px² | 25.3 | 23.2 | 8.9 % |
+| sharp | 0.955 | 0.948 | 0.7 % |
+| sphere pos | 0.481 | 0.468 | 2.6 % |
+| box pos | 0.159 | 0.160 | 0.1 % |
+| sphere, φ < 0.25 | 0.668 | 0.653 | 2.2 % |
+| sphere, φ 0.25–0.75 | 0.490 | 0.507 | 3.5 % |
+| sphere, φ > 0.75 | 0.252 | 0.221 | 13.1 % |
+
+Worst discrepancy on the citable terms **13.1 %**, on the smallest bucket (20 frames a side); every
+term is under the 20 % threshold and may be cited. The rulers move with the seed exactly as little:
+`nearest` 0.275 → 0.279, `oracle2` 0.097 → 0.102. The verdict is ACCEPT on both seeds, and on both
+it is the sphere's threshold pass (0.481 / 0.468 against 0.5).
+
+**So the row is a result:** at k = 4 from a 60 fps source, the shipping default places a
+3.4 px/pair translating object **0.47 ± 0.01 px** from where it belongs, beating the nearest real
+frame (0.67) and sitting 3.2× the exact-flow oracle (0.15) on that object; a static object is exact
+(0.009); no blur; the spurious mass leads the motion; and the error falls with phase by a factor of
+~2.7 from φ < 0.25 to φ > 0.75.
+
 ## 3. The curve it sits on (synthetic arms, DI-3 satisfied)
 
 Two corpora, seeds 7 and 11. `nearest`, `blend`, `oracle2` agree between seeds within **0.0–10.9 %**
@@ -109,7 +140,6 @@ real frame. It was inflating the high-phase mean: with it, φ > 0.75 read 1.25 p
 
 ## 5. What is owed before any of this is a result
 
-- **DI-3 on the FG row**: the seed-11 live run, same protocol (looped, cut pairs excluded). In flight.
 - The FG's own curve: k = 2 and k = 8 live, read against the oracle's flatness.
 - Provenance on the worst *genuine* frames (now #54 φ 0.38, 270 px²; #61, #93, #117 at φ ≈ 0.13):
   `ref_warp.py --decisions` on their qdump triples.
