@@ -20,16 +20,39 @@ own terms and verdict in the panel, so the number and the picture are looked at 
 
 Made with my soul - Swately <3
 """
-import argparse, json, os, sys, html
+import argparse, json, os, sys, html, re
 import numpy as np
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scene_report as SR   # noqa: E402
 
 
-def build(d, K, arm, out, scores_json, start, count):
+def measured_rates(fg_log):
+    """From a raw FG log: the present rate and the capture rate it reported, second by second."""
+    if not fg_log or not os.path.exists(fg_log):
+        return None
+    pres, cap, done = [], [], None
+    for line in open(fg_log, encoding='utf-8', errors='replace'):
+        m = re.search(r'\] ([0-9.]+) fps \(present\).*?cap (\d+)/s', line)
+        if m:
+            pres.append(float(m.group(1))); cap.append(int(m.group(2)))
+        m2 = re.search(r'done \(real=(\d+) interp=(\d+) total_presents=(\d+)\)', line)
+        if m2:
+            done = {'real': int(m2.group(1)), 'interp': int(m2.group(2)), 'total': int(m2.group(3))}
+    if not pres:
+        return None
+    return {'present_fps': float(np.median(pres)), 'present_min': float(min(pres)), 'present_max': float(max(pres)),
+            'capture_fps': float(np.median(cap)), 'capture_min': int(min(cap)), 'capture_max': int(max(cap)),
+            'seconds': len(pres), 'done': done}
+
+
+def build(d, K, arm, out, scores_json, start, count, fg_log=None):
     t, sc = SR.load_corpus(d)
     W, H, n = t['width'], t['height'], t['frames']
+    base = float(t['base_fps'])
+    rates = {'base_fps': base, 'source_fps': base / K, 'output_fps': base, 'k': K,
+             'source_interval_ms': 1000.0 * K / base, 'output_interval_ms': 1000.0 / base,
+             'measured': measured_rates(fg_log)}
     os.makedirs(os.path.join(out, 'seq'), exist_ok=True)
     trs = {tr['mid']: tr for tr in SR.triples(d, K)}
     rows = {}
@@ -73,7 +96,8 @@ def build(d, K, arm, out, scores_json, start, count):
             if not real:
                 tpath = 'seq/f_%06d_t.png' % i
                 SR.png(os.path.join(out, tpath), SR.u8(truth))
-        rec = {'i': i, 'real': real, 'c': cpath, 't': tpath, 'missing': missing, 'cut': i in cuts}
+        rec = {'i': i, 'real': real, 'c': cpath, 't': tpath, 'missing': missing, 'cut': i in cuts,
+               'time_s': i / base}
         if not real:
             tr = trs[i]
             rec.update({'phase': tr['phase'], 'N': tr['N'], 'N1': tr['N1']})
@@ -87,12 +111,12 @@ def build(d, K, arm, out, scores_json, start, count):
         frames.append(rec)
         if (i - lo + 1) % 40 == 0:
             print('  %d/%d' % (i - lo + 1, hi - lo + 1))
-    write_html(out, frames, W, H, K, arm, os.path.basename(os.path.normpath(d)))
+    write_html(out, frames, W, H, K, arm, os.path.basename(os.path.normpath(d)), rates)
     print('%d frames (%d real, %d generated) -> %s' % (len(frames), sum(f['real'] for f in frames),
                                                        sum(not f['real'] for f in frames), os.path.join(out, 'index.html')))
 
 
-def write_html(out, frames, W, H, K, arm, corpus):
+def write_html(out, frames, W, H, K, arm, corpus, rates):
     css = """
 :root{--bg:#f6f5f2;--ink:#1c1b19;--mut:#6b675f;--line:#dcd8d0;--real:#2f8f5e;--gen:#c98a1a;--red:#b03a2e}
 @media(prefers-color-scheme:dark){:root{--bg:#121210;--ink:#e8e4da;--mut:#9b968a;--line:#2d2b25;--real:#5fd39a;--gen:#f0b545;--red:#e0705f}}
@@ -114,14 +138,22 @@ canvas{max-width:100%%;max-height:100%%;image-rendering:pixelated}
 #prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--gen);transform-origin:left;transform:scaleX(0)}
 """
     data = json.dumps(frames)
+    m = rates.get('measured')
+    meas = ('' if not m else
+            ' · <b>measured</b> present %.1f fps (%.1f–%.1f), capture %.0f/s (%d–%d) over %d status lines%s'
+            % (m['present_fps'], m['present_min'], m['present_max'], m['capture_fps'], m['capture_min'], m['capture_max'], m['seconds'],
+               (' · %d real + %d generated = %d presented' % (m['done']['real'], m['done']['interp'], m['done']['total'])) if m['done'] else ''))
+    ratesline = ('<div class="sub" id="rates"><b>REAL %.1f fps</b> (every %d-th frame of a %.0f fps base, %.2f ms apart) → '
+                 '<b>FG ×%d → %.0f fps presented</b> (%.2f ms apart)%s</div>'
+                 % (rates['source_fps'], K, rates['base_fps'], rates['source_interval_ms'], K, rates['output_fps'], rates['output_interval_ms'], meas))
     parts = ['<!doctype html><meta charset="utf-8"><title>scene_truth step · %s k=%d %s</title><style>%s</style>' % (html.escape(corpus), K, html.escape(arm), css),
-             '<div id="wrap"><header><h1>%s · k = %d · arm <code>%s</code></h1>' % (html.escape(corpus), K, html.escape(arm)),
+             '<div id="wrap"><header><div><h1>%s · k = %d · arm <code>%s</code></h1>%s</div>' % (html.escape(corpus), K, html.escape(arm), ratesline),
              '<span class="sub">%d frames · %d×%d · real every %d</span></header>' % (len(frames), W, H, K),
              '<div id="stage"><canvas id="cv" width="%d" height="%d"></canvas><div id="badge"></div><div id="idx"></div><div id="mode"></div><div id="prog"></div></div>' % (W, H),
              '<div id="panel"><div id="info"></div><div id="rate" class="k"></div></div>',
              '<div id="tl"><canvas id="tlc"></canvas></div>',
              '<div id="help">← → step · <b>hold</b> to auto-advance · [ ] slower/faster · space play · L loop · T truth in place · D difference · Home/End · click the timeline</div></div>',
-             '<script>const F=%s;const W=%d,H=%d,K=%d;' % (data, W, H, K),
+             '<script>const F=%s;const W=%d,H=%d,K=%d;const RATES=%s;' % (data, W, H, K, json.dumps({k: v for k, v in rates.items() if k != 'measured'})),
              r"""
 const cv=document.getElementById('cv'),cx=cv.getContext('2d'),badge=document.getElementById('badge'),idx=document.getElementById('idx'),
  mode=document.getElementById('mode'),info=document.getElementById('info'),rate=document.getElementById('rate'),prog=document.getElementById('prog'),
@@ -139,11 +171,11 @@ function draw(){const f=F[cur];const a=load(f.c),b=load(f.t);
  else cx.drawImage(im,0,0);
  badge.textContent=f.real?'REAL':(f.missing?'NOT CAPTURED — truth shown':(f.cut?'GENERATED ACROSS A CUT — not scored':'GENERATED'));badge.className=f.real?'real':'gen';
  cv.style.opacity=f.missing?'0.45':'1';
- idx.textContent='#'+f.i+(f.real?'':'  φ '+fmt(f.phase,2));
+ idx.textContent='#'+f.i+'  t '+fmt(f.time_s,4)+' s'+(f.real?'':'  φ '+fmt(f.phase,2));
  mode.textContent=(diff&&!f.real?'|candidate − truth| ×4':useT?'TRUTH in place':'')+(playing?'  ▶':'');
  let h='';
- if(f.real)h='<b>real frame</b> <span class="k">source index '+f.i+' — the FG saw this one</span>';
- else{h='<b>generated</b> between real <b>'+f.N+'</b> → <b>'+f.N1+'</b>, phase '+fmt(f.phase,3)+(f.cut?' — <span class="bad">the two real frames were not k apart (the loop seam): a CUT, no interpolation truth exists</span>':'');
+ if(f.real)h='<b>real frame</b> <span class="k">source index '+f.i+' — the FG saw this one, '+RATES.source_interval_ms.toFixed(2)+' ms after the previous real</span>';
+ else{h='<b>generated</b> between real <b>'+f.N+'</b> → <b>'+f.N1+'</b>, phase '+fmt(f.phase,3)+' <span class="k">('+(f.phase*RATES.source_interval_ms).toFixed(2)+' ms after real '+f.N+', presented '+RATES.output_interval_ms.toFixed(2)+' ms after the previous frame)</span>'+(f.cut?' — <span class="bad">the two real frames were not k apart (the loop seam): a CUT, no interpolation truth exists</span>':'');
   if(f.s){const s=f.s;h+='<br>pos <b>'+fmt(s.pos,3)+'</b> px · shape <b>'+fmt(s.shape,3)+'</b> px · halluc <b>'+fmt(s.halluc,0)+'</b> px² (lead '+fmt(s.lead,1)+') · missing <b>'+fmt(s.missing,0)+'</b> px² · sharp <b>'+fmt(s.sharp,3)+'</b>'+(s.sharp!=null&&s.sharp<0.9?' <span class="bad">BLUR</span>':'')+' · class-0 '+fmt(s.disocc_px,0)+' px'}}
  info.innerHTML=h;rate.textContent=fps+' fps auto · '+(loop?'loop':'stop at end');drawTL()}
 function drawTL(){const w=tl.clientWidth,h=tl.clientHeight;if(tlc.width!==w||tlc.height!==h){tlc.width=w;tlc.height=h}
@@ -180,8 +212,9 @@ def main():
     ap.add_argument('--scores', help='the scorer --json, to show each generated frame\'s terms')
     ap.add_argument('--start', type=int, default=0)
     ap.add_argument('--count', type=int, default=0, help='0 = to the last real frame')
+    ap.add_argument('--fg-log', help='the raw FG stdout of this run, for the MEASURED present and capture rates')
     a = ap.parse_args()
-    build(a.run, a.k, a.arm, a.out, a.scores, a.start, a.count)
+    build(a.run, a.k, a.arm, a.out, a.scores, a.start, a.count, a.fg_log)
 
 
 if __name__ == '__main__':
