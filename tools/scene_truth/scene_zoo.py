@@ -56,9 +56,11 @@ Every one of these was watched failing under a deliberate perturbation before it
 
 Made with my soul - Swately <3
 """
-import argparse, json, os, sys, io
+import argparse, json, os, sys
 import numpy as np
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+# reconfigure, never re-wrap: a second TextIOWrapper over the same buffer closes it when the first is
+# collected, and this module is IMPORTED by the scorer, which has already set its own stdout
+sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'motion_truth'))
 from marker_zoo import write_bmp   # noqa: E402  (proven primitive, reused)
 
