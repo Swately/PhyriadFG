@@ -441,6 +441,11 @@ def main():
     ap.add_argument('--seconds', type=float, default=1.0)
     ap.add_argument('--ss', type=int, default=3, help='supersampling factor, ODD')
     ap.add_argument('--seed', type=int, default=7)
+    ap.add_argument('--speed', type=float, default=1.0,
+                    help='multiply every object\'s velocity and spin. THE SPEED TEST (operator, 2026-09-08): '
+                         'the same displacement per source pair reached two ways -- speed x2 at fixed k, or k x2 '
+                         'at fixed speed. If the FG\'s error curves coincide, it sees only pixels-per-pair; if '
+                         'they diverge, absolute speed matters on its own.')
     ap.add_argument('--bmp', type=int, default=0, help='also write the first N frames as BMP, for a glance')
     ap.add_argument('--manifest-k', type=int, action='append', default=[],
                     help='write held-out triples (prev/mid/next) for multiplier K, gt-emit format')
@@ -463,15 +468,17 @@ def main():
         sys.exit('--out DIR is required (or --verify)')
 
     W, H = a.width, a.height
-    sc = make_scene(a.scene, W, H, a.fov, a.seed)
+    objects = [dict(o, vel=[v * a.speed for v in o.get('vel', [0, 0, 0])],
+                    omega_deg=o.get('omega_deg', 0.0) * a.speed) for o in PRESETS[a.scene]]
+    sc = Scene(objects, W, H, a.fov, a.seed)
     n = int(round(a.fps * a.seconds))
     dt = 1.0 / a.fps
     for sub in (('frames', 'id', 'depth', 'flow', 'flowb') if a.labels else ('frames', 'id')):
         os.makedirs(os.path.join(a.out, sub), exist_ok=True)
 
     truth = {'renderer': 'scene_zoo v1', 'scene': a.scene, 'width': W, 'height': H, 'fov_deg': a.fov,
-             'base_fps': a.fps, 'frames': n, 'seed': a.seed, 'ss': a.ss,
-             'objects': [BACKDROP] + PRESETS[a.scene], 'light': LIGHT.tolist(), 'ambient': AMBIENT,
+             'base_fps': a.fps, 'frames': n, 'seed': a.seed, 'ss': a.ss, 'speed': a.speed,
+             'objects': [BACKDROP] + objects, 'light': LIGHT.tolist(), 'ambient': AMBIENT,
              'conventions': {'camera': 'origin, +z forward, x right, y down, fixed',
                              'pixel_centre': '(i+0.5, j+0.5)', 'depth': 'camera z',
                              'flow': 'pixels toward t±1/base_fps, +x right +y down',
