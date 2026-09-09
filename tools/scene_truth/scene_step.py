@@ -50,6 +50,8 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None):
     t, sc = SR.load_corpus(d)
     W, H, n = t['width'], t['height'], t['frames']
     base = float(t['base_fps'])
+    if not fg_log and os.path.exists(os.path.join(d, 'fg_k%d.log' % K)):
+        fg_log = os.path.join(d, 'fg_k%d.log' % K)          # where scene_live.ps1 keeps the FG's stdout
     rates = {'base_fps': base, 'source_fps': base / K, 'output_fps': base, 'k': K,
              'source_interval_ms': 1000.0 * K / base, 'output_interval_ms': 1000.0 / base,
              'measured': measured_rates(fg_log)}

@@ -49,8 +49,13 @@ $pargs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
 if (-not $Loop) { $pargs += '-NoLoop' }
 $player = Start-Process powershell -PassThru -ArgumentList $pargs
 Start-Sleep -Seconds 3
-$proc = Start-Process $FgExe -PassThru -Wait -NoNewWindow -ArgumentList @('--window', (& $q $Title),
+# The FG's own stdout is the measurement's provenance (present / capture rates, the real+generated
+# tally). It is kept next to the corpus as fg_k<K>.log; the stepper reads it by default.
+$fglog = Join-Path $Run ("fg_k{0}.log" -f $K)
+$proc = Start-Process $FgExe -PassThru -Wait -NoNewWindow -RedirectStandardOutput $fglog `
+  -RedirectStandardError (Join-Path $Run ("fg_k{0}.err" -f $K)) -ArgumentList @('--window', (& $q $Title),
   '--qdump', (& $q $qd), $Triples, '--exit-after', $Seconds, '--fg-factor', $K)
+Get-Content $fglog -Tail 3 | ForEach-Object { Write-Host ('[fg] ' + $_) }
 if (-not $player.HasExited) { Stop-Process -Id $player.Id -Force -ErrorAction SilentlyContinue }
 $nlive = (Get-ChildItem $qd -Filter '*_live.rgba' -ErrorAction SilentlyContinue | Measure-Object).Count
 Write-Host ("[scene-live] FG exited {0}; triples on disk: {1}" -f $proc.ExitCode, $nlive)
