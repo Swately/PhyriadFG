@@ -148,10 +148,36 @@ def unsupported(p):
     return bad
 
 
-def reference(triple, push, W, H, gw, gh):
-    """Rebuild the stored value for one tick. Returns (result_float, diagnostics)."""
+def reference(triple, push, W, H, gw, gh, decisions=False):
+    """Rebuild the stored value for one tick. Returns (result_float, diagnostics), and with
+    decisions=True a third value: the per-pixel PROVENANCE planes -- every quantity that decided a
+    pixel, which this function always computed and used to discard at the end.
+
+    THE DECISIONS MODE CHANGES NO COMPUTED VALUE. The source coordinates are hoisted into names
+    with the identical expressions; the stage flags that only exist inside a conditional get a
+    neutral pre-initialisation; nothing else moves. The gate for that claim is the one this file
+    already has: the reproduced stats must be byte-identical with and without the mode.
+
+    What the planes say, for a pixel the operator points at in the stepper:
+        stage.u8      bitmask  1 guided-pick fell back to linear  2 gate-b refused a fast MV on a
+                      static block  4 bg_reclaim damped it  8 ambiguity swapped in the runner-up
+                      16 stasis (zero-motion store)  32 the phase anchor overwrote the MV this tick
+                      (the anchor is per TICK, not per pixel -- it is set on every pixel or none)
+        w_s.f32       the store weight: 0 = the backward-warped NEXT sample, 1 = NEXT at zero motion.
+                      There is no prev term in the store; prev is evidence only.
+        srcB.rg32f    the pixel coordinate in NEXT that B_samp read (what the pixel came from)
+        srcA.rg32f    the pixel coordinate in PREV that A_samp read (evidence for w_s)
+        mv_eff.rg32f  the MV that placed those samples, after every stage
+        mv_lin.rg32f  the bilinear MV before any stage; mv_bwd.rg32f the backward field (anchor)
+        sad_best/sad_zero.f32, d_pixel/d_zero.f32, reclaim_w.f32  the evidence each stage weighed
+    """
     p = push
     t = np.float32(p['t'])
+    # neutral pre-initialisation of the flags that exist only inside a conditional below; the
+    # conditionals overwrite them exactly as before, so the computation is untouched
+    fallback = np.zeros((H, W), dtype=bool); refuse = np.zeros((H, W), dtype=bool)
+    take = np.zeros((H, W), dtype=bool); d_zero = np.zeros((H, W), np.float32)
+    mv_bwd = np.zeros((H, W, 2), np.float32)
     prev = triple['prev'][..., :3].astype(np.float32) / 255.0
     cur  = triple['next'][..., :3].astype(np.float32) / 255.0
     mvg  = triple['mv']                       # (gh, gw, 2) pixel units
@@ -274,8 +300,11 @@ def reference(triple, push, W, H, gw, gh):
         vb_w = np.float32(0.0)
         mv_eff = mv
 
-    A_samp = s_prev(u - (mv_eff[..., 0] * t) / W, v - (mv_eff[..., 1] * t) / H)
-    B_samp = s_cur (u + (mv_eff[..., 0] * (1 - t)) / W, v + (mv_eff[..., 1] * (1 - t)) / H)
+    # the source coordinates, hoisted with the IDENTICAL expressions (decisions emits them)
+    uA = u - (mv_eff[..., 0] * t) / W;       vA = v - (mv_eff[..., 1] * t) / H
+    uB = u + (mv_eff[..., 0] * (1 - t)) / W; vB = v + (mv_eff[..., 1] * (1 - t)) / H
+    A_samp = s_prev(uA, vA)
+    B_samp = s_cur (uB, vB)
     d_pixel = length3(A_samp - B_samp)
 
     stasis = (p['stasis_thresh'] > 0.0) & (sad_zero <= p['stasis_thresh'])
@@ -294,7 +323,23 @@ def reference(triple, push, W, H, gw, gh):
     diag = dict(vb_w=float(vb_w), anchor_active=anchor_active, ambig_hits=ambig_hits,
                 reclaim_frac=float((reclaim_w > 0.0).mean()),
                 stasis_frac=float(stasis.mean()), ws_mean=float(w_s.mean()))
-    return result, diag
+    if not decisions:
+        return result, diag
+    stage = (fallback.astype(np.uint8) | (refuse.astype(np.uint8) << 1) | ((reclaim_w > 0.0).astype(np.uint8) << 2)
+             | (take.astype(np.uint8) << 3) | (stasis.astype(np.uint8) << 4)
+             | (np.uint8(32) if anchor_active else np.uint8(0)))
+    planes = {
+        'stage.u8': stage.astype(np.uint8),
+        'w_s.f32': w_s.astype(np.float32),
+        'srcA.rg32f': np.stack([uA * np.float32(W), vA * np.float32(H)], axis=-1).astype(np.float32),
+        'srcB.rg32f': np.stack([uB * np.float32(W), vB * np.float32(H)], axis=-1).astype(np.float32),
+        'mv_eff.rg32f': mv_eff.astype(np.float32), 'mv_lin.rg32f': mv_lin.astype(np.float32),
+        'mv_bwd.rg32f': mv_bwd.astype(np.float32),
+        'sad_best.f32': sad_best.astype(np.float32), 'sad_zero.f32': sad_zero.astype(np.float32),
+        'd_pixel.f32': d_pixel.astype(np.float32), 'd_zero.f32': d_zero.astype(np.float32),
+        'reclaim_w.f32': reclaim_w.astype(np.float32),
+    }
+    return result, diag, planes
 
 
 def compare(ref_rgb, live, worst_path=None):
@@ -345,6 +390,12 @@ def main():
                     help='quantize the bilinear fractional coordinate to this many bits, as a GPU '
                          'texture unit does (Vulkan subTexelPrecisionBits; 8 is typical). Omit for '
                          'exact float filtering.')
+    ap.add_argument('--decisions', metavar='DIR',
+                    help='PROVENANCE: write, for every triple, the per-pixel planes that decided each '
+                         'output pixel (stage bitmask, store weight, the source coordinates in prev and '
+                         'next, the effective / linear / backward MVs, the SAD and distance evidence) plus '
+                         'the reproduced frame and its |diff| against the GPU, as raw H*W planes named '
+                         '<id>_<plane>. The reproduced values are identical with or without this flag.')
     a = ap.parse_args()
     global FILTER_BITS
     FILTER_BITS = a.filter_bits
@@ -402,7 +453,17 @@ def main():
         if need:
             print(f'  FAIL {rid}: the push arms features whose planes are absent: {need}'); fails += 1; continue
 
-        ref, diag = reference(triple, push, W, H, gw, gh)
+        if a.decisions:
+            ref, diag, planes = reference(triple, push, W, H, gw, gh, decisions=True)
+            os.makedirs(a.decisions, exist_ok=True)
+            for name, arr in planes.items():
+                arr.tofile(os.path.join(a.decisions, f'{rid}_{name}'))
+            np.rint(np.clip(ref, 0.0, 1.0) * 255.0).astype(np.uint8).tofile(
+                os.path.join(a.decisions, f'{rid}_ref.rgb8'))
+            diag['decisions'] = {'t': float(push['t']), 'planes': sorted(planes),
+                                 'mv_plane': a.mv_plane, 'mvb_plane': a.mvb_plane}
+        else:
+            ref, diag = reference(triple, push, W, H, gw, gh)
         if a.fit:
             # HOW MUCH of the GPU's own change does the reference explain? Compare the CHANGE each
             # side makes to cur[uv], on pixels that carry a gradient (a flat pixel cannot show a
