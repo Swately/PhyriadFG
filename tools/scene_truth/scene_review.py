@@ -61,7 +61,10 @@ def build(json_path, out_dir, term, K, crop):
                 mid = r['mid']
                 truth = SR.load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % mid), W, H)
                 N, N1 = mid - int(round(r['phase'] * k)), mid - int(round(r['phase'] * k)) + k
-                cand = SR.arm_frame(t, sc, d, {'mid': mid, 'N': N, 'N1': N1, 'phase': r['phase']}, arm)
+                tr = {'mid': mid, 'N': N, 'N1': N1, 'phase': r['phase']}
+                cand = SR.arm_frame(t, sc, d, tr, arm)
+                if cand is None and arm.startswith('fg'):
+                    cand = SR.arm_frame(t, sc, d, tr, 'fg_k%d' % k)   # the pre-rename key (fg) vs the per-k dir
                 if cand is None:
                     continue
                 ids = SR.load_id(d, mid, W, H)
