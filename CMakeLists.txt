@@ -125,6 +125,8 @@ add_executable(phyriad_fg
     src/present/present_init.cpp               # E1: the present-side init sections (bridge slots), verbatim from main.cpp
     src/present/present_stage.cpp              # R4: STAGE 6 -- the present stage (surface, slots, submit, present, FlipStats, --tdr-test)
     src/instrument/instrument.cpp              # the dump_bmp/dump_rgba diagnostic frame-dump helpers
+    src/instrument/gdump_book.cpp              # --gdump: the CPU bookkeeping of the every-tick capture tap (GDUMP_PLAN.md S6)
+    src/instrument/gdump.cpp                   # --gdump: the Vulkan + writer-thread glue of the tap
     src/core/ra_simd.cpp                       # F16C batch — /arch:AVX2 below; main.cpp stays portable
     src/core/core_init.cpp                     # E1: core-side init sections (cmd buffers + fences), verbatim from main.cpp
     "${_rv}/src/OpticalFlowPipeline.cpp"       # render/vulkan optical-flow pipeline
@@ -158,6 +160,13 @@ target_include_directories(pfg_clock_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/s
 add_executable(pfg_arm_test tests/layers/test_arm_parity.cpp src/control/layer_registry.cpp)
 target_compile_features(pfg_arm_test PRIVATE cxx_std_23)
 target_include_directories(pfg_arm_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+# --gdump (GDUMP_PLAN.md S6 / RR1 / RR2): the tap's CPU bookkeeping — the SPSC descriptor ring, the staging-slot
+# cursor, the pair-set state machine, the reconciliation identity — tested without a GPU. Vulkan headers only.
+add_executable(pfg_gdump_test tests/instrument/test_gdump_book.cpp src/instrument/gdump_book.cpp)
+target_compile_features(pfg_gdump_test PRIVATE cxx_std_23)
+target_include_directories(pfg_gdump_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${_fw}/ipc/include" "${_fw}/hal/include")
+target_link_libraries(pfg_gdump_test PRIVATE Vulkan::Vulkan)
 
 # R3: the row bodies are inputs of the generator (it checks them) and of fg_core.spv (it includes them).
 file(GLOB _layer_bodies CONFIGURE_DEPENDS "${_sh}/layers/*.glsl")
@@ -193,6 +202,9 @@ set_tests_properties(seam_graph PROPERTIES PASS_REGULAR_EXPRESSION "OK: all [0-9
 add_test(NAME clock_replay_oracle COMMAND pfg_clock_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/clock/fixtures/ball_zoo_60fps_240hz.alog")
 # ASCII only in the regex: the RESULT line carries an em-dash, which no single-byte regex atom matches.
 set_tests_properties(clock_replay_oracle PROPERTIES PASS_REGULAR_EXPRESSION "replay oracle over [0-9]+ ticks")
+# --gdump (GDUMP_PLAN.md RR1/RR2): the tap's CPU bookkeeping — slot reuse from the ring cursor, the pair state
+# machine, the reconciliation identity, the index/summary formats. Exit code + the [OK] lines are the pass.
+add_test(NAME gdump_book COMMAND pfg_gdump_test)
 
 # 2b. The same oracle over the two dimensions the first fixture cannot reach (4.3's honesty ledger named this gap):
 #     a different SOURCE RATE (120 fps -> a per-pair budget of 8.3 ms instead of 16.7) and a run under real GPU
@@ -325,6 +337,7 @@ target_include_directories(phyriad_fg PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"          # so #include "control/cli.hpp" resolves (same-dir quoted includes still win for main.cpp's "telemetry_csv.hpp" etc.)
     "${_rv}/include" "${_gen}"
     "${_fw}/hal/include"
+    "${_fw}/ipc/include"                       # --gdump: phyriad::ipc::Ring (vendored verbatim from the container catalog, GDUMP_PLAN.md S1)
     "${_fw}/render/present/include"
     "${_fw}/schema/include"
     "${_fw}/topology/include")

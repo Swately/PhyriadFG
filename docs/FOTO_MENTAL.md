@@ -4,30 +4,35 @@
 > [`planning/ACTION_PLAN.md`](planning/ACTION_PLAN.md); the durable knowledge is the D-22 memory
 > (`phyriadfg-*.md`). Rewritten at every checkpoint; older snapshots are not kept (the spine is).
 
-**Taken:** 2026-09-06, LATE — **`v0.5.0-experimental` is PUBLISHED** (`origin/main` = `4911ef1`, 55 commits,
-179 files, +40,434 lines; the earlier same-day stamp for the R7 code half is superseded by this one).
-Sections 4b-4j are the accumulated record and are NOT rewritten — only the orientation (0, 2, 4, 5,
-Self-prompt) is.
+**Taken:** 2026-09-09, 15:40 — the `--gdump` arc is DESIGNED and AUTHORIZED, code not yet written. The
+previous stamp (2026-09-06 LATE, `v0.5.0-experimental` published, HEAD now `364efc5` on local `main`, push
+NOT authorized) is superseded. Sections 4b-4y are the accumulated record and are NOT rewritten — only the
+orientation (0, 2, 4z, 5, Self-prompt) is.
 
-0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` →
-   **`P → S2.T6 displacement gap → S4.R3 (fg_core.comp) · next`**. (The old pointer here read
-   `S4.0 (operator) ‖ S4.C0 (next)`; BOTH of those nodes are closed — S4.0 done inside R2a, and
-   S4.C0 is a retired v1 id whose v2 equivalent S4.R0 is done with a gate record.)
+0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` → **`P → S2 MOTION_TRUTH · the scene_truth
+   instrument (exact 3-D truth, 2026-09-08/09) → its every-tick capture tap `--gdump` (designed, Tier-2:
+   `docs/planning/GDUMP_PLAN.md`) · in execution`**. The convergence spine R0–R7 is CLOSED (4q–4y); MR-8 and
+   C-2(a) remain the operator's.
 1. **OBJECTIVE** — P: perfect PhyriadFG as ONE final FG = the clean minimal core (`apps/minimal_fg`, the
    SG seam) + the layers that earn their place, on the LAYERTAB contract; exact motion measured as DATA
    (S2 MOTION_TRUTH), perceptual quality parked (S5).
-2. **FOCUS (rewritten 2026-09-06 LATE)** — R0–R7 are ALL closed and gated, and **R7(a) was decided:
-   `fg_core.comp` IS the shipping default** (`--legacy-warp` is the one-token revert). On top of that,
-   a 10-agent QoL audit (`records/QOL_AUDIT_2026-09-06.md`, 43 verdicts / 40 CONFIRMED / 8 high) was
-   designed, reconciled and APPLIED in full — 124 patches over 22 files — and the result shipped as
-   `v0.5.0-experimental`. The operator's own three defects (`records/QOL_FINDINGS.md` D-1/D-2/D-3) are
-   built; D-2 ships the honest partial.
+2. **FOCUS (rewritten 2026-09-09)** — **Build `--gdump` per `docs/planning/GDUMP_PLAN.md`** (the operator:
+   "Lo pendiente utiliza tu recomendacion y continua"). The design D1 was refuted by a 22-agent panel and
+   corrected in ten places, each re-verified first-hand (memory `phyriadfg-scene-truth.md` carries the list
+   and the digest paths). Division of labour per SUBAGENT_DELEGATION R5 (amended today): the supervisor owns
+   `present.cpp`, `cli`, `device.cpp`, `core_init.cpp`, `warp_blend_init.cpp`, CMake and `gdump.hpp`; Sonnet
+   subordinates write `gdump.cpp`, `tests/instrument/test_gdump_book.cpp` and `tools/scene_truth/gdump_adapter.py`
+   against the plan + the header, and the supervisor re-verifies every line before it builds.
 
-   **The live question is now MEASUREMENT, not construction.** Two named things wait, both his call:
-   (a) **MR-8**, his eye on the flipped kernel default, still outstanding — the default shipped ahead
-   of it; (b) **C-2 direction (a)**, flipping `igpu_field` to true so `bg-snap`/`band-xfade` actually
-   run. Only direction (b) — the honest help text — landed, because (a) changes presented pixels on a
-   default the R7(a) gate certified the same day and wants an M1 measurement first.
+   **Context that steers this arc (2026-09-08/09, all measured):** `tools/scene_truth/` exists and the FG's
+   first DI-3 row against exact truth is 0.216/0.212 px at k=4 (`docs/evidence/B1_FIRST_FG_ROW.md`); the speed
+   law is pos ≈ 0.30·disp^0.32 (`B1_SPEED_TEST.md`); `--qdump` is a SAMPLER that forces the sync path, so no
+   number so far is of the shipping async path's pacing; runs now live in **`C:\PhyriadFG\runs\`** (F: is a
+   119 GB LITEON at 124–138 MB/s and cannot take 640×360@240; C: is the 980 PRO at 1.3–1.9 GB/s). The
+   operator's standing rules of this arc: Fable for critical analysis only; runs keep/delete-able; exact quality
+   over disk; notify before visual/structural decisions.
+
+   **Still the operator's, untouched:** MR-8 and C-2 direction (a) (4y, NEXT of the 09-06 snapshot).
 
    **TRAP FOR THE NEXT SESSION (measured 2026-09-06):** this rig is SINGLE-GPU to PhyriadFG. The GTX
    1080 Ti sits in Windows driver error 31, so Vulkan enumerates only the RTX 4090 (discrete) + the
@@ -378,7 +383,33 @@ Self-prompt) is.
    la segunda tras ensanchar el test). `stats_second()` se MIDIÓ y se dejó abierto con el número al lado (60
    referencias compartidas — el doble de lo que necesitó `consume_wap`) y con el método que sí lo cerraría.
 
-5. **NEXT** — R0–R6 cerrados y aprobados; 4.2, 4.3 y la mitad de código de R7 cerrados. Lo que queda:
+4z. **THE SCENE_TRUTH ARC + `--gdump` (2026-09-08/09)** — see memory `phyriadfg-scene-truth.md` for the
+   instrument, the traps and the first FG row; `docs/planning/GDUMP_PLAN.md` for the tap. State at this
+   stamp: plan written; `src/instrument/gdump.hpp` written (the interface both sides compile against); runs
+   migrated to `C:\PhyriadFG\runs\` (five KEEP runs, 8.1 GB); protocols amended today (R5 model tiering,
+   BOOT §3.0/§4, DURABLE_CORE, L-008 recurrence 1). **BUILT (16:43): every file, the flags in `parse_extra`
+   (main chain at C1061, P-004), builds with IPO, 51/51 ctest, `pfg_gdump_test` green with RR1/RR2 seen red;
+   G0 closed** (`--help`/`--dump-config` differ from the base only by the flag lines and `sizeof(Config)`
+   1824→2088, round-trip 274+3 tokens identical, refusal printed, contract hash unmoved). Base binary:
+   `C:\PhyriadFG\bin\phyriad_fg_base_364efc5.exe` (md5 F36FDE32; new 335DA0E8 → rebuilt after the IPO
+   fix, re-hash before use). Dormant instrument found + fixed: `check_flag_roundtrip.py` (P-023).
+   **G1–G5 RUN 2026-09-09 17:00–17:40 with the operator's screen — `records/GDUMP_GATE.md`; every register row
+   `mitigated` or `accepted`.** The first pass found two defects the 25-reader panel had not (CR3: a pending
+   timeline signal under `vkDestroySemaphore` wedged one exit; PR2: the OS write cache stalled the writer
+   0.26–0.73 s and lost 6 % of the ticks) — both fixed, both re-measured (P-024). Observer effect at 640×360:
+   +0.06 ms GPU batch/tick, +0.13 ms warp EMA, +1.3 points GPU, 0 rdrops, −0.1 % presents; byte-identical-off
+   inside the base's spread; G4 16/16 byte-identical; G5 180/180 mids, oracle 99.50 % exact. **The first row
+   of the shipping async path against exact truth: pos 0.240 px (one run — DI-3 owed).** `scene_report.py`
+   gained `--jobs` (24 min → 226 s, JSON-identical). Committed (see git log); push NOT authorized.
+
+5. **NEXT (2026-09-09)** — in order: (1) `gdump.cpp` + test + adapter (Sonnet, kickoff = the plan + the header)
+   while the supervisor edits the five sites; (2) build ×2, `pfg_gdump_test` seen red on RR1/RR2 then green,
+   `--help` round trip, `--dump-config` diff = the new fields only (G0); (3) the 120 s smoke (G1); (4) with the
+   operator's screen: G2 three-arm observer run on `sc_live` k=4, G3 identity, G4 the `--qdump` byte cross-check,
+   G5 the tools; (5) every register row `mitigated`/`accepted`; commit (authorized; push is NOT); (6) the desktop
+   `PHYRIADFG_SECUENCIA.md` row + this snapshot again. The 2026-09-06 NEXT below is history, kept verbatim.
+
+5-old. **NEXT (2026-09-06)** — R0–R6 cerrados y aprobados; 4.2, 4.3 y la mitad de código de R7 cerrados. Lo que queda:
    (a) **R7(a) HECHO 2026-09-06 — el núcleo puro ES el default** (`records/R7_GATE.md` §8). Primero se enmendó el
    criterio (la cláusula `r ≥ 0.5` la reprueba el propio default; el plan guarda los dos textos), después se
    volteó: `fg_core.comp` es el producto, `--legacy-warp` revierte en un token, `wap_warp.comp` sigue en el
@@ -410,7 +441,16 @@ evidencia; no pedirle decisiones que ya delegó.
 
 ## Self-prompt (read this first after a compaction)
 
-I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). The
+I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **The live
+work (2026-09-09) is building `--gdump`, the every-tick capture tap, per `docs/planning/GDUMP_PLAN.md`
+and `src/instrument/gdump.hpp` — the operator has given his word; the register's rows are `open` until each
+gate is run first-hand.** Re-read first: BOOT_PROTOCOL (R5 now says: choose the model per subordinate,
+Fable = critical analysis only), the plan's §1–§4, the header, memory `phyriadfg-scene-truth.md`, and
+section 4z + NEXT above. Do NOT re-derive the panel's ten corrections (they are in the plan's §1 and §4 with
+their P-ids) and do NOT re-run the disk measurement (F: 124–138 MB/s, C: 1.3–1.9 GB/s, files deleted). Runs
+live in `C:\PhyriadFG\runs\`. Live gates take the operator's screen — ask.
+
+The older self-prompt (2026-09-06) follows, kept for the convergence context. The
 objective is P in `docs/planning/ACTION_PLAN.md`; the position is S4 (CONVERGENCE), executing in
 place. Do NOT re-open the layer-contract search (A0 is frozen; A3 = LAYERTAB + G1–G5; AT3/AT4/ATF
 approved in `docs/planning/aap/AT3_AT4_ATF_VERDICTS.md`) and do NOT re-derive the E1 result or the

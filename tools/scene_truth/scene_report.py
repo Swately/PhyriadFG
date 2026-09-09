@@ -319,57 +319,84 @@ def exact_phase(d, arm):
             if 'mid' in r and 'skipped' not in r and 'dup_of' not in r}
 
 
-def score_arm(d, K, arm, frames=None):
+_W = {}   # per-PROCESS scoring state (the corpus, the scene, the backdrop, the arm's exact phases) — see _worker_init
+
+
+def _worker_init(d, arm):
+    """Load what every frame of one (corpus, arm) needs, ONCE per process. Runs in the parent for --jobs 1 and in
+    each pool worker otherwise (ProcessPoolExecutor initializer). The truth render per frame is the cost that
+    made a 4-arm × 180-frame run take ~20 min on one core (2026-09-09, the operator: "apenas usa recursos")."""
+    global _W
     t, sc = load_corpus(d)
     W, H = t['width'], t['height']
     bg = Z.Scene([], W, H, t['fov_deg'], t['seed']).render(0.0, t['ss'])[0]
-    ex = exact_phase(d, arm)
-    rows, cut = [], 0
-    for tr in triples(d, K)[:frames]:
-        cand = arm_frame(t, sc, d, tr, arm)
-        if cand is None:
-            continue
-        tm, tA, tB = t['t'][tr['mid']], t['t'][tr['N']], t['t'][tr['N1']]
-        if tr['mid'] in ex:
-            # A LIVE arm is scored against the truth AT ITS OWN PHASE, rendered on demand: the FG's t
-            # need not sit on the base grid, and comparing to the nearest base frame would charge the
-            # FG up to half a base frame of motion that is the alignment's, not its own.
-            e = ex[tr['mid']]
-            if not e.get('pair_ok', True):
-                # The two real frames were NOT k apart -- the player looped, or the FG paired across a
-                # drop. What the FG bridged there is a CUT, and a cut has no interpolation truth: the
-                # first live run's single catastrophic frame (2,865 px^2, a doubled sphere) was exactly
-                # this, the loop seam, and was nearly recorded as a hallucination on continuous motion.
-                # Counted, never scored.
-                cut += 1
-                continue
-            tA, tB = t['t'][e['N']], t['t'][e['N1']]
-            tm = tA + e['t'] * (tB - tA)
-            truth, (ids, _, _) = sc.render(tm, t['ss'])
-            if STRIP is not None:
-                Z.draw_barcode(truth, tr['mid'])          # the strip is masked anyway; keep the bytes alike
-        else:
-            truth = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % tr['mid']), W, H)
-            ids = load_id(d, tr['mid'], W, H)
-        cls = sc.visibility(tm, tA, tB)
-        k, _, L = sc.labels(tm)
-        uvA, _ = sc.reproject(k, L, tA); uvB, _ = sc.reproject(k, L, tB)
-        fl = uvB - uvA                                          # per SOURCE pair
-        motion = {}
-        for kk in sorted(int(x) for x in np.unique(ids) if 0 < x < 255):
-            v = fl[ids == kk].mean(axis=0); n = np.linalg.norm(v)
-            motion[kk] = (v / (n + 1e-12), float(n))
-        if tr['mid'] in ex:
-            e = ex[tr['mid']]
-            near_i = e['N'] if e['t'] <= 0.5 else e['N1']
-            phase = e['t']
-        else:
-            near_i = tr['N'] if tr['phase'] <= 0.5 else tr['N1']
-            phase = tr['phase']
-        nearest = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % near_i), W, H)
-        r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H))
-        r.update({'mid': tr['mid'], 'near': near_i, 'phase': phase, 'k': K, 'exact_phase': tr['mid'] in ex})
-        rows.append(r)
+    _W = {'d': d, 'arm': arm, 't': t, 'sc': sc, 'W': W, 'H': H, 'bg': bg, 'ex': exact_phase(d, arm)}
+
+
+def _score_triple(args):
+    """One triple of one arm -> ('row', r) | ('cut', None) | ('skip', None). The former loop body of score_arm,
+    verbatim; it reads only _W and its arguments, so the same triple gives the same row in any process."""
+    K, tr = args
+    d, arm, t, sc, W, H, bg, ex = (_W[k] for k in ('d', 'arm', 't', 'sc', 'W', 'H', 'bg', 'ex'))
+    cand = arm_frame(t, sc, d, tr, arm)
+    if cand is None:
+        return ('skip', None)
+    tm, tA, tB = t['t'][tr['mid']], t['t'][tr['N']], t['t'][tr['N1']]
+    if tr['mid'] in ex:
+        # A LIVE arm is scored against the truth AT ITS OWN PHASE, rendered on demand: the FG's t
+        # need not sit on the base grid, and comparing to the nearest base frame would charge the
+        # FG up to half a base frame of motion that is the alignment's, not its own.
+        e = ex[tr['mid']]
+        if not e.get('pair_ok', True):
+            # The two real frames were NOT k apart -- the player looped, or the FG paired across a
+            # drop. What the FG bridged there is a CUT, and a cut has no interpolation truth: the
+            # first live run's single catastrophic frame (2,865 px^2, a doubled sphere) was exactly
+            # this, the loop seam, and was nearly recorded as a hallucination on continuous motion.
+            # Counted, never scored.
+            return ('cut', None)
+        tA, tB = t['t'][e['N']], t['t'][e['N1']]
+        tm = tA + e['t'] * (tB - tA)
+        truth, (ids, _, _) = sc.render(tm, t['ss'])
+        if STRIP is not None:
+            Z.draw_barcode(truth, tr['mid'])          # the strip is masked anyway; keep the bytes alike
+    else:
+        truth = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % tr['mid']), W, H)
+        ids = load_id(d, tr['mid'], W, H)
+    cls = sc.visibility(tm, tA, tB)
+    k, _, L = sc.labels(tm)
+    uvA, _ = sc.reproject(k, L, tA); uvB, _ = sc.reproject(k, L, tB)
+    fl = uvB - uvA                                          # per SOURCE pair
+    motion = {}
+    for kk in sorted(int(x) for x in np.unique(ids) if 0 < x < 255):
+        v = fl[ids == kk].mean(axis=0); n = np.linalg.norm(v)
+        motion[kk] = (v / (n + 1e-12), float(n))
+    if tr['mid'] in ex:
+        e = ex[tr['mid']]
+        near_i = e['N'] if e['t'] <= 0.5 else e['N1']
+        phase = e['t']
+    else:
+        near_i = tr['N'] if tr['phase'] <= 0.5 else tr['N1']
+        phase = tr['phase']
+    nearest = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % near_i), W, H)
+    r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H))
+    r.update({'mid': tr['mid'], 'near': near_i, 'phase': phase, 'k': K, 'exact_phase': tr['mid'] in ex})
+    return ('row', r)
+
+
+def score_arm(d, K, arm, frames=None, jobs=1):
+    """Score one arm over the corpus's triples. jobs > 1 = a process pool over the triples (each process
+    loads the corpus once; the per-frame work is independent, so the rows are identical to --jobs 1 and in
+    the same order — verified 2026-09-09 on g5_live, 6 frames, serial vs 8 workers: JSON-equal)."""
+    trs = [(K, tr) for tr in triples(d, K)[:frames]]
+    if jobs <= 1 or len(trs) < 2:
+        _worker_init(d, arm)
+        results = [_score_triple(a) for a in trs]
+    else:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=min(jobs, len(trs)), initializer=_worker_init, initargs=(d, arm)) as pool:
+            results = list(pool.map(_score_triple, trs, chunksize=2))
+    rows = [r for kind, r in results if kind == 'row']
+    cut = sum(1 for kind, _ in results if kind == 'cut')
     if cut:
         print('%s/%s k=%d: %d frame(s) whose real pair was NOT %d apart (a cut) counted and excluded'
               % (os.path.basename(os.path.normpath(d)), arm, K, cut, K))
@@ -497,8 +524,15 @@ def main():
                          'computed in memory and are pure functions of the corpus)')
     ap.add_argument('--gate', action='store_true', help='run the red-first gate on the first --run')
     ap.add_argument('--frames', type=int, default=None)
+    ap.add_argument('--jobs', type=int, default=max(1, (os.cpu_count() or 2) - 2),
+                    help='worker processes over the frames (default: cores - 2, COMPUTE_DISCIPLINE); 1 = serial')
     ap.add_argument('--md'); ap.add_argument('--json')
     a = ap.parse_args()
+    if a.jobs > 1:
+        # one BLAS/OpenMP thread per worker: the parallelism is across frames, never inside one (an oversubscribed
+        # pool is slower than the serial loop it replaces). Spawned workers inherit the environment.
+        for v in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
+            os.environ.setdefault(v, '1')
     ks = a.k or [4]
     if a.gate:
         gate(a.run[0], ks[0]); return
@@ -509,7 +543,7 @@ def main():
         for K in ks:
             if a.keep_arms:
                 make_arms(d, K, arms)
-            R = {x: score_arm(d, K, x, a.frames) for x in arms}
+            R = {x: score_arm(d, K, x, a.frames, a.jobs) for x in arms}
             S = {x: summarize(R[x]) for x in arms}
             fl = S.get('truth') or next(v for v in S.values() if v)
             L += table(os.path.basename(os.path.normpath(d)), K, arms, S, fl) + ['']

@@ -4,7 +4,7 @@
 #include <cstring>   // std::strcmp
 #include <vector>
 
-bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_win32,bool prefer_same_family_q2,bool want_xfer_q,bool want_ofa,int global_priority){
+bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_win32,bool prefer_same_family_q2,bool want_xfer_q,bool want_ofa,int global_priority,bool want_timeline){
     vkGetPhysicalDeviceMemoryProperties(phys,&d.mp); VkPhysicalDeviceProperties props; vkGetPhysicalDeviceProperties(phys,&props); std::snprintf(d.name,sizeof(d.name),"%s",props.deviceName); d.phys=phys; d.type=props.deviceType;
     uint32_t ec=0; vkEnumerateDeviceExtensionProperties(phys,nullptr,&ec,nullptr); std::vector<VkExtensionProperties> ex(ec); vkEnumerateDeviceExtensionProperties(phys,nullptr,&ec,ex.data()); bool has_sc=false;
     // The VK→D3D11 bridge (--present-surface) imports a D3D11 shared texture as a VK image
@@ -186,7 +186,17 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
     VkPhysicalDeviceFeatures enFeat{}; if(use_ofa){ enFeat.shaderStorageImageExtendedFormats=VK_TRUE; }
     VkDeviceCreateInfo dci{}; dci.sType=VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO; dci.queueCreateInfoCount=nqci; dci.pQueueCreateInfos=qcis; dci.enabledExtensionCount=(uint32_t)exts.size(); dci.ppEnabledExtensionNames=exts.data();
     if(use_ofa) dci.pEnabledFeatures=&enFeat;
-    const bool want_ts = (want_xfer_q && d.qfamT!=UINT32_MAX);
+    // --gdump (GDUMP_PLAN.md S4 / CR1): the tap's writer waits a TIMELINE semaphore, so the feature is chained when
+    // the tap is armed even without --upload-xfer. vkWaitSemaphores/vkGetSemaphoreCounterValue are core 1.2 entry
+    // points (the instance is created at 1.2/1.3, core_init.cpp:32); a physical device below 1.2 cannot honour them,
+    // so the request is refused here with a line and the tap will find no feature and disarm (never a crash).
+    if(want_timeline && props.apiVersion<VK_API_VERSION_1_2){
+        std::printf("[ra] --gdump: '%s' reports Vulkan %u.%u < 1.2 -- timeline semaphores unavailable, the tap will be DISARMED\n",
+                    d.name, VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion));
+        want_timeline=false;
+    }
+    const bool want_ts = (want_xfer_q && d.qfamT!=UINT32_MAX) || want_timeline;
+    d.has_timeline = want_ts;
     if(use_ofa){ ofFeat.pNext = want_ts ? (void*)&tsf : nullptr; dci.pNext=&ofFeat; }
     else if(want_ts) dci.pNext=&tsf;
     // chain synchronization2 at the FRONT so it composes with whatever the paths above set up.

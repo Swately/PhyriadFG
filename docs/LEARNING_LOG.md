@@ -200,6 +200,42 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-024 · Twenty-five readers cleared a design; the first live run found two defects in it
+- **class:** refuted-premise · **date:** 2026-09-09 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `--gdump` (GDUMP_PLAN.md) was refuted by 7 readers, its refutations re-verified by 14 more, its
+  bodies reviewed by 3, and every finding re-derived by the supervisor before a line compiled. The first observer
+  run then (1) wedged the FG at exit — a recorded tick whose ring was full still signalled the timeline (the signal
+  rides every submit so the value stays monotone) but pushed no descriptor, so when the LAST ticks were ring-full
+  nobody waited their values and `vkDestroySemaphore` ran with a signal pending; and (2) lost 6 % of the ticks to
+  writer stalls of 0.26–0.73 s at 16.5 s and 17.8 s into a 20 s run, while the bytes were 170 MB/s against a disk
+  measured at 1.3–1.9 GB/s — the OS write cache flushing a 3 GB stream, not the disk. Neither is in any of the 25
+  reports; both were visible in the first log (`observer_k4/gdump_r2.log`, PID 18032 alive with 0 CPU).
+- **lesson:** a reading panel finds what the CODE says; it cannot find what the RUN does — the lifetime of a signal
+  nobody waits, the cache manager's flush cadence. The panel's value was real (ten corrections, all confirmed)
+  and its limit is exact: it verified the design against the source, and the two defects lived in the driver
+  and the OS. "Every reviewer confirmed" is a statement about the source.
+- **corrective:** `stop()` waits the final timeline value before any destroy (CR3); the frame stream and the pair
+  reals bypass the cache when sector-aligned, the default ring is 256 (PR2); the observer runner waits with a
+  bound and names a kill. The standing rule this earns: **a crash-class change's first gate is a bounded live
+  run whose exit is checked, before any measurement is read from it** — the run that measures is not the run
+  that proves the exit.
+
+### P-023 · The round-trip instrument pointed at a directory that no longer existed
+- **class:** dormancy · **date:** 2026-09-09 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `python tools/check_flag_roundtrip.py --exe build-release/phyriad_fg.exe` →
+  `FileNotFoundError: ... 'tools\..\src\cli\cli.cpp'`. R6 (2026-09-06, `records/R6_GATE.md`) renamed `src/cli/`
+  to `src/control/`; the tool's `--cli` default (line 105) kept the old path. Nobody ran it between R6 and the
+  `--gdump` gate three days later, so the flag-surface oracle that R0 built (`records/r0_roundtrip.txt`, 258
+  tokens) was dormant while R6, R7 and the QoL batch changed the parser (274 tokens today).
+- **lesson:** a rename gate that checks "the build is green and the tests pass" does not exercise the tools that
+  read the SOURCE by path — they fail only when someone next runs them. An instrument's own path defaults are
+  touchpoints of the rename (BOOT §3 rule 4), and a rename record that lists the moved files should list the
+  tools that name them.
+- **corrective:** the default now points at `src/control/cli.cpp`, with the history in the docstring. The run on
+  the pre-gdump binary reproduces R0's shape (needs-arg=1 for `--qdump`, other-rc0=6) at 274 tokens, so the
+  record is again a usable baseline; `GDUMP_PLAN.md` G0 uses the base-vs-new compare. The stronger step, not
+  taken here: `grep -rn "src/cli" tools/` as part of any future directory rename.
+
 ### P-022 · Three shipped regressions, and the one that mattered was flagged UNVERIFIED before it shipped
 - **class:** shipped defect · **date:** 2026-09-06 · **recurrences:** 1 · **status:** corrected
 - **evidence:** the operator downloaded the release and it broke in three ways, all readable in his own

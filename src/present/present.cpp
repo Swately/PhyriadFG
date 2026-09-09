@@ -14,6 +14,7 @@
 #include "core/globals.hpp"          // g_quit / vk_live / g_ov_in/g_ov_out / g_gpu_a_util / g_device_lost (true globals the P body names)
 #include "core/telemetry_csv.hpp"    // phyriadfg::TelemetryCsv (the P-thread-local tcsv)
 #include "instrument/instrument.hpp" // dump_bmp / dump_rgba (P-thread diagnostic dumps)
+#include "instrument/gdump.hpp"      // --gdump: the every-tick capture tap (GDUMP_PLAN.md S5: the five P-side sites in this file)
 #include <phyriad/render/present/PresentSurface.hpp>  // pp::PresentSurface (the present pillar)
 #include "overlay_fps_spv.hpp"       // kOverlayFpsSpv (the --fps-overlay compute module)
 #include <timeapi.h>                  // timeBeginPeriod/timeEndPeriod (paced sleeps)
@@ -879,12 +880,25 @@ void run_present(FgContext& ctx){
             const bool sg5_want = cfg.sg_barriers && A.has_sync2;
             if(cfg.sg_barriers && !A.has_sync2)
                 std::printf("[ra] --sg-barriers: synchronization2 is NOT enabled on device A -- falling back to the hand-written barriers\n");
+            // ── --gdump (GDUMP_PLAN.md S5a): the every-tick capture tap ─────────────────────────────────────────────
+            // A run_present LOCAL so its destructor (which joins the writer) runs on P before main's vkDeviceWaitIdle /
+            // vdev_destroy (CR3). Unarmed (the default: gdump_dir empty) the constructor returns silently, allocates nothing,
+            // and every call below is an inline no-op (S7 byte-identical-off). gd_slot / gd_pair_c / gd_tick live in THIS
+            // frame, not per tick, because the seam-graph blit lambda is compiled once and executed every tick capturing
+            // by reference — a per-tick local would dangle.
+            LARGE_INTEGER gd_qf{}; QueryPerformanceFrequency(&gd_qf);
+            pfg::instrument::GdumpTap gdump(A, cfg.gdump_dir, cfg.gdump_dir[0]?(uint32_t)cfg.gdump_ring:0u, (uint32_t)cfg.gdump_pairs,
+                pfg::instrument::GdumpDims{ WW, WH, WW_warp, WH_warp, warp_div, wap_mvw, wap_mvh, pfg::instrument::kGdumpPushBytes },
+                pfg::instrument::GdumpInfo{ (cfg.fg_core&&fgPipeA.pipe!=VK_NULL_HANDLE)?"fg_core":"wap_warp", pfg::layers::layer_contract_hash(cfg),
+                                            use_bidir, xfer_on, cfg.async_present, sg5_want, (double)gd_qf.QuadPart });
+            int gd_slot=-1; uint64_t gd_pair_c=0, gd_tick=0;
             auto wap_warp_present=[&](float t,float extrap,const float* gme6,bool bwd_ok,float thr_eff,uint32_t* presented_out,bool do_warp=true){
                 // --qdump+ (S2.T1): a byte copy of the push block AS SUBMITTED. `pcw` lives in a nested
                 // block that closes before the dump tap below, and copying at the submit site is also the
                 // truer record: these are exactly the bytes the GPU received this tick. Inert unless
                 // --qdump is on (qd_push_sz stays 0 and nothing is written).
                 unsigned char qd_push[512]; size_t qd_push_sz=0;
+                unsigned char gd_push[pfg::instrument::kGdumpPushBytes];   // --gdump: the same shadow, this tick's, handed to the tap after the submit (S5d)
                 const double wsub_rec0 = cfg.wsub ? now_ms() : 0.0;
                 double wsub_gpu0 = 0.0;   // hoisted out of the record block (assigned inside it) so the
                                           // --wsub `gpu` segment timing below still resolves on a dropped tick.
@@ -918,11 +932,15 @@ void run_present(FgContext& ctx){
                 pres.poll_inflight(presented_out);
                 const pfg::present::Tick tk = pres.begin(do_warp ? pfg::present::Decision::Warp : pfg::present::Decision::Dup, /*count_drop=*/true);
                 const bool record_this_tick = tk.record;
+                // --gdump (S5f, P7-2): a tick that records nothing is named by its decision — Drop (a warp still in flight
+                // on the async path) or Dup (an exact-duplicate --fdrop tick) — so the record reconciles against total_presents.
+                if(!record_this_tick) gdump.skip(tk.decision==pfg::present::Decision::Drop ? pfg::instrument::GdumpSkip::Drop : pfg::instrument::GdumpSkip::Dup);
                 VkCommandBuffer cmdBridge  = tk.cmd;
                 VkFence         fBridge    = tk.fence;
                 Img             bridge_img = Img{ tk.img, VK_NULL_HANDLE, VK_NULL_HANDLE };
                 VkDeviceMemory  bridge_mem = tk.mem;
                 if(record_this_tick){
+                gd_slot = gdump.begin_tick();   // --gdump (S5b, RR1): the staging slot from the ring's write cursor, decided BEFORE recording; -1 = ring full (counted) or unarmed
                 vkResetCommandBuffer(cmdBridge,0);
                 VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdBridge,&bi);
                 pres.timing_begin(cmdBridge,tk.back);   // --warp-timing (R4b): the GPU timestamp at the top of the warp batch; no-op unless armed
@@ -1152,6 +1170,8 @@ void run_present(FgContext& ctx){
                 if(!fg_product) vkCmdPushConstants(cmdBridge,wapPipeA.layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcw),&pcw);
                 if(cfg.qdump_n>0){ static_assert(sizeof(pcw)<=sizeof(qd_push),"qd_push too small for the warp push block");
                     qd_push_sz=sizeof(pcw); std::memcpy(qd_push,&pcw,qd_push_sz); }   // --qdump+ record
+                if(gd_slot>=0){ static_assert(sizeof(pcw)==pfg::instrument::kGdumpPushBytes,"--gdump: push.bin's stride (kGdumpPushBytes) must equal the warp push block");
+                    std::memcpy(gd_push,&pcw,sizeof(pcw)); }   // --gdump (S5d): the pcw shadow ref_warp consumes; under fg_core the GPU received FgPush — the header's `kernel` line says which (P6-5)
                 if(!fg_product) vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);   // dispatch the warp over the SCALED wapOutA extent (one 8×8 workgroup per scaled output tile; the shader's imageSize(u_output) valid-test bounds it). warp_div==1 ⇒ == (WW+7)/8,(WH+7)/8 (byte-identical).
                 // ── R3: the fg_core.comp kernel. --fg-core: the product dispatch (wapOutA is its output; the legacy
                 // bind/push/dispatch above were skipped). --fg-core-ab: it runs BESIDE the legacy warp into fgOutA from the
@@ -1277,7 +1297,11 @@ void run_present(FgContext& ctx){
                         "the blit overwrites the WHOLE bridge image every tick: its prior contents are discardable (that is why the import layout is UNDEFINED)",
                             [&](VkCommandBuffer c){ VkImageBlit bl{}; bl.srcSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; bl.dstSubresource=bl.srcSubresource;
                                 bl.srcOffsets[1]={(int)WW_warp,(int)WH_warp,1}; bl.dstOffsets[1]={(int)bridge_w,(int)bridge_h,1};
-                                vkCmdBlitImage(c,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,bridge_img.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&bl,VK_FILTER_LINEAR); });
+                                vkCmdBlitImage(c,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,bridge_img.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&bl,VK_FILTER_LINEAR);
+                                // --gdump (S5b / P2-1): the tap copy lives INSIDE the blit pass — the graph's RAW barrier put wapOutA in
+                                // TRANSFER_SRC just above and its epilogue returns it to GENERAL afterwards; a read-only pass of its own
+                                // would be culled by compile(). gdump / gd_slot are outer-frame objects (this lambda runs every tick).
+                                if(gd_slot>=0) gdump.record_frame_copy(c,wapOutA.img,gd_slot); });
                         sg5.mark_output(sg5_bridge);
                         sg5_c = sg5.compile();
                         if(!sg5_c.errors.empty()){
@@ -1297,6 +1321,7 @@ void run_present(FgContext& ctx){
                     img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
                     img_barrier(cmdBridge,bridge_img.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
                     { VkImageBlit bl{}; bl.srcSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; bl.dstSubresource=bl.srcSubresource; bl.srcOffsets[1]={(int)WW_warp,(int)WH_warp,1}; bl.dstOffsets[1]={(int)bridge_w,(int)bridge_h,1}; vkCmdBlitImage(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,bridge_img.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&bl,VK_FILTER_LINEAR); }   // src = the SCALED wapOutA (WW/N×WH/N); the EXISTING linear filter upsamples it to the bridge/present extent (no new pass). warp_div==1 ⇒ srcOffsets {WW,WH} (byte-identical). The dst (game-facing present extent) is UNCHANGED — no game downscale.
+                    if(gd_slot>=0) gdump.record_frame_copy(cmdBridge,wapOutA.img,gd_slot);   // --gdump (S5b / P2-2): between the blit and the back-barrier wapOutA is TRANSFER_SRC; the barrier below (TRANSFER_READ -> SHADER_WRITE) orders this read before the next tick's warp
                     img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_WRITE_BIT);
                 }
                 // --ts-smooth: copy THIS tick's warp output (wapOutA) → the prev-output history
@@ -1315,6 +1340,13 @@ void run_present(FgContext& ctx){
                     img_barrier(cmdBridge,wapPrevOutA.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                     img_barrier(cmdBridge,wapOutA.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_WRITE_BIT);
                 }
+                // --gdump (S5b, RR2 / P5-5 / P7-3): the pair planes ride the FIRST tick that records AND captures after the
+                // upload — the upload tick itself can be a Drop with no command buffer. wapPrevA/wapCurA/wapMVA/wapMVBA are
+                // SHADER_READ_ONLY here (the dispatch above sampled them, and the consensus pass rewrote wapMVA/MVBA BEFORE
+                // it — so this is the post-pass field the warp actually read: mv1/mvb1). The tap's barrier pairs return them
+                // RO. Recorded before timing_end so --warp-timing's gpu number includes the tap's cost (G2).
+                int gd_pairset=-1;
+                if(gd_slot>=0 && gdump.pair_pending()) gd_pairset=gdump.record_pair_copies(cmdBridge,wapPrevA.img,wapCurA.img,wapMVA.img,use_bidir?wapMVBA.img:VK_NULL_HANDLE);
                 pres.timing_end(cmdBridge,tk.back);   // --warp-timing (R4b): the GPU timestamp after the blit (bottom of pipe); no-op unless armed
                 pres.tdr_maybe(cmdBridge);   // --tdr-test (R4/G-R4): the forced GPU hang, recorded once when armed and due; a no-op otherwise
                 vkEndCommandBuffer(cmdBridge); vkResetFences(A.dev,1,&fBridge);
@@ -1336,15 +1368,32 @@ void run_present(FgContext& ctx){
                 // xfer_W is NOT advanced, and the next upload's WAR wait lands on the last REAL warp value.
                 uint64_t warpWait=0, warpSig=0; VkPipelineStageFlags warpWaitStage=VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
                 VkTimelineSemaphoreSubmitInfo wtssi{}; wtssi.sType=VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+                // --gdump (S5c): a SECOND timeline signal on the same submit, semCapTL = ++cap_seq, on EVERY recorded submit —
+                // the timeline stays strictly increasing whether or not this tick was captured (P4-2 / P3-4); the writer waits
+                // that value, P never does. The arrays hold {semWarpTL, semCapTL} in that order; with the tap unarmed the
+                // xfer-only shape is exactly the previous code (one signal, the same chaining), and with neither nothing is
+                // chained (S7).
+                VkSemaphore gd_sigSems[2]; uint64_t gd_sigVals[2]; uint32_t gd_nsig=0; uint64_t gd_seq=0;
                 if(xfer_on){
                     ++xfer_W; warpWait=xfer_U; warpSig=xfer_W;
                     wtssi.waitSemaphoreValueCount=1; wtssi.pWaitSemaphoreValues=&warpWait;
-                    wtssi.signalSemaphoreValueCount=1; wtssi.pSignalSemaphoreValues=&warpSig;
-                    wtssi.pNext=si.pNext; si.pNext=&wtssi;   // chain ahead of the keyed-mutex struct (both stay in the chain)
                     si.waitSemaphoreCount=1; si.pWaitSemaphores=&A.semUpTL; si.pWaitDstStageMask=&warpWaitStage;
-                    si.signalSemaphoreCount=1; si.pSignalSemaphores=&A.semWarpTL;
+                    gd_sigSems[gd_nsig]=A.semWarpTL; gd_sigVals[gd_nsig]=warpSig; ++gd_nsig;
+                }
+                if(gdump.armed()){ gd_seq=gdump.next_signal(); gd_sigSems[gd_nsig]=gdump.semaphore(); gd_sigVals[gd_nsig]=gd_seq; ++gd_nsig; }
+                if(gd_nsig){
+                    wtssi.signalSemaphoreValueCount=gd_nsig; wtssi.pSignalSemaphoreValues=gd_sigVals;
+                    wtssi.pNext=si.pNext; si.pNext=&wtssi;   // chain ahead of the keyed-mutex struct (both stay in the chain)
+                    si.signalSemaphoreCount=gd_nsig; si.pSignalSemaphores=gd_sigSems;
                 }
                 pres.submit(tk,si);   // R4 (stage 6): sync = submit + TDR-catching wait; async = submit + mark the slot in flight
+                if(gd_slot>=0){   // --gdump (S5d): the descriptor, AFTER the submit — the copy is now enqueued behind this tick's signal
+                    LARGE_INTEGER gd_q{}; QueryPerformanceCounter(&gd_q);
+                    pfg::instrument::GdumpDesc gd{}; gd.seq=gd_seq; gd.pair=gd_pair_c; gd.tick=gd_tick; gd.qpc=gd_q.QuadPart; gd.t=t; gd.slot=(uint32_t)gd_slot;
+                    gd.gen=qd_gen; gd.tgen=qd_tgen; gd.pairset=gd_pairset;
+                    gd.flags=(gd_pairset>=0?pfg::instrument::kFlagPair:0u)|(xfer_on?pfg::instrument::kFlagXfer:0u)|(sg5_ready?pfg::instrument::kFlagSg:0u);
+                    gdump.on_submitted(gd,gd_push,pfg::instrument::kGdumpPushBytes);
+                }
                 } // end if(record_this_tick)
                 // gpu = submit + the BLOCKING fence wait (the warp dispatch + blit ran on A.q in
                 // this segment — if (c) dominates, the shader stack is the cost; bisect with --no-*).
@@ -1533,6 +1582,7 @@ void run_present(FgContext& ctx){
                         }
                         ++qd_bin_hits[qd_b]; ++qd_gen_hits[qd_g];   // this bin/slot is now covered - ineligible until the rest catch up
                         qd_last_tick=qdump_tick; qd_any=true; qd_skip=0;
+                        gdump.note_qdump(qdump_idx);   // --gdump (S5g, P7-6): the cross-check key — this qdump index <-> the descriptor just pushed (G4)
                         ++qdump_idx; --qdump_left;
                         if(qdump_left==0) std::printf("[ra] qdump: wrote %d triples to %s\n",qdump_idx,cfg.qdump_dir);
                     }
@@ -1949,7 +1999,7 @@ void run_present(FgContext& ctx){
                     }
                     if(g_quit||g_quit_threads.load()) break;
                     const double t0_p=now_ms();
-                    ++stat_ticks;
+                    ++stat_ticks; gdump.tick();   // --gdump: every vblank tick the loop runs, whatever it decides below
 
                     // ── FIX (window-death) exit cleanly when the captured WINDOW dies ──────────────
                     // Bug: if the window being frame-genned is destroyed, F stops publishing
@@ -2161,7 +2211,7 @@ void run_present(FgContext& ctx){
                     // never taken → byte-identical.
                     // STAGE 6 decision = Decimated (STAGE_CONTRACT Phase.decision, R4): this vblank slot gets NO present call —
                     // the gate is the declaration; Warp / Dup / Drop are handed to PresentStage::begin below.
-                    if(dec_every>1 && (tick_k % (uint64_t)dec_every)!=0) continue;
+                    if(dec_every>1 && (tick_k % (uint64_t)dec_every)!=0){ gdump.skip(pfg::instrument::GdumpSkip::Decimated); continue; }   // --gdump: a decimated slot is a named-missing tick (P7-2)
                     // ── STAGE 4 (CLOCK): t_display + the published-set selection + the phase within its window
                     // (incl. the sync-clock phase override and the ASW overshoot). Moved VERBATIM (R1/X14).
                     const double now_d=now_ms();
@@ -2242,6 +2292,7 @@ void run_present(FgContext& ctx){
                             const int    rfp_slot = cfg.rfp_fresh ? (int)((cur_c-1)%(uint64_t)cap_slots) : rs;
                             const double rfp_tcap = cfg.rfp_fresh ? c_slots[rfp_slot].t_cap_ms : tcap_r;
                             rfp_present(rfp_slot);   // present the chosen real via the DEDICATED async slot
+                            gdump.skip(pfg::instrument::GdumpSkip::Real);   // --gdump: a real presented, no warp — named, not captured (P7-2)
                             const double t_rfp=now_ms();
                             if(rfp_tcap>0.0){ const double lat=t_rfp-rfp_tcap; lat_ema_ms=lat_valid?lat_ema_ms*0.9+lat*0.1:lat; lat_valid=true; }   // the win is visible in lat
                             // monotonicity: set the content-order key to the cur PAIR's TRUE phase-1 key —
@@ -2319,6 +2370,7 @@ void run_present(FgContext& ctx){
                             const int    mf_slot = (int)((cur_c-1)%(uint64_t)cap_slots);   // freshest safe real (one frame younger than cur_c; never lapped)
                             const double mf_tcap = c_slots[mf_slot].t_cap_ms;
                             rfp_present(mf_slot);                                            // present the freshest real via the dedicated async slot
+                            gdump.skip(pfg::instrument::GdumpSkip::Real);                     // --gdump: a real presented, no warp — named, not captured (P7-2)
                             const double t_mf=now_ms();
                             if(mf_tcap>0.0){ const double lat=t_mf-mf_tcap; lat_ema_ms=lat_valid?lat_ema_ms*0.9+lat*0.1:lat; lat_valid=true; }
                             // content-order key continues at pair_c (the held-real bookkeeping, exactly the --rfp pattern
@@ -2519,6 +2571,17 @@ void run_present(FgContext& ctx){
                             qd_tgen=target_gen;   // --qdump+ (S2.T1c): the generation bound as u_mv_target (vblend)
                             if(!qd_mv0.empty() && hostMV[f_gen]){ std::memcpy(qd_mv0.data(),hostMV[f_gen],qd_mv0.size()); qd_mv0_ok=true; }
                             if(!qd_mvt0.empty() && target_gen>=0 && target_gen<kGenRing && hostMV[target_gen]){ std::memcpy(qd_mvt0.data(),hostMV[target_gen],qd_mvt0.size()); qd_mvt0_ok=true; }
+                            // --gdump (S5e, RR3 / P5-3): the HOST planes of the uploaded generation are copied NOW, on P, into a pair
+                            // set — F rewrites these ring slots and nothing guards a deferred reader. The GPU planes (prev/cur/mv1/mvb1)
+                            // follow on the first tick that records (S5b). pair_c is the monotone pair id (never f_gen, a slot mod 3 — P6-4).
+                            if(gdump.armed()){
+                                const int gd_tg=(target_gen>=0&&target_gen<kGenRing)?target_gen:-1;
+                                pfg::instrument::GdumpPairHost gd_h{ hostSAD[f_gen], hostC2[f_gen], hostDIS[f_gen], hostDISB[f_gen], hostPER[f_gen],
+                                                                     (gd_tg>=0&&cfg.vblend)?hostMV[gd_tg]:nullptr, hostMV[f_gen], use_bidir?hostMVB[f_gen]:nullptr,
+                                                                     f_pair_gme_a[f_gen], f_pair_gme_valid_a[f_gen] };
+                                gdump.on_pair_upload(pair_c,f_gen,gd_tg,gd_h);
+                                gd_pair_c=pair_c;
+                            }
                             if(cfg.wsub){ const double up=now_ms()-wsub_up0; w_up_ema=w_up_ema>0.0?w_up_ema*0.8+up*0.2:up; }
                             wap_pair_c_up=pair_c; wap_have_up=true;
                             // instrument: dump the warp's actual input pair (the two full-res frames the
@@ -2552,6 +2615,7 @@ void run_present(FgContext& ctx){
                         uint32_t presented_mass=0u;
                         if(!g_quit&&!g_quit_threads.load()){
                             const double pw0=now_ms();
+                            gd_tick=tick_k;   // --gdump: the descriptor names the loop tick (S5d)
                             wap_warp_present((float)t_use,(float)extrap_amt,gme_ptr,bwd_ok,(float)thr_eff_d,&presented_mass,/*do_warp=*/!fdrop_this);   // on an exact-dup drop, skip the warp → pw≈0, re-show the front
                             t_present_ret=now_ms();
                             const double pw=t_present_ret-pw0;
@@ -2988,6 +3052,7 @@ void run_present(FgContext& ctx){
                     }
                 }
                 if(alog){ std::fclose(alog); std::printf("[ra] --arrival-log: %llu tick lines -> %s\n",(unsigned long long)alog_n,cfg.arrival_log); }   // (R1) the replay oracle
+                gdump.stop(total_frames.load());   // --gdump (CR3): join the writer + summary.txt with the FG's own present count, BEFORE any device teardown
                 if(pdhQuery) PdhCloseQuery(pdhQuery);   // release the PDH query on P exit
                 // FPS-OVERLAY (--fps-overlay) tear down the overlay pipeline on P exit (the loop drained, the last
                 // present's fBridge was waited synchronously → no in-flight use). Null-safe (all VK_NULL_HANDLE when off).

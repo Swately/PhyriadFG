@@ -110,6 +110,12 @@ void print_help(const char* a0) {
         "                        real N+1) to DIR\\ as raw RGBA8 .rgba + a truth-less manifest.txt for\n"
         "                        fg_quality_scorer (default off, byte-identical when absent). NEEDS the\n"
         "                        SYNC present path: --async-present is auto-disabled for the run (printed).\n"
+        "  --gdump DIR           EVERY-TICK capture tap (docs/planning/GDUMP_PLAN.md): every recorded warp\n"
+        "                        output of the shipping ASYNC path streamed to DIR by a writer thread, the\n"
+        "                        pair planes once per pair, one index; P never waits (a full ring skips +\n"
+        "                        counts). Refused with --afill/--fps-overlay/--ts-smooth. Default off.\n"
+        "  --gdump-ring N        Frame staging slots (default 256 = 1.07 s at 240 fps; 0 = arm without copying,\n"
+        "                        the observer gate's third arm).  --gdump-pairs M  pair staging sets (default 16).\n"
         "  --phaselog N          Log the presented t_use ladder for the next N pairs\n"
         "  --sync-clock          Frame-ladder cadence (DEFAULT ON): free-running content-clock NCO + 2nd-order PLL\n"
         "  --no-sync-clock       Disable the cadence fix (per-pair phase pacing)\n"
@@ -233,6 +239,16 @@ void resolve_config(Config& c, bool announce) {
         std::printf("[ra] --outdump/--qdump need the SYNCHRONOUS present path (they read wapOutA after the warp fence); auto-disabling --async-present for this diagnostic run.\n");
         c.async_present=false;
     }
+    // --gdump (GDUMP_PLAN.md §1.6, RR6/CR6): the tap copies wapOutA AFTER the blit. --afill and --fps-overlay write
+    // wapOutA IN PLACE before the blit and are not in the push block, and --ts-smooth feeds this tick's output into
+    // the next tick's warp — a record taken under any of them could not be replayed. The tap DISARMS and the run
+    // proceeds exactly as asked; it never forces the sync path (that is --qdump's contract, not this one's).
+    if (c.gdump_dir[0] && (c.afill || c.fps_overlay || c.ts_smooth>0.0f)) {
+        std::printf("[ra] --gdump: refused with --afill / --fps-overlay / --ts-smooth (they rewrite or chain wapOutA; the record could not be replayed) -- the tap is DISARMED for this run.\n");
+        c.gdump_dir[0]=0;
+    }
+    if (c.gdump_dir[0] && c.gdump_ring<0) c.gdump_ring=0;
+    if (c.gdump_dir[0] && c.gdump_pairs<1) c.gdump_pairs=1;
     // --fps-overlay: dibuja en AMBOS paths desde el re-home 2026-07 (WAP: RMW sobre wapOutA
     // pre-blit, patrón --afill; grid: RMW sobre Apresent). El viejo warning INERT ya no aplica.
     // plain --rfp is a no-op (the override fires only with --rfp-fresh) — say so, don't imply an effect.
@@ -303,6 +319,12 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--fg-core-ab")){ c.fg_core_ab=true; return 0; }                 // R3: both kernels, count differing pixels
             if(!std::strcmp(arg,"--fg-core-clean-sim")){ c.fg_core_clean_sim=true; return 0; }   // XR1: the exact --mv-sim instead of the packed reproduction
             if(!std::strcmp(arg,"--legacy-warp")){ c.legacy_warp=true; return 0; }               // R7's name for the old path (today's default)
+            // --gdump (GDUMP_PLAN.md S2): the every-tick capture tap. HERE, not in the main else-if chain — that chain is at
+            // MSVC's C1061 nesting limit (P-004 in docs/LEARNING_LOG.md; three more else-ifs overflowed it on 2026-09-09).
+            if(!std::strcmp(arg,"--gdump")){ if(auto v=next(arg)){ std::snprintf(c.gdump_dir,sizeof(c.gdump_dir),"%s",v);
+                std::printf("[ra] --gdump %s: EVERY-TICK capture tap ARMED (the shipping async path; a writer thread streams every recorded warp + the pair planes once per pair; P never waits). Refused with --afill/--fps-overlay/--ts-smooth.\n", v); return 0; } return 1; }
+            if(!std::strcmp(arg,"--gdump-ring")){ if(auto v=next(arg)){ c.gdump_ring=std::atoi(v); return 0; } return 1; }
+            if(!std::strcmp(arg,"--gdump-pairs")){ if(auto v=next(arg)){ c.gdump_pairs=std::atoi(v); return 0; } return 1; }
             // ── STABLE WINDOW IDENTITY (QoL I-1 / E-1 / E-3). The launcher enumerates HWND + pid and today emits
             // only a title; the FG then re-derives a handle from that string with a first-match substring search.
             // These two flags carry the identity across the hop. Resolution order in capture_init:

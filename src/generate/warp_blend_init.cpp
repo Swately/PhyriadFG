@@ -101,11 +101,16 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
         // wPrev/wCur/wMV/wSAD/wMVB are UPLOAD-WRITTEN (A.qT) + WARP-READ (A.q) → CONCURRENT {qfam,qfamT}
         // when xfer_on (no QFOT); EXCLUSIVE otherwise (byte-identical). wOut is the warp OUTPUT (written +
         // blitted both on A.q, same queue) → stays EXCLUSIVE (no cross-queue).
-        if(!img_create(WD,WW,WH,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,wPrev,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
-           !img_create(WD,WW,WH,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,wCur,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
-           !img_create(WD,mvw,mvh,VK_FORMAT_R16G16_SFLOAT,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,wMV,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
+        // --qdump / --gdump read wPrev/wCur/wMV/wMVB back with vkCmdCopyImageToBuffer, which requires the image to
+        // have been created with TRANSFER_SRC usage (VUID-vkCmdCopyImageToBuffer-srcImage-00186 — the --qdump oneshot
+        // violated it until 2026-09-09; GDUMP_PLAN.md CR2). The bit is added ONLY when a tap is armed: an unarmed run
+        // creates the images exactly as before (byte-identical; usage bits can cost lossless compression on some HW).
+        const VkImageUsageFlags tap_src = (cfg.qdump_n>0 || cfg.gdump_dir[0]) ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0u;
+        if(!img_create(WD,WW,WH,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|tap_src,wPrev,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
+           !img_create(WD,WW,WH,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|tap_src,wCur,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
+           !img_create(WD,mvw,mvh,VK_FORMAT_R16G16_SFLOAT,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|tap_src,wMV,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
            !img_create(WD,mvw,mvh,VK_FORMAT_R16G16_SFLOAT,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,wSAD,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
-           !img_create(WD,mvw,mvh,VK_FORMAT_R16G16_SFLOAT,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,wMVB,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
+           !img_create(WD,mvw,mvh,VK_FORMAT_R16G16_SFLOAT,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|tap_src,wMVB,true,xfer_on?xfer_fams:nullptr,xfer_on?2u:0u)||
            !img_create(WD,WW_warp,WH_warp,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT,wOut)){   // wOut(=wapOutA) at WW/N×WH/N (the descriptor binds this scaled view at wap_create; the shader's imageSize(u_output) drives the per-invocation work). warp_div==1 ⇒ WW_warp==WW (byte-identical). OURS only — the pair-reals wPrev/wCur above stay full-res (no game cap).
             std::printf("[ra] WAP image allocation failed — disabling warp-at-presenter\n"); use_wap=false;
         } else {

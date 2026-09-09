@@ -50,6 +50,7 @@ struct VDev { VkPhysicalDevice phys=VK_NULL_HANDLE; VkDevice dev=VK_NULL_HANDLE;
     // vkCmdPipelineBarrier2 is callable and SeamGraph::execute() may record. false -> the graph is
     // not used and the hand-written barriers run (the honest degradation on an older loader/driver).
     bool has_sync2=false;
+    bool has_timeline=false;   // the timeline-semaphore feature was chained at creation (--upload-xfer with a transfer family, or --gdump)
     bool has_extmem_win32=false, has_keyed_mutex=false, extmem_win32_enabled=false;
     PFN_vkGetMemoryWin32HandlePropertiesKHR pfnGetMemWin32=nullptr;
     // Vendor-NAMED capability fields on the FG's app-local VDev (this app does NOT link framework/gpu — it
@@ -70,5 +71,5 @@ struct VDev { VkPhysicalDevice phys=VK_NULL_HANDLE; VkDevice dev=VK_NULL_HANDLE;
 // VK_QUEUE_GLOBAL_PRIORITY_HIGH(512), 2=REALTIME(1024) via VK_EXT/KHR_global_priority on EVERY queue
 // create-info of this device. Missing extension → honest print, normal create. Create failure with the
 // priority chained (VK_ERROR_NOT_PERMITTED or any other) → honest print + ONE retry at normal priority.
-bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_win32=false,bool prefer_same_family_q2=false,bool want_xfer_q=false,bool want_ofa=false,int global_priority=0);
+bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_win32=false,bool prefer_same_family_q2=false,bool want_xfer_q=false,bool want_ofa=false,int global_priority=0,bool want_timeline=false);   // want_timeline: --gdump needs the timeline-semaphore feature without --upload-xfer (GDUMP_PLAN.md S4 / CR1)
 void vdev_destroy(VDev& d);

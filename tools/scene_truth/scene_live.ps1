@@ -12,6 +12,12 @@
 # SYNC present path, so this measures the kernel on a subset of frames, not the shipping async path
 # on all of them. The file backend (B2) is what removes both limits.
 #
+# -Gdump swaps the capture leg for the every-tick tap (GDUMP_PLAN.md S8): the FG runs with --gdump
+# <dir> instead of --qdump, capturing EVERY recorded warp on the SHIPPING ASYNC path, then
+# gdump_adapter.py reshapes that directory into the same --qdump layout so scene_align.py below runs
+# UNCHANGED. -Gdump does NOT force the synchronous path (GDUMP_PLAN.md S2/DR2) -- the tap has no
+# --qdump-style sampler, so the async counters (rdrop/fresh) stay live during the capture.
+#
 # Two traps this file already paid for: Start-Process joins its argument list with spaces and does NOT
 # quote, so a title like 'RA Motion Zoo' reaches the child as three tokens unless quoted here; and
 # PowerShell variable names are case-insensitive, so $fg and $Fg are the same variable.
@@ -24,11 +30,15 @@ param(
   [string]$FgExe = "",
   [string]$Title = 'RA Motion Zoo',
   [switch]$NoScore,        # capture + align only; score later (lets several captures run back to back)
-  [switch]$Loop            # loop the sequence. Without it the player CLOSES after the last frame, so the
+  [switch]$Loop,           # loop the sequence. Without it the player CLOSES after the last frame, so the
                            # corpus must outlast 3 s + Seconds or the FG captures nothing (seen: 0 triples
                            # on a 1 s corpus). With it, the FG sees a CUT at every seam; the scorer counts
                            # and excludes those pairs (align.json pair_ok), so a loop is the like-for-like
                            # protocol for short corpora.
+  [switch]$Gdump           # capture with --gdump (every recorded tick, async path) instead of --qdump
+                           # (a sampler, sync path); the capture is then adapted into the same
+                           # qdump_k<K> layout via gdump_adapter.py (GDUMP_PLAN.md S8). $Triples is
+                           # unused in this mode (the tap has no per-run triple budget).
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -40,9 +50,19 @@ $fps = [double]((Get-Content (Join-Path $src 'manifest.txt') | Where-Object { $_
 $qd = Join-Path $Run ("qdump_k{0}" -f $K)
 if (Test-Path $qd) { Remove-Item -Recurse -Force $qd }
 New-Item -ItemType Directory -Force $qd | Out-Null
+if ($Gdump) {
+  # The tap creates its own directory (GDUMP_PLAN.md S2 "created by the tap"); just clear anything
+  # stale from a previous run so the adapter never mixes two captures.
+  $gd = Join-Path $Run ("gdump_k{0}" -f $K)
+  if (Test-Path $gd) { Remove-Item -Recurse -Force $gd }
+}
 $q = { param($s) '"' + $s + '"' }
 
-Write-Host ("[scene-live] source {0} at {1} fps -> FG x{2}, qdump -> {3}" -f $src, $fps, $K, $qd)
+if ($Gdump) {
+  Write-Host ("[scene-live] source {0} at {1} fps -> FG x{2}, gdump -> {3} -> adapted -> {4}" -f $src, $fps, $K, $gd, $qd)
+} else {
+  Write-Host ("[scene-live] source {0} at {1} fps -> FG x{2}, qdump -> {3}" -f $src, $fps, $K, $qd)
+}
 $pargs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
   (& $q (Join-Path $root 'tools\motion_truth\play_frames.ps1')), '-Dir', (& $q $src), '-Fps', $fps,
   '-Title', (& $q $Title), '-MaxFrames', 0)
@@ -52,11 +72,20 @@ Start-Sleep -Seconds 3
 # The FG's own stdout is the measurement's provenance (present / capture rates, the real+generated
 # tally). It is kept next to the corpus as fg_k<K>.log; the stepper reads it by default.
 $fglog = Join-Path $Run ("fg_k{0}.log" -f $K)
+if ($Gdump) {
+  $fgArgs = @('--window', (& $q $Title), '--gdump', (& $q $gd), '--exit-after', $Seconds, '--fg-factor', $K)
+} else {
+  $fgArgs = @('--window', (& $q $Title), '--qdump', (& $q $qd), $Triples, '--exit-after', $Seconds, '--fg-factor', $K)
+}
 $proc = Start-Process $FgExe -PassThru -Wait -NoNewWindow -RedirectStandardOutput $fglog `
-  -RedirectStandardError (Join-Path $Run ("fg_k{0}.err" -f $K)) -ArgumentList @('--window', (& $q $Title),
-  '--qdump', (& $q $qd), $Triples, '--exit-after', $Seconds, '--fg-factor', $K)
+  -RedirectStandardError (Join-Path $Run ("fg_k{0}.err" -f $K)) -ArgumentList $fgArgs
 Get-Content $fglog -Tail 3 | ForEach-Object { Write-Host ('[fg] ' + $_) }
 if (-not $player.HasExited) { Stop-Process -Id $player.Id -Force -ErrorAction SilentlyContinue }
+if ($Gdump) {
+  Write-Host ("[scene-live] FG exited {0}; adapting {1} -> {2}" -f $proc.ExitCode, $gd, $qd)
+  & python (Join-Path $here 'gdump_adapter.py') --dir $gd --out $qd --link
+  if ($LASTEXITCODE -ne 0) { throw "gdump_adapter.py failed (exit $LASTEXITCODE) - see its output above" }
+}
 $nlive = (Get-ChildItem $qd -Filter '*_live.rgba' -ErrorAction SilentlyContinue | Measure-Object).Count
 Write-Host ("[scene-live] FG exited {0}; triples on disk: {1}" -f $proc.ExitCode, $nlive)
 if ($nlive -eq 0) { throw "the FG wrote no triples - check the capture target and --qdump" }

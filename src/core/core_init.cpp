@@ -124,7 +124,7 @@ bool init_devices(Config& cfg, VkPhysicalDevice pA, VkPhysicalDevice pB, VkPhysi
     // flow rides B (no OFA) so NVOFA cannot apply (NVOFA is a single-GPU lever).
     // --gpu-priority LEVER 2: VK_EXT/KHR_global_priority on device A's queues ONLY (the warp/present
     // GPU — the one contended by the game); B/G keep default priority (their work is off the game's GPU).
-    if(!vdev_create(pA,A,true,/*want_extmem_win32=*/true,/*prefer_same_family_q2=*/true,/*want_xfer_q=*/cfg.upload_xfer,/*want_ofa=*/cfg.nvofa,/*global_priority=*/cfg.gpu_priority)
+    if(!vdev_create(pA,A,true,/*want_extmem_win32=*/true,/*prefer_same_family_q2=*/true,/*want_xfer_q=*/cfg.upload_xfer,/*want_ofa=*/cfg.nvofa,/*global_priority=*/cfg.gpu_priority,/*want_timeline=*/cfg.gdump_dir[0]!=0)
        || (!single_gpu && !vdev_create(pB,B,false))){ std::printf("[ra] device creation failed\n"); return false; }
     // NOTA: el 4090 soporta OFA por HW pero en multi-GPU el flow corre en el 1080 Ti (sin OFA),
     // así que --nvofa no aplica aquí. Avisar la opción (NO auto-activar: la salida OFA está sin calibrar y

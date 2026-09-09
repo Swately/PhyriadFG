@@ -11,7 +11,8 @@ value used, and the `[old]` / `[new]` / `[hash]` dump lines. Writes a determinis
 
 R0 use: the record of the R0 binary is the BASELINE that R3 (which deletes the hand-written layer
 cases) must reproduce token-for-token. A `parity-fail` status on ANY token fails the gate today.
-stdlib only (no numpy). Made with my soul - Swately <3
+stdlib only (no numpy). 2026-09-09: the parser moved to src/control/ at R6 (2026-09-06) and this default kept
+pointing at src/cli/ -- the instrument was DORMANT for three days (LEARNING_LOG P-023). Made with my soul - Swately <3
 """
 import argparse, os, re, subprocess, sys
 
@@ -102,7 +103,7 @@ def compare(a, b):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--exe"); ap.add_argument("--cli", default=os.path.join(os.path.dirname(__file__), "..", "src", "cli", "cli.cpp"))
+    ap.add_argument("--exe"); ap.add_argument("--cli", default=os.path.join(os.path.dirname(__file__), "..", "src", "control", "cli.cpp"))
     ap.add_argument("--out", default="roundtrip.txt"); ap.add_argument("--skip", default="--help,--list-monitors,--list-windows")
     ap.add_argument("--compare", nargs=2)
     a = ap.parse_args()

@@ -389,6 +389,13 @@ struct Config {
                                    // ground truth; the scorer scores crossfade-only). Sampled (every Kth present) so
                                    // ~N triples span the run. DEFAULT 0 = OFF, byte-identical.
     char  qdump_dir[256]={};        // output dir for --qdump (the .rgba triples + manifest.txt).
+    char  gdump_dir[256]={};        // --gdump <dir>: the EVERY-TICK capture tap (docs/planning/GDUMP_PLAN.md) — every recorded
+                                   // warp output of the shipping async path streamed to <dir> by a writer thread, plus the
+                                   // pair planes once per pair. Empty = OFF, byte-identical. Does NOT force the sync path.
+    int   gdump_ring=256;           // --gdump-ring N: frame staging slots (a full ring skips + counts, never waits). 0 = arm
+                                   // everything but record no copy — the third arm of the observer gate (GDUMP_PLAN CR5).
+                                   // 256 = 1.07 s at 240 fps: the writer's measured cache-flush stalls are 0.26–0.73 s (PR2).
+    int   gdump_pairs=16;           // --gdump-pairs M: pair staging sets (prev/next/mv1/mvb1 + the host planes); 16 = the max.
     int   phaselog_n=0;             // --phaselog N: for N consecutive PAIRS, collect the t_use of EVERY presented WAP
                                     // tick of that pair; on pair-advance print one ladder line `[ra] phase pair_c=K
                                     // span=S n=T t=[...]` (two decimals, ≤40 values). The fluidity probe: does the
