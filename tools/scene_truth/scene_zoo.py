@@ -508,6 +508,22 @@ def main():
                 % (a.scene, a.seed, a.ss, W, H, a.fps, n))
         if a.barcode:                                 # the two lines play_frames.ps1 parses
             f.write('sequence frames/f_ %d\nfps %g\n' % (n, a.fps))
+    # B1: what the LIVE FG is shown. play_frames.ps1 plays CONTIGUOUS indices, so the k-th subsequence
+    # is written out as its own contiguous directory; the barcode inside each frame still carries the
+    # BASE index, which is how a captured frame maps back to its truth and its pair.
+    for K in a.manifest_k:
+        if a.barcode:
+            sd = os.path.join(a.out, 'source_k%d' % K)
+            os.makedirs(sd, exist_ok=True)
+            js = list(range(0, n, K))
+            for j, i in enumerate(js):
+                src = os.path.join(a.out, 'frames', 'f_%06d.rgba' % i)
+                dst = os.path.join(sd, 'f_%06d.rgba' % j)
+                if not os.path.exists(dst):
+                    os.link(src, dst) if hasattr(os, 'link') else open(dst, 'wb').write(open(src, 'rb').read())
+            with open(os.path.join(sd, 'manifest.txt'), 'w', encoding='utf-8') as f:
+                f.write('# source for the live FG at multiplier %d: base frame j*%d, barcode = BASE index\n'
+                        'size %d %d\nsequence f_ %d\nfps %g\n' % (K, K, W, H, len(js), a.fps / K))
     for K in a.manifest_k:
         with open(os.path.join(a.out, 'manifest_k%d.txt' % K), 'w', encoding='utf-8') as f:
             f.write('# held-out triples for multiplier %d: source = every %d-th base frame\nsize %d %d\n'
