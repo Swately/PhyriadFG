@@ -200,6 +200,54 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-028 · A dry-run that mutated: the session's own -DryRun deleted a KEEP run's raw capture
+- **class:** refuted-premise · **date:** 2026-09-10 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `tools/scene_truth/scene_live.ps1` gained `-DryRun` on 2026-09-10 (commit `7f2c815`);
+  the block was inserted after the script's existing `if (Test-Path $qd) { Remove-Item -Recurse -Force
+  $qd }`, so the three dry-runs the session ran at 01:59 to verify the new flags emptied
+  `C:\PhyriadFG\runs\sc_live\qdump_k4` (the raw k=4 sampler capture behind `B1_FIRST_FG_ROW.md`: 351
+  triples, the four worst-frame provenance planes of `B1_SPEED_TEST.md` §4, the six cut triples) and
+  created two empty tag directories. Found by the cut-scoring validator of `wf_54bcf616-271` ("qdump_k4
+  is empty, mtime 01:59:26"). The aligned arm `arms/fg_k4/` (136 frames) and `fg_k4.json/.md` survive,
+  so B1's numbers stand; the only copy elsewhere (`sc_bc/qdump_k4` in the 2026-09-08 session's
+  scratchpad) is a different corpus (40 triples). The raw capture is gone: the provenance replay on that
+  run and its cut frames are not reproducible; a re-capture is a new sample. The same misplaced block
+  sat below the player's Start-Process too, so every dry-run left an "RA Motion Zoo" window looping on
+  the operator's screen — seven of them (five on sc_live 01:58-01:59, two on sc_live2 02:34), noticed by
+  him ("hay multiples zoo abiertos") and closed by the session at 02:50.
+- **lesson:** a dry-run is a promise about the disk, and the promise is checked by the file counts
+  before and after, not by reading the script. The order of statements in a runner is a safety property:
+  nothing that mutates may precede the dry-run exit, and a run the operator marked KEEP (`scene_runs.py
+  keep`) is refused an overwrite by the TOOL, not by the session's memory of the marker.
+- **corrective:** `scene_live.ps1` now exits on -DryRun before any Remove-Item/New-Item (proved on
+  `sc_live2`: 5473 files before and after), refuses to overwrite a capture directory of a KEEP run
+  unless `-Overwrite` is passed (proved: the throw, 5473 files still), and a tag never collides;
+  `marker_live.ps1` was written with the dry-run block first. The loss is recorded beside the row it
+  affects (`B1_FIRST_FG_ROW.md` §5 addendum).
+
+### P-029 · The scorer's gate was run on one corpus and every other corpus was scored on trust
+- **class:** dormancy · **date:** 2026-09-10 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `scene_report.py --gate` (T1-T5, "every check seen RED first") was run on the k = 4 x1
+  corpus for `B1_FIRST_FG_ROW.md`; the speed-test corpora were scored without it. Run tonight, pooled:
+  `sc_v2` (6.7 px/pair) FAILS T2, T3 (nearest residual p90 0.387 px, blend pos 0.464), `sc_v4` (13.3
+  px/pair) FAILS T2, T3 (0.771 / 1.056 px), every x8/x16 corpus FAILS T2, T3, T4 (residual 2.2 px at x8,
+  the exact-flow oracle 0.9-1.3 px of shape). Diagnosis (`gate_diag`, one frame per arm per object): the
+  silhouette operator `object_like` thresholds |rgb - bg| > 0.06, so an anti-aliased edge pixel flips
+  with the backdrop NOISE under it; at x1 truth and candidate sit over the same backdrop and the flip
+  cancels, at 13 px apart it does not. The operator's floor grows with displacement and at x2/x4 it is
+  of the same order as the FG's measured position error (0.544 / 0.690 px).
+- **lesson:** a gate binds to the corpus it ran on (CONDUCT §2: a gate binds to the exact claim it
+  tested). Every corpus that carries a row runs its own gate first, and the gate's residual at the
+  corpus's displacement IS the floor under that row. The speed law `pos ~ 0.30 * disp^0.32` of
+  `B1_SPEED_TEST.md` rests, above x1, on rows whose instrument floor was never measured; it is to be
+  re-derived with an operator that passes the gate at those displacements.
+- **corrective:** `scene_report.py --silhouette coverage` (the half-coverage contour, the object colour
+  of an edge pixel estimated from its interior neighbours; the default `tau` stays byte-identical); the
+  gate is pooled (`--jobs`) so it costs ~4 min per corpus; `REGIME_TEST_MATRIX.md` §9 records each
+  corpus's gate under both operators and the re-scored speed rows. The frozen identity is not edited:
+  its clause (a) already labels the x0.5/x2/x4 points "one run"; this entry adds that their floor was
+  unmeasured — a consequence under the identity, recorded, not a rewrite of it.
+
 ### P-026 · A measurement record's own method sentence was refuted by the generator it used
 - **class:** refuted-premise · **date:** 2026-09-10 · **recurrences:** 0 · **status:** corrected
 - **evidence:** `docs/evidence/M1_SRC_RATE.md:21` — "p(t) is parameterised in SECONDS, so the 30 fps

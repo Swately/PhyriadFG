@@ -1,6 +1,6 @@
 # REGIME_TEST_MATRIX.md — the operator's four fidelity regimes: what limits the FG in each, what the instruments can already measure, and the test matrix that discriminates
 
-Status: **`proposed`** (2026-09-10) · Type: **Planning / design** (FDP §3: goals, non-goals, alternatives, trade-offs; nothing here
+Status: **`proposed · corpora rendered, tooling built and gated 2026-09-10`** (§8, §9) · Type: **Planning / design** (FDP §3: goals, non-goals, alternatives, trade-offs; nothing here
 is shipped or measured by this document — every number below is quoted from the record that owns it). **The operator decides
 which families run and when: every live capture takes his screen.**
 
@@ -275,5 +275,103 @@ floor); whether the 8-px tile changes under `--flow-scale` 2 / 4 (default 1: it 
 4. The stale help texts and docs (P-027) are his repo's source and doc fixes; the reconciliation of `FG_COMPETITIVE_COMPARISON.md:111`
    with I-B's framing belongs to whoever writes I-B; the `M1_SRC_RATE.md:21` sentence (P-026) is corrected in the record by the
    log entry, the June-era file itself left as the dated record it is.
+
+---
+
+## §8 — Runbook (2026-09-10): every command an arm needs, ready for his screen
+
+Every corpus below is rendered under `C:\PhyriadFG\runs\` (CPU only, no screen was used); every tool
+named exists, compiles, and passed its identity gate (§9). A capture is ONE command that takes his
+screen for ~Seconds and then extracts and scores in parallel (`--jobs`, cores − 2). The arm is named by
+`-Tag`; the default capture of a run is never overwritten by an arm, and a run marked KEEP refuses an
+overwrite unless `-Overwrite` is passed. The FG flags of an arm go in `-FgFlags` (both runners use that
+name — the case-insensitive `$fgArgs` collision is documented in `scene_live.ps1`). DI-3 = the same arm
+twice (`-Tag r1`, `-Tag r2` for marker runs; a second seed corpus for scene runs).
+
+| family | corpus (rendered) | command (his screen) | then |
+|---|---|---|---|
+| 0 attribution (default) | `sc_live` (KEEP; async DI-3 second run) | `tools\scene_truth\scene_live.ps1 -Run C:\PhyriadFG\runs\sc_live2 -K 4 -Gdump -Loop -Tag async` | `scene_step.py` / `scene_review.py` on `arms/fg_k4_async`; `scene_pages.py add-scene` |
+| 0 attribution (`--no-stasis`) | `sc_live` | `scene_live.ps1 -Run C:\PhyriadFG\runs\sc_live -K 4 -Gdump -Loop -Tag nostasis -FgFlags "--no-stasis"` | `ref_warp.py --decisions` on the arm: the stasis bit must vanish |
+| 0 attribution (band opened) | `sc_live` | `... -Tag mvsim030 -FgFlags "--mv-sim 0.30"` | the 99 % fallback must drop; rim `shape_err` |
+| 1 thin_size | `mk_thin_s6`, `mk_thin_s12`, `mk_thin_s24` (one size each, noise, pan 0) | `tools\motion_truth\marker_live.ps1 -Zoo C:\PhyriadFG\runs\mk_thin_s6\zoo -Tag r1` then `-Tag r2`; then `-Tag c1 -FgFlags "--no-mv-candsel"` and `-Tag c2 ...`; same for s24 | `motion_report.py --zoo ... --run detections_r1.csv --run detections_r2.csv --md ...`; `marker_step.py --zoo ... --dump qdump_r1 --out ...`; read `hud` per size |
+| 2 grating_pan A | `mk_grat_pan120`, `mk_noise_pan120`, `mk_grat_pan0` (the null) | `marker_live.ps1 -Zoo C:\PhyriadFG\runs\mk_grat_pan120\zoo -Tag r1` / `r2`, same for the other two | stage B only if A separates: `-Tag a1 -FgFlags "--no-ambig"` |
+| 3 speed_extend | `sc_train8_s7`, `sc_train8_s11` (×8, 26.9 px/pair); `sc_train16_s7`, `sc_train16_s11` (×16, 53.8 px/pair); the `mixed` ×8/×16 corpora `sc_v8_*`, `sc_v16_s7` kept for the on-screen count | `scene_live.ps1 -Run C:\PhyriadFG\runs\sc_train8_s7 -K 4 -Gdump -Loop` (then s11; then the ×16 pair) | read `lead`, `missing`, `sharp` and T2 at the new speed before `pos` (§4) |
+| 4 src_rate_matched | `mk_rate60`, `mk_rate30` (identical params, 4 s) | `marker_live.ps1 -Zoo C:\PhyriadFG\runs\mk_rate30\zoo -Tag r1 -FgFlags "--no-asw"` (+ `r2`); same at 60; then `-Tag g1 -FgFlags "--no-asw --no-mv-guided"` at each rate | the phase-binned section of the report; the absolute bar 0.116–0.119 px |
+| 5 cut_score | `sc_live2` (KEEP; 9 cut triples already captured) — or any `-Gdump -Loop` capture | `scene_report.py --run C:\PhyriadFG\runs\sc_live2 --k 4 --arm fg_k4 --cuts --json cuts.json --md cuts.md`; `scene_cuts.py --run ... --k 4 --arm fg_k4 --json cuts.json --out <pages>` | 0 s of screen for the archived cuts; `-Gdump -Loop` on a short corpus for the phase-binned n |
+| 6 reversal | `mk_reverse` (classes reverse, linear, hud, fast; 4 s) | `marker_live.ps1 -Zoo C:\PhyriadFG\runs\mk_reverse\zoo -Tag r1` / `r2`; `-Tag s1 -FgFlags "--mv-smooth 0.5"`; `-Tag p1 -FgFlags "--mv-prior"` | the along-velocity projection; the below-cut marker must lag under the EMA |
+| 7 period_backdrop | not rendered (conditional on 2) | — | — |
+
+Before ANY capture of a scene corpus the scorer's gate is run on it (`scene_report.py --run <corpus> --k
+4 --gate`, CPU, parallel) and must print `GATE PASSED (T1..T6)`; §9 records what it printed on each
+corpus tonight.
+
+---
+
+## §9 — Preparation log (2026-09-10, no screen used)
+
+**What was built and verified (commits `7f2c815`, `43f3197`, `57b175b`, `d7fc6e0`):** five Sonnet implementers + five
+clean-context validators (`wf_54bcf616-271`, 10 agents, 1.29 M tokens, 84 min; one implementer returned a stub report and its
+identity claim was proved by the supervisor instead), every line reviewed and every gate re-run by the supervisor:
+`marker_extract.py --jobs` (31 s → 6 s on 8 workers, 21 triples, CSV byte-identical; trailing `wrap` column) ·
+`motion_report.py` drops seam rows by default (`--keep-wrap`) · `marker_zoo.py` class `reverse` (default output byte-identical
+old vs new; `--verify` passes on `mk_reverse`) · `marker_live.ps1` (dry-run exits first) · `marker_step.py` (PNGs byte-identical at
+1 and 4 workers) · `scene_align.py` files cuts apart · `scene_report.py --cuts` + T6 + `scene_cuts.py` (cut table reproduced
+byte-for-byte by the validator; serial = pool) · `scene_live.ps1 -Tag/-FgFlags/-Jobs/-DryRun/-Overwrite` + KEEP guard ·
+`scene_pages.py` + `runs.json` · `scene_zoo.py` `fast_train` · both steppers' `%%` CSS fix.
+
+**Corpora rendered (CPU, no screen):** `mk_thin_s6/s12/s24`, `mk_grat_pan120`, `mk_noise_pan120`, `mk_grat_pan0`, `mk_rate60`,
+`mk_rate30`, `mk_reverse` (marker zoo, 1280×720, 4 s); `sc_v8_s7/s11`, `sc_v16_s7` (`mixed`), `sc_train8_s7/s11`,
+`sc_train16_s7/s11` (`fast_train`) at 640×360, 240 fps, 1 s, k = 4 manifests. On-screen count from the id planes: `mixed`
+keeps the sphere fully inside 240 / 76 / 38 frames at ×1 / ×8 / ×16; `fast_train` (7 spheres 5.5 units apart) keeps exactly one
+fully inside 234 / 232 of 240 frames at ×8 / ×16 (a first try at 8.33 spacing left 85 frames empty).
+
+**The scorer's gate, corpus by corpus (pooled, `--jobs 30`, ~4 min each).** The gate had only ever been run on the ×1 corpus
+(P-029). Tonight, under the recorded `tau` operator: ×1 `GATE PASSED (T1..T6)`; ×2 FAILED T2, T3 (nearest residual p90
+0.387 px, blend pos 0.464); ×4 FAILED T2, T3 (0.771 / 1.056); every ×8 / ×16 corpus FAILED T2, T3, T4 (residual 2.2 px, the
+exact-flow oracle 0.9–1.3 px of shape). Three causes were found and fixed in turn, each with its identity test at ×1:
+
+| fix (scene_report.py) | mechanism found | ×1 identity | effect |
+|---|---|---|---|
+| border-clip rule (a MOVING object whose silhouette touches the frame border carries no terms; `row['clipped']`) | the ×8 sphere is partially outside in 24 frames; a clipped centroid is not the object's | rows identical (the static occluder quad spans the full height by design and is exempt by `disp > 0.5`) | necessary, not sufficient |
+| `--silhouette coverage` (half-coverage contour; the default `tau` byte-identical) | `tau` thresholds \|rgb − bg\| > 0.06, so an anti-aliased edge pixel flips with the backdrop noise under it; cancels at ×1 (same backdrop both sides), not at 13 px apart | rows identical under the default | T4 passes at ×8 (oracle 0.01 px); T2 at ×1 tightens 0.1 → 0.015 px; T2 at ×8 unchanged |
+| other objects excluded from the window in the mid AND both reals (`ids_ab`) | `fast_train`'s spheres pass in front of the spinning box; `mixed` at ×2 / ×4 reaches it; the near real shows the box's pixels where the mid had the sphere (seen in `t2_view.png`) | only the occluder quad changes (−7 px of area; the oracle's spurious 0.0255 px on it → 0) | **T2 passes at every speed: p90 residual 0.014–0.023 px at ×2 / ×4 / ×8** |
+| `overlap_px` per object; T3 / T5 read the overlap-free pairs | the blend's two ghosts and the blurred disc are clipped asymmetrically where objects overlap | — (gate only) | T5 passes everywhere; T3 passes at ×1, ×2 |
+
+Final state, `--silhouette coverage`: ×1 and ×2 **PASS T1..T6**; ×4 and ×8 pass all but **T3**, whose residual on overlap-free
+pairs grows with displacement — 0.06 (×1), 0.11 (×2), 0.26 (×4), 0.57 px (×8) against a 0.15 px bar. Mechanism (inference,
+consistent with every number): the blend's two ghosts expose opposite limbs of an obliquely lit sphere, and the union loses
+more of the dark limb as they separate; a candidate that sits near the truth shares its shading and is not biased that way,
+the blend ruler is. **The bar was NOT relaxed.** ×0.5 "fails" T2 / T3 by the gate's own floors (mean travel 0.132 < 0.2; the
+blend legitimately ACCEPTED below ~1 px/pair, `B1_FIRST_FG_ROW.md` §3), with a T2 residual of 0.015 px.
+
+**The speed rows re-scored under the gate-passing operator** (`fg_k4_cov.json` / `.md` beside each run; arm `fg_k4`, the
+intact aligned frames; one seed, one run each; `scene_speed.py` fit):
+
+| corpus | px/pair | operator | sphere pos | shape | halluc px² | lead | nearest | oracle2 |
+|---|---|---|---|---|---|---|---|---|
+| `sc_v05` | 1.68 | tau → coverage | 0.355 → 0.311 | 0.230 → 0.231 | 67 → 56 | +47.8 → +46.1 | 0.416 → 0.284 | 0.153 → 0.009 |
+| `sc_live` | 3.36 | tau → coverage | 0.481 → 0.443 | 0.292 → 0.400 | 76 → 105 | +48.4 → +36.1 | — | — |
+| `sc_v2` | 6.72 | tau → coverage | 0.544 → **0.684** | 0.273 → 0.614 | 72 → 225 | +29.7 → +6.6 | 1.299 → 1.292 | 0.127 → 0.010 |
+| `sc_v4` | 13.43 | tau → coverage | 0.690 → **1.522** | 0.396 → 1.200 | 98 → 607 | +24.0 → +5.7 | 2.514 → 2.809 | 0.131 → 0.009 |
+
+The `tau` operator under-reported the FG's error at high speed (its threshold read the FG's smeared edge as "not object");
+the rulers say which side to trust: the exact-flow oracle scores 0.01 px under coverage (0.13 under tau) and `nearest` is
+unchanged. **Power-law re-fit over the four coverage rows: pos ≈ 0.191·disp^0.75** (nearly proportional to displacement) in
+place of `B1_SPEED_TEST.md`'s 0.30·disp^0.32 (gentle growth). One seed, one run per point; the ×4 corpus fails T3. The frozen
+identity's clause (a) quotes the old law: it is not edited (KAP §7); the finding stands beside it as a post-freeze consequence
+for the operator's decision.
+
+**Cut scoring** (`sc_live2`, 9 cut triples captured 2026-09-08, arm `fg_k4_cuts`, `cuts_k4.md/.json`; review page
+`F:\Phyriad\scene_pages\sc_live2_cuts\index.html`): the FG blends across the seam — halluc vs the nearer real 86–88 px² but
+vs the farther real 183–402, missing 55–4244, sharp 0.29–0.83, graceful 0.016–0.062; the `hold` reference scores graceful
+0.0000 and halluc 0 on every cut, the `blend` reference 88–770 px². Gate T6 passes on every corpus.
+
+**Lost tonight (P-028):** `sc_live/qdump_k4`, the raw k = 4 sampler capture behind B1 (aligned frames and scores survive; the
+provenance replay of that run does not); seven "RA Motion Zoo" windows left on the operator's screen by the same defect,
+closed at 02:50.
+
+**Not run:** any live capture (every family needs the operator's screen); the second-seed rows of the re-scored speed law;
+`period_backdrop`; a T3 bar that scales with displacement (the operator's call); the marker chain on a real capture (only the
+synthetic dump and the M1 records); `scene_pages` rows for coverage-scored runs.
 
 *Made with my soul - Swately <3*

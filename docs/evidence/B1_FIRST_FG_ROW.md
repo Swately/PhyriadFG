@@ -147,4 +147,13 @@ real frame. It was inflating the high-phase mean: with it, φ > 0.75 read 1.25 p
 
 ---
 
+**Addendum 2026-09-10 (P-028).** The raw `qdump_k4/` of `sc_live` — the sampler capture behind the k = 4
+row above, 351 triples with their prev/next/live/mv planes — was deleted by a session tool defect (a
+`-DryRun` of `scene_live.ps1` that removed the directory before exiting). `arms/fg_k4/` (the 136 aligned
+generated frames) and `fg_k4.json` / `fg_k4.md` (the scored rows) survive, so every number in this
+record stands and the stepper still walks the run; what is no longer reproducible from this run is the
+per-pixel provenance replay of `B1_SPEED_TEST.md` §4 (its four worst frames were read from that capture)
+and the scoring of its cut triples. `sc_live2`, `sc_v05`, `sc_v2`, `sc_v4` and `g5_live` keep their raw
+captures. A re-capture of `sc_live` at k = 4 is a new sample, not a restoration.
+
 *Made with my soul - Swately <3*

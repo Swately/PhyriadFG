@@ -116,6 +116,23 @@ claim about any frame generator other than the object under test.
 4. **After the freeze**: Phase 2 (scaffold) and Phase 3 (content) conform to the block; the identity gate
    (`INTACT | DRIFTED`) is the only gate that may speak to it (KAP §6, §7).
 
+**Phase 2 PAUSED by the operator (2026-09-10, verbatim: "la fase 2 del KAP es para el trabajo de
+investigacion, no? pausemoslo de momento y vamos con el testing de los escenarios"). The identity block
+above stays frozen and byte-intact meanwhile; the scenario testing runs under
+`../planning/REGIME_TEST_MATRIX.md`.**
+
+**Post-freeze finding (2026-09-10, recorded beside the block, not in it — KAP §7).** The scorer's gate,
+run tonight on every corpus (it had only ever run at ×1), fails T2/T3 at ×2 and ×4 under the operator
+that produced the recorded rows; with the corrected operator (`--silhouette coverage`, the
+occlusion-aware window) T2 is exact at every speed and the FG's sphere error re-scores to 0.684 px at
+6.7 px/pair and 1.522 px at 13.4 (was 0.544 / 0.690), so the speed law quoted in clause (a) — pos ≈
+0.30·disp^0.32 — re-fits to pos ≈ 0.191·disp^0.75 on the same frames, one seed, one run. Clause (a)
+labels those points "one run — reliability not measured"; this adds that their instrument floor was
+unmeasured and that the corrected law is nearly proportional to displacement. Whether Phase 1 is
+re-opened to restate clause (a) is the operator's deliberate act (KAP §7); Phase 2/3 content presents
+the corrected law with the operator named. Details: `../planning/REGIME_TEST_MATRIX.md` §9,
+`../LEARNING_LOG.md` P-029.
+
 ### T1 verdicts (2026-09-09)
 
 | auditor | verdict | invariants failed | fixes proposed |
