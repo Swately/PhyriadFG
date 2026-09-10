@@ -4,16 +4,16 @@
 > [`planning/ACTION_PLAN.md`](planning/ACTION_PLAN.md); the durable knowledge is the D-22 memory
 > (`phyriadfg-*.md`). Rewritten at every checkpoint; older snapshots are not kept (the spine is).
 
-**Taken:** 2026-09-10, 02:30 — I-A is FROZEN (4ab); the regime test matrix for the operator's four
-scenarios is written and verified, every family waiting on his screen (4ab); the 23:10 stamp is
-superseded. Sections 4b-4aa are the accumulated record and are NOT rewritten — only the orientation (0,
-2, 4ab, 5, Self-prompt) is.
+**Taken:** 2026-09-10, 05:10 — the operator paused KAP Phase 2, then (after the 5-hour limit) said to
+continue with whatever of the KAP needs no testing data; the scenario testing is PREPARED and nothing
+captured (4ac); the 02:30 stamp is superseded. Sections 4b-4ab are the accumulated record and are NOT
+rewritten — only the orientation (0, 2, 4ac, 5, Self-prompt) is.
 
 0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` → **`P → S2 MOTION_TRUTH · scene_truth +
-   `--gdump` gated → (a) the operator's measuring session, now the eight-family matrix
-   `docs/planning/REGIME_TEST_MATRIX.md` (proposed, his screen) · (b) the metric paper at KAP Phase 1
-   DONE — I-A FROZEN (`docs/research/FG_METRIC_MODEL_SPINE.md`, SHA-256 stamped) → Phase 2 (scaffold)
-   next`**. The convergence spine R0–R7 is CLOSED (4q–4y); MR-8 and C-2(a) remain the operator's.
+   `--gdump` gated → (a) the eight-family scenario matrix PREPARED, every capture waiting on his screen
+   (`docs/planning/REGIME_TEST_MATRIX.md` §8/§9) · (b) the metric paper: identity FROZEN, Phase 2
+   scaffold + the data-free Phase 3 sections under way in `docs/planning/paper/`; the regime rows are
+   empty slots`**. The convergence spine R0–R7 is CLOSED (4q–4y); MR-8 and C-2(a) remain the operator's.
 1. **OBJECTIVE** — P: perfect PhyriadFG as ONE final FG = the clean minimal core (`apps/minimal_fg`, the
    SG seam) + the layers that earn their place, on the LAYERTAB contract; exact motion measured as DATA
    (S2 MOTION_TRUTH), perceptual quality parked (S5).
@@ -449,7 +449,42 @@ superseded. Sections 4b-4aa are the accumulated record and are NOT rewritten —
    scene_truth needs no model (first find known: `--no-mv-guided`); I-B is the follow-on the matrix
    feeds; runtime adaptation not before that. NOT run: every family.
 
-5. **NEXT (2026-09-10, 02:30)** — every item is his: (1) which families of `REGIME_TEST_MATRIX.md` run,
+4ac. **THE SCENARIO PREPARATION (2026-09-10, 02:30 → 05:10)** — the operator: "pausemoslo [KAP Phase 2]
+   de momento y vamos con el testing de los escenarios, prepara en analisis de frames de todos los
+   escenarios y recuerda que todo calculo de puntaje debe ser paralelizado". Rendered on C: (no screen):
+   8 marker corpora, `mk_reverse`, and 7 scene corpora incl. the new `fast_train` preset (7 spheres 5.5
+   units apart — one always fully inside at ×8/×16; the first try at 8.33 left 85 frames empty). Built
+   by five Sonnet implementers + validators (`wf_54bcf616-271`), every line reviewed and re-tested:
+   `marker_extract.py --jobs` (5×, CSV-identical; `wrap`), `motion_report --keep-wrap`, `marker_zoo`
+   `reverse`, `marker_live.ps1`, `marker_step.py`, cut scoring (`scene_align` cuts apart; `scene_report
+   --cuts`, T6, `scene_cuts.py`). Mine: `scene_live.ps1 -Tag/-FgFlags/-Jobs/-DryRun/-Overwrite` + KEEP
+   guard, `scene_pages.py` + `runs.json`, and the scorer's high-speed corrections found by running the
+   GATE ON EVERY CORPUS for the first time (P-029): border-clip rule; `--silhouette coverage` (default
+   `tau` byte-identical); other objects excluded from the window in mid AND both reals (the sphere
+   passing in front of the box — seen in an image); `overlap_px` + the gate's T3/T5 on overlap-free
+   pairs; the gate pooled. Result: T2 exact at every speed (0.014–0.023 px); ×1/×2 PASS T1..T6; ×4/×8
+   fail only T3 (0.26/0.57 px, the blend's ghosts expose opposite limbs — bar NOT relaxed, his call).
+   **The speed rows re-scored under the gate-passing operator: sphere 0.684 px at 6.7 px/pair and 1.522
+   at 13.4 (was 0.544/0.690) → pos ≈ 0.191·disp^0.75, nearly linear, not B1's 0.30·disp^0.32** — one
+   run; recorded beside the frozen block (its clause a quotes the old law; the block is INTACT, hash
+   427ac748…). **P-028 (mine):** a `-DryRun` below the runner's Remove-Item and Start-Process deleted
+   `sc_live/qdump_k4` (B1's raw capture; aligned frames + scores survive; not recoverable) and left
+   seven zoo windows on his screen (closed 02:50); runners fixed and proved by file+process counts. Cut
+   scoring works on `sc_live2` (9 cuts; hold graceful 0.0000; page `scene_pages/sc_live2_cuts`).
+   Records: `REGIME_TEST_MATRIX.md` §8 runbook + §9 log, P-028/P-029, B1 addendum, the SPINE's
+   post-freeze note. Commits `7f2c815`…`9987742`. NOT run: every capture.
+
+5. **NEXT (2026-09-10, 05:10)** — (1) KAP without testing data (his word after the limit): Phase 2
+   scaffold in `docs/planning/paper/` (`SCAFFOLD.md` + empty `body/` slots), its T2 gate (Opus VISTA;
+   the 5-hour limit may block subagents — then "T2 pending"), then the Phase 3 sections whose data
+   exists (introduction, prior art from the Phase 0 table, the instrument, the k=4 row, the gdump row,
+   the re-scored speed rows with the gate state, the cut scoring, threats, limitations, reproducibility)
+   leaving the F1–F4 result slots empty; (2) his screen: the runbook §8, family 0 first; (3) his
+   decisions: T3's bar by displacement, re-opening Phase 1 for clause (a), `fast_train` kept,
+   `mv_guided` level; (4) still open: P-027 texts, BOOT §4 row, MR-8, C-2(a), push. The 02:30 NEXT below
+   is superseded and kept.
+
+5-prev3. **NEXT (2026-09-10, 02:30 — superseded, kept)** — every item is his: (1) which families of `REGIME_TEST_MATRIX.md` run,
    the `mv_guided` level, the workload, the two preset edits (families 3, 7); on his word the session
    builds the cut-scoring branch, the `reverse` class and the per-size r column (tooling); (2) with his
    screen: family 0 first (~100 s, includes the async row's DI-3); (3) KAP Phase 2 (the paper's
@@ -503,6 +538,20 @@ evidencia; no pedirle decisiones que ya delegó.
    only on request; heavy-compute pre-flight; DI-3.
 
 ## Self-prompt (read this first after a compaction)
+
+I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **State
+(2026-09-10, 05:10): the scenario testing is PREPARED (16 corpora on `C:\PhyriadFG\runs\`, tooling
+built, gated, committed; runbook `docs/planning/REGIME_TEST_MATRIX.md` §8, log §9) and NOTHING captured
+— every arm takes his screen; the metric paper's identity is FROZEN (block INTACT) with a post-freeze
+finding beside it (the speed law re-fits nearly linear under the gate-passing operator); the KAP
+continues on what needs no testing data (Phase 2 scaffold + data-free Phase 3 sections in
+`docs/planning/paper/`).** Re-read first: BOOT, the matrix §8/§9, the spine's block + post-freeze note,
+memories `phyriadfg-scene-truth` + `phyriadfg-metric-paper` + `scoring-parallel-rule`, P-025..P-029. Do
+NOT re-render corpora, re-run the build workflow, re-derive the gate findings, or relax T3's bar. Every
+scoring path is parallel. Both runners take `-Tag`/`-FgFlags`; a dry run is checked by file AND process
+counts; KEEP runs refuse overwrite. Live runs need his word. Push is NOT authorized.
+
+The 02:30 self-prompt follows, kept:
 
 I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **State
 (2026-09-10, 02:30): `--gdump` gated and committed; the metric paper's identity I-A is FROZEN
