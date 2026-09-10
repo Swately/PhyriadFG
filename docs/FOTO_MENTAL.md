@@ -4,16 +4,17 @@
 > [`planning/ACTION_PLAN.md`](planning/ACTION_PLAN.md); the durable knowledge is the D-22 memory
 > (`phyriadfg-*.md`). Rewritten at every checkpoint; older snapshots are not kept (the spine is).
 
-**Taken:** 2026-09-10, 05:10 — the operator paused KAP Phase 2, then (after the 5-hour limit) said to
-continue with whatever of the KAP needs no testing data; the scenario testing is PREPARED and nothing
-captured (4ac); the 02:30 stamp is superseded. Sections 4b-4ab are the accumulated record and are NOT
-rewritten — only the orientation (0, 2, 4ac, 5, Self-prompt) is.
+**Taken:** 2026-09-10, 07:30 — the metric paper's scaffold is GATED (T2, two rounds) and its data-free
+sections are WRITTEN and verified (4ad); the scenario testing stays PREPARED and uncaptured (4ac); the
+05:10 stamp is superseded. Sections 4b-4ac are the accumulated record and are NOT rewritten — only the
+orientation (0, 2, 4ad, 5, Self-prompt) is.
 
 0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` → **`P → S2 MOTION_TRUTH · scene_truth +
    `--gdump` gated → (a) the eight-family scenario matrix PREPARED, every capture waiting on his screen
-   (`docs/planning/REGIME_TEST_MATRIX.md` §8/§9) · (b) the metric paper: identity FROZEN, Phase 2
-   scaffold + the data-free Phase 3 sections under way in `docs/planning/paper/`; the regime rows are
-   empty slots`**. The convergence spine R0–R7 is CLOSED (4q–4y); MR-8 and C-2(a) remain the operator's.
+   (`docs/planning/REGIME_TEST_MATRIX.md` §8/§9) · (b) the metric paper: identity FROZEN, scaffold
+   T2-APPROVED, 42 of 55 slots WRITTEN in `docs/planning/paper/` (`SCAFFOLD.md` is the master plan and
+   the audit trail); the 13 empty slots are his captures, three scene presets to build, and the AFTER
+   slots`**. The convergence spine R0–R7 is CLOSED (4q–4y); MR-8 and C-2(a) remain the operator's.
 1. **OBJECTIVE** — P: perfect PhyriadFG as ONE final FG = the clean minimal core (`apps/minimal_fg`, the
    SG seam) + the layers that earn their place, on the LAYERTAB contract; exact motion measured as DATA
    (S2 MOTION_TRUTH), perceptual quality parked (S5).
@@ -474,7 +475,40 @@ rewritten — only the orientation (0, 2, 4ac, 5, Self-prompt) is.
    Records: `REGIME_TEST_MATRIX.md` §8 runbook + §9 log, P-028/P-029, B1 addendum, the SPINE's
    post-freeze note. Commits `7f2c815`…`9987742`. NOT run: every capture.
 
-5. **NEXT (2026-09-10, 05:10)** — (1) KAP without testing data (his word after the limit): Phase 2
+4ad. **THE METRIC PAPER, PHASES 2–3 (2026-09-10, 05:10 → 07:30)** — his word after the limit: "continua
+   si lo que queda del protocolo KAP no requiere de datos del testing comienza a hacerlo". Phase 2:
+   `docs/planning/paper/SCAFFOLD.md` (master plan: structural decisions, the identity-element legend, a
+   status vocabulary EXISTS/CAPTURE/BUILD/DECISION/AFTER, every slot with the element it serves and its
+   evidence), `PAPER.md` (include order), `body/00..10` stubs — generated from ONE table
+   (`paper_scaffold.py`, scratchpad; the block hash checked with `freeze_spine.py`'s exact method: text
+   between `BEGIN -->\n` and `\n<!-- END`; my first hash function included the trailing newline and
+   reported DRIFTED falsely). **T2 (template §7 verbatim, clean Opus, Agent tool):** round 1 two
+   auditors, both `APPROVE WITH WARNINGS` — front matter not inventoried; §05 axes not in clause (a)'s
+   order; F1 of mixed readiness; the four built presets without a slot; DECISION treated as fillable;
+   plus my own false citation of `S2_T*_GATE.md` (marker-chain gates) as the scene gate's records — six
+   fixes as structural edits, round 2 one auditor `APPROVE WITH WARNINGS` (a stale §05.4; rulers not by
+   construction) — two point-edits, gate CLOSED; final: 11 sections, 53 body + 2 front slots, block
+   INTACT. **The structural finding:** a marker row cannot be a verdict row (its terms are not the six)
+   — F1-erratic, F2, F4 need SCENE presets (his). Phase 3: nine drafters (Opus §01/§03/§05/§06/§07,
+   Sonnet §02/§04/§09/§10), one brief each (permitted sources, eight rules, every number anchored), 42
+   of 55 slots filled, 11,456 words, 1.50 M tokens; verified mechanically (`draft_check.py`: structure
+   byte-identical, 1,230 numbers each present in a permitted source, no inflation words) and first-hand
+   (every quote and table re-read, 37 code lines, 14 gate logs, 14 commit hashes, the rig). Supervisor
+   edits: RA.3 scoring command, §01 anchors, M2.5 map + presets' signatures owed, M1.8 `ambig`. Empty:
+   §05.5–05.12, §06.3, §00, §08, F.1, F.2. Phases 4–6 NOT run (eight Results slots empty). Commits
+   `c570ba9`, `a0881ce`, `3e5cb87`, `fec7a43`, `8651f67`, `5e358ba`, `927cc61` + the §03 one. **Never
+   rerun `paper_scaffold.py` — it overwrites `body/`.** No screen used.
+
+5. **NEXT (2026-09-10, 07:30)** — (1) his screen: the runbook §8, family 0 first, then the Results slots
+   §05.5, §05.6, §05.7, §05.10, §05.12 fill from the captures (each row with rulers + N + r); (2) his
+   decisions: the three scene presets (reversing, thin, `period_backdrop`; the low-rate base) for
+   §05.8/§05.9/§05.11; the four built presets' signatures written in §04.5 before their capture;
+   Markdown vs LaTeX master; Phase 1 re-open for clause (a); T3 on the filled sections now or later;
+   T3's bar by displacement; `fast_train`; `mv_guided`; (3) after the captures: Phase 4 (T2 over
+   content), Phase 5 (T3), Phase 6, then §00/§08/F.1/F.2; (4) still open: P-027 texts, BOOT §4 row,
+   MR-8, C-2(a), push. The 05:10 NEXT below is superseded and kept.
+
+5-prev4. **NEXT (2026-09-10, 05:10 — superseded, kept)** — (1) KAP without testing data (his word after the limit): Phase 2
    scaffold in `docs/planning/paper/` (`SCAFFOLD.md` + empty `body/` slots), its T2 gate (Opus VISTA;
    the 5-hour limit may block subagents — then "T2 pending"), then the Phase 3 sections whose data
    exists (introduction, prior art from the Phase 0 table, the instrument, the k=4 row, the gdump row,
@@ -538,6 +572,20 @@ evidencia; no pedirle decisiones que ya delegó.
    only on request; heavy-compute pre-flight; DI-3.
 
 ## Self-prompt (read this first after a compaction)
+
+I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **State
+(2026-09-10, 07:30): the metric paper's scaffold is T2-APPROVED and 42 of 55 slots are written and
+verified (`docs/planning/paper/`, `SCAFFOLD.md` = master plan + audit trail); the 13 empty slots wait on
+his captures (runbook `REGIME_TEST_MATRIX.md` §8), three scene presets he has not decided to build, and
+the AFTER rule; the scenario testing stays PREPARED and uncaptured; the identity block is INTACT.**
+Re-read first: BOOT, `SCAFFOLD.md` (decisions, slot tables, the T2 and Phase 3 records), the spine's
+block + post-freeze note, the matrix §8/§9, memories `phyriadfg-metric-paper` + `phyriadfg-scene-truth`
++ `scoring-parallel-rule`, P-025..P-030. Do NOT rerun `paper_scaffold.py` (it overwrites `body/`),
+re-render corpora, re-derive the gate findings, relax T3's bar, or fill a CAPTURE/BUILD/AFTER slot
+without its data. A drafter's or auditor's output is a claim: re-read it against the record before
+acting. Every scoring path is parallel. Live runs need his word. Push is NOT authorized.
+
+The 05:10 self-prompt follows, kept:
 
 I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **State
 (2026-09-10, 05:10): the scenario testing is PREPARED (16 corpora on `C:\PhyriadFG\runs\`, tooling

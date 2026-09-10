@@ -200,6 +200,28 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-030 · The matrix's marker families were planned as the regime tests; under the frozen identity a marker row cannot be a verdict row
+- **class:** premise refuted · **date:** 2026-09-10 · **recurrences:** 0 · **status:** recorded, the build is the operator's
+- **evidence:** `REGIME_TEST_MATRIX.md` §2 assigns the regimes "thin objects" (family 1), "repetitive patterns"
+  (2), "low fps" (4) and "erratic" (6) to the marker instrument (`tools/motion_truth/`), whose terms are
+  `err_model` / `err_true` / `phase_ms` and the per-class counts found / degraded / absent / ghost
+  (`MOTION_TRUTH_BASELINE.md`). The frozen identity (`FG_METRIC_MODEL_SPINE.md`, block INTACT) makes the
+  verdict "exactly as `scene_report.py` `verdict()` defines" it — the six terms per object — and the
+  scenario set "analytic scene families, each with closed-form pose(t)"; so the paper's Results slots for
+  F1-erratic, F2 and F4 have no instrument that can fill them today. Found while laying out the Phase 2
+  scaffold (`docs/planning/paper/SCAFFOLD.md`, structural decision 5); the T2 auditors cleared the
+  demotion and the round-2 auditor confirmed nine families and no tenth.
+- **lesson:** a plan written before an identity was frozen carries premises the freeze can retire. The
+  matrix was designed 2026-09-10 02:30, the identity froze 2026-09-09 — the matrix was later, and still
+  it inherited "each regime has an instrument" from the instrument that existed, not from the terms the
+  identity had just fixed. A regime test enters the paper only in the identity's terms; a second
+  instrument corroborates, at the altitude its own records state, and is never a verdict row.
+- **corrective:** the scaffold denies the marker chain a Results slot (§06.3 corroboration, §03.8 method)
+  and gives F1-erratic / F2 / F4 `BUILD` slots that name what is missing — a closed-form reversing preset,
+  a thin preset and `period_backdrop` (already in the matrix as family 7), a base rendered at the low rate
+  — each a preset in `scene_zoo.py`, the operator's instrument: announced, not built. The marker corpora
+  and their captures stay useful as the fast pre-screen the matrix designed them to be.
+
 ### P-028 · A dry-run that mutated: the session's own -DryRun deleted a KEEP run's raw capture
 - **class:** refuted-premise · **date:** 2026-09-10 · **recurrences:** 0 · **status:** corrected
 - **evidence:** `tools/scene_truth/scene_live.ps1` gained `-DryRun` on 2026-09-10 (commit `7f2c815`);
