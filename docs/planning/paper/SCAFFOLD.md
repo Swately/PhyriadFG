@@ -1,8 +1,8 @@
 # SCAFFOLD.md — the empty machine of the metric paper (KAP Phase 2)
 
-Status: **`SCAFFOLD 2026-09-10`** — KAP Phase 2 output (`F:\Phyriad\protocols\analysis\KNOWLEDGE_ANALYSIS_PROTOCOL.md` §3.2:
-"lay out the structure (sections, order, slots) without content"). Gate T2 (structural): **pending** — recorded below when it
-runs. Input: the frozen identity `../../research/FG_METRIC_MODEL_SPINE.md`, block SHA-256 `427ac7489c5fdd7f15a34907e20313597256a0f52d0361824d193c29aa3314bf` (verified `INTACT` when
+Status: **`SCAFFOLD 2026-09-10 — T2 APPROVE WITH WARNINGS (two rounds, every warning dispositioned; record below)`** — KAP
+Phase 2 output (`F:\Phyriad\protocols\analysis\KNOWLEDGE_ANALYSIS_PROTOCOL.md` §3.2: "lay out the structure (sections, order,
+slots) without content"). Input: the frozen identity `../../research/FG_METRIC_MODEL_SPINE.md`, block SHA-256 `427ac7489c5fdd7f15a34907e20313597256a0f52d0361824d193c29aa3314bf` (verified `INTACT` when
 this scaffold was written). This document is the paper's **master plan**: the section order is its structural commitment,
 frozen for Phase 3 (KAP §3.3: content may change "within each slot"; the order and the slots may not). The paper lives here
 per `FORMAL_DOCUMENT_PROTOCOL.md` §3 (`docs/planning/paper/`) and follows its §9 template (Abstract · Introduction (gap →
@@ -39,7 +39,10 @@ whatever of the KAP needs no testing data. This scaffold needs none: every slot 
    it is decided and not discovered: **F2 and F4 need a scene family in the six terms** (a thin preset and `period_backdrop`;
    a base rendered at the low rate) — the identity already names F4's condition; F2's thin preset is a new build.
 6. **Every Results slot carries N and r or the one-run label as a column, by construction** (the identity's Reliability
-   paragraph); a slot that cannot carry them stays empty rather than filled with a single number.
+   paragraph); a slot that cannot carry them stays empty rather than filled with a single number. **Every Results slot
+   that carries an FG row carries its rulers by the same construction** — `truth` / `nearest` / `oracle2` scored on the same
+   corpus at the same k, `blend` from the sweep — because "a row without its rulers is not a result" (the identity's Rulers
+   paragraph); such slots declare `RU`, and a row whose rulers were not scored is not written.
 7. **Threats to validity live in the Discussion, Limitations in-body** (FDP §9); the identity's NOT clauses map one-to-one
    onto §07.
 8. **The master's front matter is two slots of its own** (title, authorship), both filled last: a title is a consequence of
@@ -140,16 +143,16 @@ whatever of the KAP needs no testing data. This scaffold needs none: every slot 
 |---|---|---|---|---|
 | 5.1 | The canonical row: k = 4 on `mixed`, two seeds, with its three rulers and `blend` from the sweep | CA · RU · RE | `B1_FIRST_FG_ROW.md` §2, §2b (0.216 / 0.212 px) | `EXISTS` |
 | 5.2 | The phase signature: error falling with phase on the fastest mover (M1_LOWPHASE reproduced by an instrument that did not know it) | CA (phase) | `B1_FIRST_FG_ROW.md` §2; `docs/planning/records/M1_LOWPHASE_FINDING.md` | `EXISTS` |
-| 5.3 | The displacement axis on `mixed`: the recorded rows (`tau`) AND the re-scored rows (`coverage`), one run each, with the gate state of each corpus; both fitted laws shown; the identity's clause (a) stands as written until the operator re-opens Phase 1 | CA (displacement) | `B1_SPEED_TEST.md` §2–§3; `REGIME_TEST_MATRIX.md` §9 (re-scored table); SPINE post-freeze note | `DECISION` |
-| 5.4 | The source-rate axis on `mixed`: k = 2 / 4 / 8 / 16 with `blend` per k; the k-path vs speed-path term read against §05.3 at matched displacement and phase (one run, second seed owed) | CA (source rate) · SS (F4 clause) | `B1_FIRST_FG_ROW.md` §3; `B1_SPEED_TEST.md` §3 | `EXISTS` |
-| 5.5 | The asynchronous path: its one row, and its second seed | OB (async path) · RE | `GDUMP_GATE.md` G5 (0.240 px, one run) EXISTS; the DI-3 second run is family 0's `-Gdump` capture | `CAPTURE` |
-| 5.6 | The four built presets inside the boundary that carry no FG row — `translate`, `occlude`, `spin`, `cross`: a row each with its rulers, entering a claim only once measured; their predicted signatures are written in §04.5 before the first capture (the matrix pre-registers none of them) | SS (the built presets) | the presets exist in `scene_zoo.py`; no corpus rendered for them, no signature written, no FG row | `CAPTURE` |
-| 5.7 | F1, fast — extremely fast motion: `speed_extend` ×8 / ×16 on `fast_train` (corpora rendered, gated), read with the gate state at each speed | SS (F1) | family 3 of the matrix; the ×8 / ×16 corpora exist on `C:\PhyriadFG\runs\`; no FG row | `CAPTURE` |
-| 5.8 | F1, erratic — reversing or erratic motion: needs a scene family in the six terms (a closed-form reversing preset); the marker `reverse` class is corroboration, §06.3 | SS (F1) | family 6 of the matrix is a marker family; the scene preset TO BUILD; no FG row | `BUILD` |
-| 5.9 | F2 — thin, repetitive or complex-patterned objects: needs a scene family in the six terms (a thin preset; `period_backdrop`); the marker families `thin_size` / `grating_pan` are corroboration, §06.3 | SS (F2) | family 7 TO BUILD; a thin scene preset TO BUILD; no FG row | `BUILD` |
-| 5.10 | F3 — abrupt scene changes: the cut frames of the looped corpus against both endpoints, the references, per phase bin; the every-tick capture and its no-loop null | SS (F3) | `sc_live2` cuts (9 cuts, one capture) EXISTS; family 5's `-Gdump` capture + null | `CAPTURE` |
-| 5.11 | F4 — low source frame rate beside the k sweep: a base rendered at the low rate with a display-rate multiple; the `--asw` path; the marker `src_rate_matched` family is corroboration, §06.3 | SS (F4) | the k sweep (§05.4) EXISTS as the floor; the low-rate scene base TO BUILD (the identity's own F4 condition); no FG row | `BUILD` |
-| 5.12 | The provenance readings (family 0: `--no-stasis`, `--mv-sim`): reported as READINGS; an attribution claim would exceed clause (a) and needs Phase 1 re-opened | CA (its bound) | family 0 of the matrix; `B1_SPEED_TEST.md` §4 holds today's readings | `CAPTURE` |
+| 5.3 | The displacement axis on `mixed`: the recorded rows (`tau`) AND the re-scored rows (`coverage`), one run each, with the gate state of each corpus; both fitted laws shown; the identity's clause (a) stands as written until the operator re-opens Phase 1 | CA (displacement) · RU | `B1_SPEED_TEST.md` §2–§3; `REGIME_TEST_MATRIX.md` §9 (re-scored table); SPINE post-freeze note | `DECISION` |
+| 5.4 | The source-rate axis on `mixed`: k = 2 / 4 / 8 / 16 with `blend` per k; the k-path vs speed-path term read against §05.3 at matched displacement and phase (one run, second seed owed) | CA (source rate) · SS (F4 clause) · RU | `B1_FIRST_FG_ROW.md` §3; `B1_SPEED_TEST.md` §3 | `EXISTS` |
+| 5.5 | The asynchronous path: its one row, and its second seed | OB (async path) · RE · RU | `GDUMP_GATE.md` G5 (0.240 px, one run) EXISTS; the DI-3 second run is family 0's `-Gdump` capture | `CAPTURE` |
+| 5.6 | The four built presets inside the boundary that carry no FG row — `translate`, `occlude`, `spin`, `cross`: a row each with its rulers, entering a claim only once measured; their predicted signatures are written in §04.5 before the first capture (the matrix pre-registers none of them) | SS (the built presets) · RU | the presets exist in `scene_zoo.py`; no corpus rendered for them, no signature written, no FG row | `CAPTURE` |
+| 5.7 | F1, fast — extremely fast motion: `speed_extend` ×8 / ×16 on `fast_train` (corpora rendered, gated), read with the gate state at each speed | SS (F1) · RU | family 3 of the matrix; the ×8 / ×16 corpora exist on `C:\PhyriadFG\runs\`; no FG row | `CAPTURE` |
+| 5.8 | F1, erratic — reversing or erratic motion: needs a scene family in the six terms (a closed-form reversing preset); the marker `reverse` class is corroboration, §06.3 | SS (F1) · RU | family 6 of the matrix is a marker family; the scene preset TO BUILD; no FG row | `BUILD` |
+| 5.9 | F2 — thin, repetitive or complex-patterned objects: needs a scene family in the six terms (a thin preset; `period_backdrop`); the marker families `thin_size` / `grating_pan` are corroboration, §06.3 | SS (F2) · RU | family 7 TO BUILD; a thin scene preset TO BUILD; no FG row | `BUILD` |
+| 5.10 | F3 — abrupt scene changes: the cut frames of the looped corpus against both endpoints, the references, per phase bin; the every-tick capture and its no-loop null | SS (F3) · RU | `sc_live2` cuts (9 cuts, one capture) EXISTS; family 5's `-Gdump` capture + null | `CAPTURE` |
+| 5.11 | F4 — low source frame rate beside the k sweep: a base rendered at the low rate with a display-rate multiple; the `--asw` path; the marker `src_rate_matched` family is corroboration, §06.3 | SS (F4) · RU | the k sweep (§05.4) EXISTS as the floor; the low-rate scene base TO BUILD (the identity's own F4 condition); no FG row | `BUILD` |
+| 5.12 | The provenance readings (family 0: `--no-stasis`, `--mv-sim`): reported as READINGS; an attribution claim would exceed clause (a) and needs Phase 1 re-opened | CA (its bound) · RU | family 0 of the matrix; `B1_SPEED_TEST.md` §4 holds today's readings | `CAPTURE` |
 
 ### `body/06_discussion.md` — Discussion
 
@@ -198,7 +201,7 @@ whatever of the KAP needs no testing data. This scaffold needs none: every slot 
   label; leave every `CAPTURE`, `BUILD` and `AFTER` slot as the marker it is.
 - **May not:** add, remove, merge or reorder sections or slots (that is Phase 4, gated by T2 again); touch the identity
   block; state a `CAPTURE` / `BUILD` slot's result before its capture; present the coverage-refitted speed law as the
-  identity's clause (a) — both laws are shown in §05.4 with the operator named, until he re-opens Phase 1.
+  identity's clause (a) — both laws are shown in §05.3 with the operator named, until he re-opens Phase 1.
 - **Fill order:** §01, §02, §03, §04, §07, §09, §10 have every slot `EXISTS`; §05.1, §05.2, §05.4 (`EXISTS`) and §05.3
   (`DECISION`, two-sided), then §06.1, §06.2, §06.4; §00, §08 and the master's F.1, F.2 last.
 
@@ -227,7 +230,23 @@ Nothing was rejected. Auditor 2 considered and cleared §03-before-§04 (the blo
 reason. Because fixes 2–4 change the structure the round-1 verdict was given on, that verdict is void for the corrected
 scaffold (CONDUCT: a gate binds to the exact claim it tested) — hence round 2.
 
-**Round 2 (the corrected scaffold: 11 sections, 53 body slots + 2 front-matter slots).** *Pending — recorded when it runs.*
+**Round 2 (the corrected scaffold: 11 sections, 53 body slots + 2 front-matter slots).** One auditor, `APPROVE WITH WARNINGS`
+— Q1 PASS, Q2 MINOR, Q3 MINOR, Q4 PASS, Q5 PASS (183,552 tokens, 412 s). Verified first-hand by it: 55 slots against the 55
+inventory rows, 0 mismatches on all five fields; per-file counts agree three ways; one H1 per file, slots at H2, nothing
+deeper; one empty marker per slot; the identity block re-hashed to the declared SHA-256 (`INTACT`); every internal
+cross-reference resolves; nine families and no tenth (`static` method-only, `fast_train` inside F1).
+
+| # | warning | first-hand check | disposition |
+|---|---|---|---|
+| 7 | the "May not" rule still said the two speed laws are shown in "§05.4" — the pre-swap number; the slot is 5.3 | true: one line survived round 1's disposition 2 | corrected to §05.3 |
+| 8 | Reliability is guaranteed at every Results slot by construction (decision 6) but Rulers is not, although the identity says "a row without its rulers is not a result"; `RU` was declared by 5.1 only | true: the block's Rulers paragraph; the serves column | decision 6 extended: every row-bearing Results slot carries its rulers by construction and declares `RU` (5.3–5.12; 5.2 reads 5.1's row) |
+
+Both fixes are point edits (a section number; a code in ten `serves` cells and one sentence) that change no section,
+order or slot; applied and re-checked mechanically (slot parity, path resolution, the block's hash), not re-gated —
+the T1 precedent for bounded point-edits. Cleared by the auditor without a flag: §03 before §04 (decision 3); §05's
+order against the block's preset enumeration (decision 4); `CAPTURE` slots whose evidence names a row already on record
+(their text separates what exists from what is owed); the front-matter slots as bold markers, not H2s. **Gate T2 closed:**
+`APPROVE WITH WARNINGS`, every warning dispositioned. Phase 3 is open on the slots the fill order names.
 
 ## Not done
 
