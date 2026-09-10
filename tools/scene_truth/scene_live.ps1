@@ -44,7 +44,8 @@ param(
                            # PowerShell names are case-insensitive, so $FgArgs IS this script's $fgArgs array;
                            # the header's trap bit a second time here (2026-09-10: a duplicated FG line).
   [int]$Jobs = 0,          # scene_report.py --jobs (0 = the scorer's own default, cores - 2)
-  [switch]$DryRun,         # print the command lines it would run, start nothing
+  [switch]$DryRun,         # print the command lines it would run, start nothing (and touch nothing)
+  [switch]$Overwrite,      # replace an existing capture dir of a run marked KEEP (refused otherwise)
   [switch]$Loop,           # loop the sequence. Without it the player CLOSES after the last frame, so the
                            # corpus must outlast 3 s + Seconds or the FG captures nothing (seen: 0 triples
                            # on a 1 s corpus). With it, the FG sees a CUT at every seam; the scorer counts
@@ -64,14 +65,7 @@ if (-not (Test-Path (Join-Path $src 'manifest.txt'))) { throw "no $src\manifest.
 $fps = [double]((Get-Content (Join-Path $src 'manifest.txt') | Where-Object { $_ -like 'fps *' }) -split '\s+')[1]
 $sfx = if ($Tag) { "_" + $Tag } else { "" }
 $qd = Join-Path $Run ("qdump_k{0}{1}" -f $K, $sfx)
-if (Test-Path $qd) { Remove-Item -Recurse -Force $qd }
-New-Item -ItemType Directory -Force $qd | Out-Null
-if ($Gdump) {
-  # The tap creates its own directory (GDUMP_PLAN.md S2 "created by the tap"); just clear anything
-  # stale from a previous run so the adapter never mixes two captures.
-  $gd = Join-Path $Run ("gdump_k{0}{1}" -f $K, $sfx)
-  if (Test-Path $gd) { Remove-Item -Recurse -Force $gd }
-}
+$gd = Join-Path $Run ("gdump_k{0}{1}" -f $K, $sfx)
 $q = { param($s) '"' + $s + '"' }
 
 if ($Gdump) {
@@ -83,8 +77,6 @@ $pargs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
   (& $q (Join-Path $root 'tools\motion_truth\play_frames.ps1')), '-Dir', (& $q $src), '-Fps', $fps,
   '-Title', (& $q $Title), '-MaxFrames', 0)
 if (-not $Loop) { $pargs += '-NoLoop' }
-$player = Start-Process powershell -PassThru -ArgumentList $pargs
-Start-Sleep -Seconds 3
 # The FG's own stdout is the measurement's provenance (present / capture rates, the real+generated
 # tally). It is kept next to the corpus as fg_k<K>.log; the stepper reads it by default.
 $fglog = Join-Path $Run ("fg_k{0}{1}.log" -f $K, $sfx)
@@ -103,6 +95,23 @@ if ($DryRun) {
   Write-Host ('[dry-run] score : python scene_report.py --run ' + $Run + ' --k ' + $K + ' --arm truth --arm nearest --arm oracle2 --arm ' + ('fg_k{0}{1}' -f $K, $sfx) + ' ' + ($jobsArg -join ' '))
   exit 0
 }
+# NOTHING ABOVE THIS LINE TOUCHES THE DISK OR STARTS A PROCESS. On 2026-09-10 a -DryRun of this script deleted the raw qdump_k4 of the KEEP
+# run sc_live, because the Remove-Item below used to sit above the dry-run exit: a dry run that mutates is the
+# instrument lying about itself (LEARNING_LOG P-028). A run marked KEEP (scene_runs.py keep) refuses to overwrite an
+# existing capture directory unless -Overwrite is passed; a fresh tag never collides.
+$keep = Test-Path (Join-Path $Run 'KEEP')
+foreach ($dir in @($qd) + $(if ($Gdump) { @($gd) } else { @() })) {
+  if (Test-Path $dir) {
+    if ($keep -and -not $Overwrite) { throw "$dir exists and $Run is marked KEEP - use a new -Tag, or -Overwrite to replace it" }
+    Remove-Item -Recurse -Force $dir
+  }
+}
+New-Item -ItemType Directory -Force $qd | Out-Null
+# the tap creates its own directory (GDUMP_PLAN.md S2 "created by the tap"); $gd stays absent until the FG makes it
+# the player starts only here: after the dry-run exit and after the KEEP guard (2026-09-10: seven "RA Motion Zoo"
+# windows were left looping on the operator's screen by dry-runs that had already started it -- P-028)
+$player = Start-Process powershell -PassThru -ArgumentList $pargs
+Start-Sleep -Seconds 3
 $proc = Start-Process $FgExe -PassThru -Wait -NoNewWindow -RedirectStandardOutput $fglog `
   -RedirectStandardError (Join-Path $Run ("fg_k{0}{1}.err" -f $K, $sfx)) -ArgumentList $fgArgs
 Get-Content $fglog -Tail 3 | ForEach-Object { Write-Host ('[fg] ' + $_) }
