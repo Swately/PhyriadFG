@@ -1,6 +1,6 @@
 # SCAFFOLD.md — the empty machine of the metric paper (KAP Phase 2)
 
-Status: **`SCAFFOLD 2026-09-10 — T2 APPROVE WITH WARNINGS (two rounds, every warning dispositioned; record below)`** — KAP
+Status: **`SCAFFOLD 2026-09-10 — T2 APPROVE WITH WARNINGS (two rounds, every warning dispositioned; record below) · PHASE 3: 42 of 55 slots filled, the data-free ones (record below)`** — KAP
 Phase 2 output (`F:\Phyriad\protocols\analysis\KNOWLEDGE_ANALYSIS_PROTOCOL.md` §3.2: "lay out the structure (sections, order,
 slots) without content"). Input: the frozen identity `../../research/FG_METRIC_MODEL_SPINE.md`, block SHA-256 `427ac7489c5fdd7f15a34907e20313597256a0f52d0361824d193c29aa3314bf` (verified `INTACT` when
 this scaffold was written). This document is the paper's **master plan**: the section order is its structural commitment,
@@ -248,9 +248,43 @@ order against the block's preset enumeration (decision 4); `CAPTURE` slots whose
 (their text separates what exists from what is owed); the front-matter slots as bold markers, not H2s. **Gate T2 closed:**
 `APPROVE WITH WARNINGS`, every warning dispositioned. Phase 3 is open on the slots the fill order names.
 
+## Phase 3 record (content pass, 2026-09-10 — the slots that need no testing data)
+
+*From this section on the paper directory is edited by hand; the Phase 2 generator (`paper_scaffold.py`, the session's
+scratchpad) is no longer run, because it would overwrite the drafted bodies.*
+
+**Filled: 42 of the 55 slots — every `EXISTS` slot and the `DECISION` slot in its two-sided form.** Empty, by the
+scaffold's own rule: §05.5–05.12 (`CAPTURE` / `BUILD`), §06.3 (`CAPTURE`), §00, §08, F.1, F.2 (`AFTER`). Nine drafters,
+one per section, each in a clean context with one brief (its file, its slots, its permitted sources and nothing else,
+eight binding rules: every number anchored to its source, reliability as the source states it, deflationary register,
+the identity binding, necessity-only) — Opus for §01, §03, §05, §06, §07; Sonnet for §02, §04, §09, §10 (the model chosen
+per task, R5). Sizes: §01 998 words, §02 1,369, §03 2,071, §04 1,213, §05 1,690, §06 1,100, §07 522, §09 1,872, §10 621
+— 11,456 words; 1,497,313 subordinate tokens in all (120,598–273,417 per drafter; 390–1,404 s each).
+
+**Verification (a drafter's output is a claim).** Mechanical, every section: headings and slot metadata byte-identical
+to the committed stubs; only the brief's slots filled; every number in the filled text present in at least one
+permitted source of that section (1,230 numbers checked; the only misses were code line numbers, each then read);
+inflation lexicon absent. First-hand, every section: the quoted sentences and tables re-read against
+`FG_METRIC_MODEL_PRIOR_ART.md` §1/§2/§4/§7 (and the [V] level of each cited row), `B1_FIRST_FG_ROW.md` §1–§5,
+`B1_SPEED_TEST.md` §2–§6, `GDUMP_GATE.md` header/G0/G5, `M1_LOWPHASE_FINDING.md` line 13, `M1_SRC_RATE.md` lines 3/29,
+`MOTION_TRUTH_BASELINE.md`, `REGIME_TEST_MATRIX.md` §1–§4/§8/§9, `LEARNING_LOG.md` P-026/P-029, `QOL_FINDINGS.md`
+133–145, the 37 `scene_zoo.py` / `scene_align.py` / `scene_report.py` lines cited by number, the ten `tau` and four
+`coverage` gate logs, `sc_live2\cuts_k4.md`, the 14 per-file commit hashes of §09, and the rig (`nvidia-smi -L`,
+`Get-CimInstance`). Supervisor edits after the reads: RA.3's scoring command quoted from `scene_report.py:769-782`
+(the drafter had named the viewers); §01's per-number anchors consolidated; M2.5 given the matrix→slot map and the note
+that the four built presets of §05.6 have no pre-registered signature yet; M1.8 given the `ambig` sentence its slot
+names. Commits `fec7a43`, `8651f67`, `5e358ba`, `927cc61` and the one carrying §03.
+
+**What Phase 3 leaves and what follows.** The 13 empty slots wait on the operator: eight Results slots on his screen
+(§05.5, §05.6, §05.7, §05.10, §05.12) or on scene families that do not exist (§05.8, §05.9, §05.11), §06.3 on the marker
+captures, and the four `AFTER` slots on the filled Results. Phase 4 (the structural pass over real content, T2 again),
+Phase 5 (T3, the hostile reviewer) and Phase 6 (corrections) are not run: a structural pass cannot judge whether the
+structure "carries the demonstrative load" while eight Results slots are empty. T3 on the filled sections alone is
+available on his word. No LaTeX master, no bibliography file, no compile.
+
 ## Not done
 
-- No content was written into any slot (Phase 2 writes none). No LaTeX master, no bibliography file, no compile.
-- The identity block was not touched (hash verified before writing).
+- Phase 2 wrote no content; Phase 3 wrote content only into the slots listed above.
+- The identity block was not touched (hash verified before writing, and again by the round-2 auditor).
 
 *Made with my soul - Swately <3*

@@ -1,6 +1,8 @@
 # PAPER.md — master of the metric paper (the include order)
 
-Status: **`SCAFFOLD 2026-09-10`** (KAP Phase 2; see `SCAFFOLD.md`). Identity: `../../research/FG_METRIC_MODEL_SPINE.md`, block
+Status: **`PHASE 3 IN PROGRESS 2026-09-10`** — T2 closed (`APPROVE WITH WARNINGS`, two rounds); 42 of 55 slots filled, the
+ones that need no testing data; the 13 others wait on the operator's captures, builds and decisions or are written last
+(`SCAFFOLD.md`, the Phase 3 record). Identity: `../../research/FG_METRIC_MODEL_SPINE.md`, block
 SHA-256 `427ac7489c5fdd7f15a34907e20313597256a0f52d0361824d193c29aa3314bf`.
 
 **F.1 — Title: a noun phrase drawn from the thesis sentence, claiming nothing the identity does not.** *serves:* TH · *evidence:* written from the filled body · *status:* `AFTER`
