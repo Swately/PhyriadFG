@@ -40,6 +40,18 @@ Reliability of the metric itself, as distinct from the reliability of what it me
 
 *serves:* CB · *evidence:* `FG_METRIC_MODEL_PRIOR_ART.md` §4 · *status:* `EXISTS`
 
+> **CORRECTION, 2026-09-10 (`../../../LEARNING_LOG.md` P-032).** Six of the seven rows below are refuted, by a
+> re-sweep of two fields this table never searched. **N1, N2** — real-time graphics: *Amulet* (arXiv 2608.10423),
+> *Mob-FGSR* (SIGGRAPH 2024), *Image-Based Bidirectional Scene Reprojection* (SIGGRAPH Asia 2011), *ExtraNet*
+> (SIGGRAPH Asia 2021), *GFFE* (SIGGRAPH Asia 2024). **N3** — *The FID Lottery* (arXiv 2606.20536, 2026), on the
+> generative half only. **N4** — Plack et al., *Frame Interpolation Transformer and Uncertainty Guidance*, CVPR
+> 2023, which estimates "the expected error together with the interpolated frame": that is candidate I-B, already
+> published. **N5** — US 6,064,393 (Lengyel, Snyder, Kajiya, 1997) defines a warped frame's geometric error in
+> pixels. **N6** — Alabau-Bosque et al. (arXiv 2407.17927, 2024) gives per-metric translation-invisibility
+> thresholds; §7 of the dossier had named this very paper as the one most likely to change N6, and it was not read.
+> **N7 stands.** The table is kept as written, with this correction above it, until the operator decides whether
+> Phase 1 re-opens (KAP §7).
+
 All seven searches below were run with web access on 2026-09-09 and are time-boxed, not exhaustive (`FG_METRIC_MODEL_PRIOR_ART.md` §7); each row is reported as found none within its own search box, not as a proof of absence.
 
 | id | absence | search box | nearest neighbour found |

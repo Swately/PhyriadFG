@@ -121,7 +121,26 @@ investigacion, no? pausemoslo de momento y vamos con el testing de los escenario
 above stays frozen and byte-intact meanwhile; the scenario testing runs under
 `../planning/REGIME_TEST_MATRIX.md`.**
 
-**Post-freeze finding (2026-09-10, recorded beside the block, not in it — KAP §7).** The scorer's gate,
+**Post-freeze finding 2 (2026-09-10, recorded beside the block, not in it — KAP §7). Clause (b) is refuted in
+its first two parts.** The Phase 0 sweep that produced the bounded absences never entered the field the object
+under test belongs to: its five sweeps are video-frame-interpolation and image-quality literature, and its 41
+sources contain none from real-time graphics, where the DLSS-FG / FSR-FG category is published. A two-angle
+adversarial sweep on 2026-09-10, every claimed paper re-opened by an independent confirmer and the load-bearing
+one re-fetched by the supervisor, refuted six of the seven absences (`../LEARNING_LOG.md` P-032). Against clause
+(b) specifically: **"no evaluation of an interpolation at the generator's own phase"** is false — *Amulet*
+(arXiv 2608.10423, 11 Aug 2026) scores DLSS Frame Generation 4.5 running live in the Falcor engine against
+"ground-truth images created with standard deferred rendering for every frame" (§7.4, quoted first-hand), and
+*Mob-FGSR* (SIGGRAPH 2024) generates and references frames "at desired times" between two rendered frames;
+**"no four-way visibility taxonomy"** is false — *Image-Based Bidirectional Scene Reprojection* (SIGGRAPH Asia
+2011) §4 partitions pixels into visible in both / only one / neither. The third part, **no run-to-run
+reliability of a metric**, survives for a fidelity metric over corpus randomness (a generative-metric analogue
+now exists: *The FID Lottery*, arXiv 2606.20536). What no found paper does is the combination this identity
+actually specifies: named geometric terms per object, the disocclusion bucket scored apart, a conjunctive
+verdict, a five-arm gate seen red first, and a reliability figure on every number — every graphics paper found
+evaluates with aggregate PSNR / SSIM / LPIPS / FLIP. Whether Phase 1 is re-opened to restate clause (b), and how
+far the boundary narrows, is the operator's deliberate act (KAP §7); the block is untouched and byte-intact.
+
+**Post-freeze finding 1 (2026-09-10, recorded beside the block, not in it — KAP §7).** The scorer's gate,
 run tonight on every corpus (it had only ever run at ×1), fails T2/T3 at ×2 and ×4 under the operator
 that produced the recorded rows; with the corrected operator (`--silhouette coverage`, the
 occlusion-aware window) T2 is exact at every speed and the FG's sphere error re-scores to 0.684 px at

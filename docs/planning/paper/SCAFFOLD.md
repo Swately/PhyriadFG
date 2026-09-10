@@ -282,6 +282,24 @@ Phase 5 (T3, the hostile reviewer) and Phase 6 (corrections) are not run: a stru
 structure "carries the demonstrative load" while eight Results slots are empty. T3 on the filled sections alone is
 available on his word. No LaTeX master, no bibliography file, no compile.
 
+## Post-draft corrections (2026-09-10, same day, after the operator asked whether the work is publishable)
+
+Two adversarial passes were run on the drafted sections — one on the work's publishability (four independent
+critical lenses plus two cross-examiners), one on its prior-art claims (two search angles, every claimed paper
+re-opened by an independent confirmer, the load-bearing one re-fetched by the supervisor). Both found defects the
+T2 gate and three first-hand reads had passed over. Each is corrected in place, above the text it corrects:
+
+| # | defect | where | disposition |
+|---|---|---|---|
+| C1 | The prior-art sweep never entered real-time graphics, the field the object under test is published in; six of its seven bounded absences are refuted, N1 and N2 among them | §01.1, §02.6, and the identity's clause (b) | correction blocks in §01.1 and §02.6; a second post-freeze note beside the frozen block; `LEARNING_LOG.md` P-032. **Re-opening Phase 1 is the operator's** (KAP §7) |
+| C2 | The T3 gate series "0.06 / 0.11 / 0.26 / 0.57 px at ×1/×2/×4/×8" spliced `mixed` with `fast_train`, and its high-speed points were verdicts on n = 4 and n = 2 | §03.6, §05.3, `REGIME_TEST_MATRIX.md` §9 | the gate was run on the eight corpora that lacked it (CPU, no screen); all three carry the twelve-corpus table with an explicit `n` column; `LEARNING_LOG.md` P-031 |
+| C3 | The motivation for a decomposition — that a scalar cannot resolve this band — is on the record as *measured*, and unread: `l2_det` (RMS on determinable pixels, `scene_report.py:23`) ranks `blend` above `nearest` at k = 4 (0.0054 vs 0.0062) while the conjunctive verdict rejects `blend` and accepts `nearest` on position | §03.3, §07.1 | not yet written into the slots; it strengthens them and is owed. The inversion is in `B1_SWEEP_seed7.md`, both seeds |
+
+What did NOT fall under either attack, and is what the work still holds: the six-term decomposition with the
+disocclusion bucket scored apart, the conjunctive per-object verdict, the five-arm gate seen red first, and a
+run-to-run figure beside every number. No paper found does that combination; every real-time-graphics paper found
+evaluates with aggregate PSNR / SSIM / LPIPS / FLIP.
+
 ## Not done
 
 - Phase 2 wrote no content; Phase 3 wrote content only into the slots listed above.

@@ -123,23 +123,39 @@ to another object in the mid or either real, minus class 0 (`scene_report.py:218
 whose silhouette touches the image border carries no terms in that frame: at `--speed 8` the `mixed`
 sphere is partially outside the view in 24 of 240 frames (`scene_report.py:205`).
 
-The gate "had only ever been run on the ×1 corpus" (`REGIME_TEST_MATRIX.md` §9). Its state per corpus,
-one run each, from the logs under `C:\PhyriadFG\runs\_render_logs\`:
+The gate "had only ever been run on the ×1 corpus" (`REGIME_TEST_MATRIX.md` §9). It has since been run on
+every scene corpus under both operators, one run each, `--jobs 30`; the state below is read from the logs
+under `C:\PhyriadFG\runs\_render_logs\` (`gate_<corpus>.log` = `tau`, `gate_cov3_<corpus>.log` = `coverage`).
+The `n` column is the count T3 and T5 actually read: the (frame, object) pairs at φ = ½ that no other object
+reaches into (`scene_report.py:711`).
 
-| corpus | `gate_*.log` (`tau`) | `gate_cov3_*.log` (`coverage`) |
-|---|---|---|
-| `sc_live` ×1 | PASSED T1..T6 | PASSED T1..T6 |
-| `sc_v2` ×2 | FAILED T2, T3 | PASSED T1..T6 |
-| `sc_v4` ×4 | FAILED T2, T3 | FAILED T3 |
-| `sc_v8_s7` / `_s11` | FAILED T2, T3, T4 / FAILED T2, T3, T4, T5 | — |
-| `sc_v16_s7` | FAILED T2, T3, T4 | — |
-| `sc_train8_s7` / `_s11` | FAILED T2, T3, T4 (both) | FAILED T3 / — |
-| `sc_train16_s7` / `_s11` | FAILED T2, T3, T4, T5 / FAILED T2, T3, T4 | — |
+| corpus | scene | speed | seed | `tau` | `coverage` | T2 p90 resid px | T3 blend pos px | n (T3) |
+|---|---|---|---|---|---|---|---|---|
+| `sc_v05` | `mixed` | ×0.5 | 7 | — | FAILED T2, T3 (its own floors) | 0.015 | 0.053 | 59 / 177 |
+| `sc_live` | `mixed` | ×1 | 7 | PASSED T1..T6 | PASSED T1..T6 | 0.015 | 0.060 | 42 / 177 |
+| `sc_live2` | `mixed` | ×1 | 11 | — | PASSED T1..T6 | 0.016 | 0.062 | 42 / 177 |
+| `sc_v2` | `mixed` | ×2 | 7 | FAILED T2, T3 | PASSED T1..T6 | 0.014 | 0.109 | 21 / 177 |
+| `sc_v4` | `mixed` | ×4 | 7 | FAILED T2, T3 | FAILED T3 | 0.016 | 0.263 | 10 / 156 |
+| `sc_v8_s7` | `mixed` | ×8 | 7 | FAILED T2, T3, T4 | PASSED T1..T6 | 0.016 | 0.054 | **4** / 137 |
+| `sc_v8_s11` | `mixed` | ×8 | 11 | FAILED T2, T3, T4, T5 | PASSED T1..T6 | 0.018 | 0.057 | **4** / 137 |
+| `sc_v16_s7` | `mixed` | ×16 | 7 | FAILED T2, T3, T4 | FAILED T3 | 0.022 | 0.698 | **2** / 127 |
+| `sc_train8_s7` | `fast_train` | ×8 | 7 | FAILED T2, T3, T4 | FAILED T3 | 0.023 | 0.568 | 35 / 116 |
+| `sc_train8_s11` | `fast_train` | ×8 | 11 | FAILED T2, T3, T4 | FAILED T3 | 0.023 | 0.568 | 35 / 116 |
+| `sc_train16_s7` | `fast_train` | ×16 | 7 | FAILED T2, T3, T4, T5 | FAILED T3 | 0.027 | 1.105 | 24 / 113 |
+| `sc_train16_s11` | `fast_train` | ×16 | 11 | FAILED T2, T3, T4 | FAILED T3 | 0.037 | 1.100 | 24 / 113 |
 
-(— = no `gate_cov3` log.) Under `coverage` the T2 residual collapses (p90 0.015 / 0.014 / 0.016 /
-0.023 px at ×1 / ×2 / ×4 / `sc_train8_s7`, `gate_cov3_*.log`) and T3 is what stays open: blend pos
-0.060 / 0.109 / 0.263 / 0.568 px (same logs) against a 0.15 px bar (`scene_report.py:720`), with the
-mechanism offered for it labelled an inference. **"The bar was NOT relaxed"**
+Three readings, and the third corrects an earlier one. **T2 passes on every corpus under `coverage`**, its p90
+residual degrading only from 0.014 to 0.037 px across a 32× range of displacement: the exact-phase alignment
+and the silhouette operator hold everywhere the corpora go. **T3 stays open, and on the one scene family that
+can measure it the failure reproduces across seeds** — `fast_train`, built so that a sphere is always fully
+inside the view, gives 0.568 / 0.568 px at ×8 and 1.105 / 1.100 px at ×16 on two independent corpus seeds,
+against a 0.15 px bar (`scene_report.py:720`), with the mechanism offered for it labelled an inference.
+**On `mixed`, T3 above ×4 is not a measurement:** the overlap-free sample collapses from 42 pairs at ×1 to 4
+at ×8 and 2 at ×16 as the sphere leaves the view and the remaining objects overlap, so `mixed`'s ×8 pass
+(0.054 px on 4 pairs) and ×16 failure (0.698 px on 2) decide nothing either way. An earlier statement of this
+project's own record read the series 0.060 / 0.109 / 0.263 / 0.568 px as ×1 / ×2 / ×4 / ×8 of one progression;
+the first three are `mixed` and the fourth is `fast_train`, so that series was a splice across two scene
+families and is withdrawn here (`LEARNING_LOG.md` P-031). **"The bar was NOT relaxed"**
 (`REGIME_TEST_MATRIX.md` §9). The rule that follows: "a gate binds to the corpus it ran on … Every corpus
 that carries a row runs its own gate first, and the gate's residual at the corpus's displacement IS the
 floor under that row" — and under `tau` at ×2 and ×4 that floor "is of the same order as the FG's measured

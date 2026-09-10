@@ -200,6 +200,71 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-032 · The prior-art sweep never entered the field the object lives in, and six of its seven absences fall
+- **class:** premise refuted · **date:** 2026-09-10 · **recurrences:** 0 · **status:** recorded; re-opening Phase 1 is the operator's
+- **evidence:** the object under test is a REAL-TIME frame generator in a present pipeline — the DLSS-FG / FSR-FG
+  category. `FG_METRIC_MODEL_PRIOR_ART.md`'s five sweeps (Q1 distribution metrics, Q2 perceptual metrics, Q3
+  synthetic truth, Q4 reference-free prediction, Q5 decomposition) are all inside the video-frame-interpolation and
+  image-quality literature. A grep of the dossier for `extranet|dlss|fsr|g-buffer|extrapolat|siggraph|i3d|hpg`
+  returns three hits, none of them a source row: **41 sources, zero from real-time graphics.** §7 declares the
+  searches time-boxed but never declares the domain boundary. A two-angle adversarial sweep (2026-09-10, ten
+  agents, every claimed paper re-opened by a separate confirmer) found the field and refuted six of the seven
+  absences:
+  - **N1** (no evaluation at the generator's own phase against a 3-D truth) — refuted. *Amulet*, arXiv 2608.10423
+    (11 Aug 2026), §7.4 verbatim, re-fetched first-hand by the supervisor: "We compare the rendering times and the
+    visual quality of extrapolated frames using ground-truth images created with standard deferred rendering for
+    every frame", with "Amulet and DLSS Frame Generation run live in the Falcor engine" and a per-n quality curve
+    (Fig. 9), metrics PSNR / SSIM / FLIP / LPIPS. Peer-reviewed precedent: *Mob-FGSR* (SIGGRAPH 2024) generates and
+    references frames "at desired times" between two rendered frames; *Image-Based Bidirectional Scene Reprojection*
+    (SIGGRAPH Asia 2011) re-renders its reference at t+0.25 / 0.5 / 0.75.
+  - **N2** (the four-way visibility taxonomy) — refuted by Yang et al. 2011 §4 (visible in both / only one / neither).
+  - **N3** (a metric reporting its own run-to-run reliability) — refuted on the generative half by *The FID Lottery*,
+    arXiv 2606.20536 (June 2026). Not found for a fidelity metric over corpus randomness: that half stands.
+  - **N4** (self-diagnosis from the interpolator's own decisions) — refuted by Plack et al., *Frame Interpolation
+    Transformer and Uncertainty Guidance*, CVPR 2023: the network estimates "the expected error together with the
+    interpolated frame" and the estimate steers partial re-rendering. This is candidate I-B, already published.
+  - **N5** (a named position-error column in px) — refuted by US 6,064,393 (Lengyel, Snyder, Kajiya, 1997): the
+    geometric error of a warped frame in pixels, plus the NIST rendering-metrology report.
+  - **N6** (a pixel-scale sensitivity floor for the perceptual family) — refuted by Alabau-Bosque et al.,
+    arXiv 2407.17927 (2024), which gives translation-invisibility thresholds per metric. **The dossier's own §7
+    named this paper as "the one most likely to change N6 if read" and it was not read.**
+  - **N7** (KID/CMMD in a VFI paper) — stands.
+- **lesson:** an absence is bounded by its search box, and a search box is bounded by the FIELD it was drawn in. The
+  question arrived in the operator's words as "a model of the FID / CMMD / IS / LPIPS type", and that framing chose
+  the literature for five sweeps, three gates, a frozen identity and a drafted paper — while the artifact under test
+  had never been a video-interpolation problem. Nobody re-asked "which field publishes about THIS object". A frame
+  that arrives with the question is the hardest to see (METACOGNITION §: an inherited frame organising the work).
+  Second lesson, cheaper: when a dossier names a specific unread source as the one most likely to overturn a
+  finding, that source is not a footnote, it is the finding's open flank.
+- **corrective:** recorded beside the frozen block, not in it (KAP §7: re-opening Phase 1 is the operator's
+  deliberate act). Clause (b) of the identity — "the swept literature holds no evaluation of an interpolation at the
+  generator's own phase against an analytic 3-D truth, no four-way visibility taxonomy, and no run-to-run
+  reliability of a metric" — is refuted in its first two parts and survives only in the third, and only for a
+  fidelity metric. The paper's §01.1, §02.6 and §07 carry a dated correction block naming these papers. What the
+  attack did NOT refute, and what the work therefore still holds: the six-term decomposition with the disocclusion
+  bucket scored apart, the conjunctive per-object verdict, the five-arm gate seen red first, and a run-to-run
+  figure on every number — no paper found does that combination, and every graphics paper found evaluates with
+  aggregate PSNR / SSIM / LPIPS / FLIP.
+
+### P-031 · A gate series printed as one speed progression was spliced across two scene families, and two of its points were verdicts on n = 2 and n = 4
+- **class:** correction to the record · **date:** 2026-09-10 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `REGIME_TEST_MATRIX.md` §9 stated the T3 residual "grows with displacement — 0.06 (×1), 0.11 (×2),
+  0.26 (×4), 0.57 px (×8)". The first three are `mixed` (`sc_live`, `sc_v2`, `sc_v4`); the fourth is `fast_train`
+  (`sc_train8_s7`), a different scene family built four hours earlier. The coverage gate had never been run on
+  `mixed` at ×8. Run tonight on the eight corpora that lacked it: `sc_v8_s7` / `_s11` give T3 blend pos 0.054 /
+  0.057 px and PASS, not 0.57 — because T3 reads only the (frame, object) pairs no other object reaches into
+  (`scene_report.py:711`), and on `mixed` that sample collapses 42 → 21 → 10 → **4** → **2** pairs as speed rises
+  and the sphere leaves the view. The ×8 pass rests on 4 pairs and the ×16 failure on 2.
+- **lesson:** a series is a claim about ONE thing varying. Printing four numbers with a speed label made a
+  cross-corpus splice look like a law, and it survived a T2 structural gate and three first-hand reads — mine
+  included — because each number was individually true and correctly sourced. Truth per cell does not make a row.
+  And a gate verdict carries its n: PASS on 4 pairs is not a pass, it is an absence of measurement.
+- **corrective:** the twelve-corpus table with an explicit `n (T3)` column is now in the paper's §03.6, and §05.3
+  carries the `mixed` half of it with the collapse stated; `REGIME_TEST_MATRIX.md` §9 is corrected. The finding that
+  survives, and it is stronger than the splice was: on `fast_train`, built so that a sphere is always fully inside
+  the view (35 and 24 overlap-free pairs), T3 fails and **reproduces across two seeds** — 0.568 / 0.568 px at ×8 and
+  1.105 / 1.100 px at ×16. T2 passes on all twelve corpora, p90 0.014–0.037 px.
+
 ### P-030 · The matrix's marker families were planned as the regime tests; under the frozen identity a marker row cannot be a verdict row
 - **class:** premise refuted · **date:** 2026-09-10 · **recurrences:** 0 · **status:** recorded, the build is the operator's
 - **evidence:** `REGIME_TEST_MATRIX.md` §2 assigns the regimes "thin objects" (family 1), "repetitive patterns"

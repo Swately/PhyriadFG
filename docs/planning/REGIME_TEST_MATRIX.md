@@ -337,8 +337,14 @@ exact-flow oracle 0.9–1.3 px of shape). Three causes were found and fixed in t
 | other objects excluded from the window in the mid AND both reals (`ids_ab`) | `fast_train`'s spheres pass in front of the spinning box; `mixed` at ×2 / ×4 reaches it; the near real shows the box's pixels where the mid had the sphere (seen in `t2_view.png`) | only the occluder quad changes (−7 px of area; the oracle's spurious 0.0255 px on it → 0) | **T2 passes at every speed: p90 residual 0.014–0.023 px at ×2 / ×4 / ×8** |
 | `overlap_px` per object; T3 / T5 read the overlap-free pairs | the blend's two ghosts and the blurred disc are clipped asymmetrically where objects overlap | — (gate only) | T5 passes everywhere; T3 passes at ×1, ×2 |
 
-Final state, `--silhouette coverage`: ×1 and ×2 **PASS T1..T6**; ×4 and ×8 pass all but **T3**, whose residual on overlap-free
-pairs grows with displacement — 0.06 (×1), 0.11 (×2), 0.26 (×4), 0.57 px (×8) against a 0.15 px bar. Mechanism (inference,
+Final state, `--silhouette coverage` (**corrected 2026-09-10 after the gate was run on the eight corpora that lacked
+it — the series printed here before was spliced across two scene families and two of its points were verdicts on n = 2 and
+n = 4; P-031**): **T2 passes on all twelve scene corpora**, p90 residual 0.014–0.037 px across a 32× range of displacement.
+**T3 stays open, and the family that can measure it is `fast_train`**, built so a sphere is always fully inside the view:
+blend pos 0.568 / 0.568 px at ×8 (35 overlap-free pairs each) and 1.105 / 1.100 px at ×16 (24 each) on two independent seeds,
+against a 0.15 px bar. On `mixed` the sample T3 reads collapses with speed — 42 (×1), 21 (×2), 10 (×4), 4 (×8), 2 (×16) pairs
+— so its blend pos 0.060 / 0.109 / 0.263 / 0.054 / 0.698 px decides T3 only up to ×4; the ×8 pass and the ×16 failure rest on
+4 and 2 pairs and decide nothing. The full twelve-corpus table with its `n` column is `paper/body/03_instrument.md` M1.6. Mechanism (inference,
 consistent with every number): the blend's two ghosts expose opposite limbs of an obliquely lit sphere, and the union loses
 more of the dark limb as they separate; a candidate that sits near the truth shares its shading and is not biased that way,
 the blend ruler is. **The bar was NOT relaxed.** ×0.5 "fails" T2 / T3 by the gate's own floors (mean travel 0.132 < 0.2; the

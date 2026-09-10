@@ -6,6 +6,19 @@
 
 *serves:* CB · *evidence:* `docs/research/FG_METRIC_MODEL_PRIOR_ART.md` §4 · *status:* `EXISTS`
 
+> **CORRECTION, 2026-09-10 (after this section was drafted; `../../../LEARNING_LOG.md` P-032).** The searches behind
+> this table were bounded to the video-frame-interpolation and image-quality literature and never entered real-time
+> graphics, where the object under test is published. An adversarial re-sweep refuted **N1** — *Amulet*
+> (arXiv 2608.10423, 11 Aug 2026) scores DLSS Frame Generation running live in the Falcor engine against
+> "ground-truth images created with standard deferred rendering for every frame", and *Mob-FGSR* (SIGGRAPH 2024)
+> references frames "at desired times" between two rendered frames — and **N2**, by *Image-Based Bidirectional Scene
+> Reprojection* (SIGGRAPH Asia 2011) §4. **N3 survives only in half**: no run-to-run reliability was found for a
+> fidelity metric, while *The FID Lottery* (arXiv 2606.20536, 2026) supplies the generative-metric analogue. The gap
+> this section may claim is therefore not the phase-exact protocol, which is established practice in graphics, but
+> the instrument: named geometric terms per object, the disocclusion bucket scored apart, a conjunctive verdict, a
+> gate seen red first, and a reliability figure on every number. Every graphics paper found evaluates with aggregate
+> PSNR / SSIM / LPIPS / FLIP. This slot is rewritten when the operator decides whether Phase 1 re-opens (KAP §7).
+
 Claim (b) is an absence, worth what the search behind it is worth. The searches are
 recorded as "time-boxed searches, not proofs of absence" (`FG_METRIC_MODEL_PRIOR_ART.md` §4, the source of
 every cell below) and are carried at that strength: each says a bounded search did not find the work, not

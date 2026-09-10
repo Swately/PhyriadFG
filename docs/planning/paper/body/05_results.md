@@ -99,16 +99,22 @@ All numbers: `REGIME_TEST_MATRIX.md` §9. Re-fitted over the four `coverage` row
 
 The scorer's gate, which binds to the corpus it ran on, under both operators:
 
-| corpus | under the recorded `tau` operator | under `--silhouette coverage` |
-|---|---|---|
-| ×0.5 | not stated | "fails" T2 / T3 by the gate's own floors (mean travel 0.132 against 0.2); T2 residual 0.015 px |
-| ×1 | `GATE PASSED (T1..T6)` | PASS T1..T6; T3 residual 0.06 px |
-| ×2 | FAILED T2, T3 (nearest residual p90 0.387 px, blend pos 0.464) | PASS T1..T6; T3 residual 0.11 px |
-| ×4 | FAILED T2, T3 (0.771 / 1.056) | all but T3; T3 residual 0.26 px against a 0.15 px bar |
-| ×8 | FAILED T2, T3, T4 | all but T3; T3 residual 0.57 px |
-| ×16 | FAILED T2, T3, T4 | not stated |
+| corpus (`mixed`) | under the recorded `tau` operator | under `--silhouette coverage` | T3 blend pos px | n (T3) |
+|---|---|---|---|---|
+| ×0.5 `sc_v05` | not stated | "fails" T2 / T3 by the gate's own floors (mean travel 0.132 against 0.2); T2 residual 0.015 px | 0.053 | 59 / 177 |
+| ×1 `sc_live` | `GATE PASSED (T1..T6)` | PASS T1..T6 | 0.060 | 42 / 177 |
+| ×2 `sc_v2` | FAILED T2, T3 (nearest residual p90 0.387 px, blend pos 0.464) | PASS T1..T6 | 0.109 | 21 / 177 |
+| ×4 `sc_v4` | FAILED T2, T3 (0.771 / 1.056) | all but T3, against a 0.15 px bar | 0.263 | 10 / 156 |
+| ×8 `sc_v8_s7` | FAILED T2, T3, T4 | PASS T1..T6 — but on 4 pairs, so it decides nothing | 0.054 | 4 / 137 |
+| ×16 `sc_v16_s7` | FAILED T2, T3, T4 | FAILED T3 — on 2 pairs, so it decides nothing | 0.698 | 2 / 127 |
 
-All numbers: `REGIME_TEST_MATRIX.md` §9, which also states "The bar was NOT relaxed."
+`tau` column and the ×0.5–×4 `coverage` rows: `REGIME_TEST_MATRIX.md` §9, which also states "The bar was NOT
+relaxed." The ×8 and ×16 rows and the `n` column: the `gate_cov3_*.log` files, run 2026-09-10 (§03.6 carries the
+full twelve-corpus table). **The `mixed` corpora cannot decide T3 above ×4**: the overlap-free sample T3 reads
+falls from 42 pairs to 4 and then 2 as the sphere leaves the view. The family that can decide it is `fast_train`,
+where T3 fails and reproduces across two seeds — 0.568 / 0.568 px at ×8 and 1.105 / 1.100 px at ×16 (§03.6). So
+the displacement rows above sit under a measured instrument floor at ×1 and ×2, an exceeded one at ×4, and an
+unmeasurable one at ×8 and beyond on this scene family.
 
 The rulers say which operator to weigh: under `coverage` the exact-flow oracle scores 0.01 px against 0.13
 under `tau` while `nearest` is unchanged; the record reads `tau` as having "under-reported the FG's error at
