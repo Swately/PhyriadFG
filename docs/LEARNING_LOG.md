@@ -200,6 +200,25 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-025 · Two [V1] rows contradicted each other, and a synthesis sentence was refuted by the source it cited
+- **class:** refuted-premise · **date:** 2026-09-09 · **recurrences:** 0 · **status:** corrected
+- **evidence:** (1) `docs/research/FG_VFI_MEASUREMENT_SOTA.md` (§3 and source row 5) gives FloLPIPS the venue
+  "ICIP 2022" tagged [V1]; `FG_VFI_PRIOR_ART.md` (F3, §7) gives "PCS 2022", also [V1]. The KAP sweep of 2026-09-09
+  reproduced the wrong half with an invented justification ("per IEEE Xplore listing") and the VISTA T0 gate caught
+  it; settled first-hand: PCS 2022, pp. 283–287, best-paper finalist (the authors' repository tagline, the Edinburgh
+  Research Explorer). (2) Both June dossiers state "the metric ordering (PSNR/SSIM ≪ LPIPS ≪ bespoke-VFI) is robust;
+  absolute SROCC is dataset-fragile". The primary source they cite for it (BVI-VFI, TIP 2023, arXiv 2210.00823) has
+  Table II Overall SRCC: FAST 0.70 > PSNR 0.65 > … > FloLPIPS 0.61 > … > LPIPS 0.56, and says PSNR is the second-best
+  metric. The ordering holds on the 180-sequence ICIP 2022 study (LPIPS 0.599 vs PSNR 0.520) and inverts on the full
+  database. What survives is only "none of the tested metrics exhibit satisfactory overall correlation".
+- **lesson:** A [V1] tag certifies that ONE fact was read first-hand, not that the row agrees with its siblings or
+  that the synthesis built on it survives the source's own tables. The evidence directory must be read for its
+  CONTRADICTIONS, not only for its presence (the container ledger's L-009, second recurrence): grep the same
+  entity across every dossier before citing any one of them, and when a sentence says "robust", open the table.
+- **corrective:** `docs/research/FG_METRIC_MODEL_PRIOR_ART.md` §3 (C1–C3) carries the corrections with the numbers
+  quoted; the June files are dated records and are NOT edited. Any future design argument that leans on LPIPS ≫ PSNR
+  for VFI cites Q2-5/Q2-6 of that dossier, not the June sentence.
+
 ### P-024 · Twenty-five readers cleared a design; the first live run found two defects in it
 - **class:** refuted-premise · **date:** 2026-09-09 · **recurrences:** 0 · **status:** corrected
 - **evidence:** `--gdump` (GDUMP_PLAN.md) was refuted by 7 readers, its refutations re-verified by 14 more, its

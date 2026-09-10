@@ -4,30 +4,38 @@
 > [`planning/ACTION_PLAN.md`](planning/ACTION_PLAN.md); the durable knowledge is the D-22 memory
 > (`phyriadfg-*.md`). Rewritten at every checkpoint; older snapshots are not kept (the spine is).
 
-**Taken:** 2026-09-09, 15:40 — the `--gdump` arc is DESIGNED and AUTHORIZED, code not yet written. The
-previous stamp (2026-09-06 LATE, `v0.5.0-experimental` published, HEAD now `364efc5` on local `main`, push
-NOT authorized) is superseded. Sections 4b-4y are the accumulated record and are NOT rewritten — only the
-orientation (0, 2, 4z, 5, Self-prompt) is.
+**Taken:** 2026-09-09, 23:10 — the `--gdump` arc is BUILT, GATED and COMMITTED (4z); the KAP Phase 0
+sweep for the metric-paper question is DONE and its single dossier written (4aa); the operator's Phase 1
+freeze is pending. The 15:40 stamp is superseded. Sections 4b-4z are the accumulated record and are NOT
+rewritten — only the orientation (0, 2, 4aa, 5, Self-prompt) is.
 
-0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` → **`P → S2 MOTION_TRUTH · the scene_truth
-   instrument (exact 3-D truth, 2026-09-08/09) → its every-tick capture tap `--gdump` (designed, Tier-2:
-   `docs/planning/GDUMP_PLAN.md`) · in execution`**. The convergence spine R0–R7 is CLOSED (4q–4y); MR-8 and
-   C-2(a) remain the operator's.
+0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` → **`P → S2 MOTION_TRUTH · the
+   scene_truth instrument (exact 3-D truth) → `--gdump` gated (`records/GDUMP_GATE.md`) → the operator's
+   measuring session (desktop 10.12) and, in parallel, the research direction "our own metric/model" at
+   KAP Phase 1 (`docs/research/FG_METRIC_MODEL_PRIOR_ART.md` §6 — his freeze)`**. The convergence spine
+   R0–R7 is CLOSED (4q–4y); MR-8 and C-2(a) remain the operator's.
 1. **OBJECTIVE** — P: perfect PhyriadFG as ONE final FG = the clean minimal core (`apps/minimal_fg`, the
    SG seam) + the layers that earn their place, on the LAYERTAB contract; exact motion measured as DATA
    (S2 MOTION_TRUTH), perceptual quality parked (S5).
-2. **FOCUS (rewritten 2026-09-09)** — **Build `--gdump` per `docs/planning/GDUMP_PLAN.md`** (the operator:
-   "Lo pendiente utiliza tu recomendacion y continua"). The design D1 was refuted by a 22-agent panel and
-   corrected in ten places, each re-verified first-hand (memory `phyriadfg-scene-truth.md` carries the list
-   and the digest paths). Division of labour per SUBAGENT_DELEGATION R5 (amended today): the supervisor owns
-   `present.cpp`, `cli`, `device.cpp`, `core_init.cpp`, `warp_blend_init.cpp`, CMake and `gdump.hpp`; Sonnet
-   subordinates write `gdump.cpp`, `tests/instrument/test_gdump_book.cpp` and `tools/scene_truth/gdump_adapter.py`
-   against the plan + the header, and the supervisor re-verifies every line before it builds.
+2. **FOCUS (rewritten 2026-09-09, 23:10)** — two threads, both waiting on the operator. (a) **His
+   measuring session** (desktop `PHYRIADFG_SECUENCIA.md` 10.12): the pages at
+   `F:\Phyriad\scene_pages\index.html` (served on :8765 by `.claude/launch.json` → `scene-pages`), eight
+   runs incl. `g5live_k4` (the async path, all 180 mids); his first two observations answered with data
+   — frame 30 was a genuine generated frame the aligner had mis-filed as a loop-seam CUT (policy fixed,
+   commit `86ed300`); the cube's deformation at 185/189/190/193/197 is M1_LOWPHASE on a rotating object
+   (halluc 106.5 → 23.8 px² low → high phase, one run). The A/Bs of 10.12(b) and the DI-3 second run of
+   the async row need his screen. (b) **The research direction** ("un modelo tipo FID/CMMD/IS/LPIPS
+   propio"): KAP Phase 0 DONE — five Sonnet sweeps + five Opus T0 gates, all `SWEEP VERIFIED WITH GAPS`,
+   the supervisor re-verified 16 sources first-hand; ONE dossier
+   `docs/research/FG_METRIC_MODEL_PRIOR_ART.md` (41 sources, 55 claims, 7 bounded absences). Its §6
+   proposes three identities and recommends I-A (the instrument paper); **Phase 1 is his freeze — do not
+   freeze it for him.** Three corrections to the June record are P-025 (FloLPIPS = PCS 2022; BVI-VFI is
+   two papers; the "PSNR ≪ LPIPS ≪ bespoke" ordering inverts on the full BVI-VFI). Memory
+   `phyriadfg-metric-paper.md`.
 
    **Context that steers this arc (2026-09-08/09, all measured):** `tools/scene_truth/` exists and the FG's
    first DI-3 row against exact truth is 0.216/0.212 px at k=4 (`docs/evidence/B1_FIRST_FG_ROW.md`); the speed
-   law is pos ≈ 0.30·disp^0.32 (`B1_SPEED_TEST.md`); `--qdump` is a SAMPLER that forces the sync path, so no
-   number so far is of the shipping async path's pacing; runs now live in **`C:\PhyriadFG\runs\`** (F: is a
+   law is pos ≈ 0.30·disp^0.32 (`B1_SPEED_TEST.md`); `--qdump` is a SAMPLER that forces the sync path; the shipping async path's first row exists (`--gdump`, 0.240 px, ONE run); runs now live in **`C:\PhyriadFG\runs\`** (F: is a
    119 GB LITEON at 124–138 MB/s and cannot take 640×360@240; C: is the 980 PRO at 1.3–1.9 GB/s). The
    operator's standing rules of this arc: Fable for critical analysis only; runs keep/delete-able; exact quality
    over disk; notify before visual/structural decisions.
@@ -402,7 +410,36 @@ orientation (0, 2, 4z, 5, Self-prompt) is.
    of the shipping async path against exact truth: pos 0.240 px (one run — DI-3 owed).** `scene_report.py`
    gained `--jobs` (24 min → 226 s, JSON-identical). Committed (see git log); push NOT authorized.
 
-5. **NEXT (2026-09-09)** — in order: (1) `gdump.cpp` + test + adapter (Sonnet, kickoff = the plan + the header)
+4aa. **KAP PHASE 0 — THE METRIC-PAPER SWEEP (2026-09-09, evening;
+   `docs/research/FG_METRIC_MODEL_PRIOR_ART.md`)** — the operator's question is verbatim in the
+   dossier's head. Workflow `wf_c44d141d-43b` (journal in the session's `subagents/workflows/`): five
+   Sonnet sweeps — Q1 distribution metrics, Q2 full-reference perceptual, Q3 synthetic truth, Q4
+   reference-free self-diagnosis, Q5 decomposition + reliability — each audited by an Opus VISTA T0 gate
+   with the template verbatim; 10 agents, 0 errors, 852 k subordinate tokens, 519 s; every verdict
+   `SWEEP VERIFIED WITH GAPS`, zero fabrications, 14 non-material quote drifts and 8 claim over-reaches
+   caught and corrected. The supervisor opened 16 URLs, ran two venue searches and read the BVI-VFI TIP
+   PDF pp. 9–12 (KAP §9.2). Findings that steer: the FID family is set-vs-set and demonstrably blind to
+   motion (Ge 2024; VIDIM's own words) → not a fidelity family; no metric is satisfactory on BVI-VFI
+   (FAST 0.70 SRCC best) and the June ordering claim is REFUTED on the full database (PSNR second-best
+   above FloLPIPS and LPIPS); DISTS and shift-tolerant LPIPS are built to ignore the 0.2–0.5 px band;
+   the nearest neighbour to scene_truth is Kiefhaber 2024 (2-D sprites, linear homographies, 7 fixed
+   in-betweens, 0/1/2-occ, "hallucinate"); PSNR_DIV (QoMEX 2025, v2 Jan 2026) and an ECCV 2026
+   sim-to-real paper are the new items since June. Seven FOUND-NONE anchors (arbitrary phase vs analytic
+   3-D truth; 4-way visibility; run-to-run r; self-diagnosis from kernel traces; a px position column;
+   an LPIPS pixel floor; KID/CMMD in VFI). Corrections to the June record → P-025 (+ L-009 recurrence 2
+   in the container ledger). §6: I-A the instrument paper (recommended), I-B the model paper (next;
+   needs I-A's rows), I-C a distribution metric (refuted for fidelity). NOT frozen — the operator's
+   call.
+
+5. **NEXT (2026-09-09, 23:10)** — nothing runs without him: (1) his freeze of the Phase 1 identity (I-A
+   recommended, or his own wording) → then KAP Phase 1 writes the frozen-identity block and the T1 gate
+   runs; (2) with his screen: the DI-3 second run of the async row (`scene_live.ps1 -Gdump`, 20 s), the
+   three A/Bs of 10.12(b), a second scene family, a 1080p row under the tap — each changes I-A's
+   boundary if it fails; (3) the operator's calls still open: the BOOT §4 "grep evidence dirs for their
+   contradictions" row (L-009 rec. 2), MR-8, C-2(a), push. Tonight's files are committed (see git log).
+   The 15:40 NEXT below was executed and is kept.
+
+5-prev. **NEXT (2026-09-09, 15:40 — executed, kept)** — in order: (1) `gdump.cpp` + test + adapter (Sonnet, kickoff = the plan + the header)
    while the supervisor edits the five sites; (2) build ×2, `pfg_gdump_test` seen red on RR1/RR2 then green,
    `--help` round trip, `--dump-config` diff = the new fields only (G0); (3) the 120 s smoke (G1); (4) with the
    operator's screen: G2 three-arm observer run on `sc_live` k=4, G3 identity, G4 the `--qdump` byte cross-check,
@@ -440,6 +477,22 @@ evidencia; no pedirle decisiones que ya delegó.
    only on request; heavy-compute pre-flight; DI-3.
 
 ## Self-prompt (read this first after a compaction)
+
+I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **State
+(2026-09-09, 23:10): `--gdump` is built, gated and committed (`records/GDUMP_GATE.md`); the KAP Phase 0
+sweep for the research question "our own FID/CMMD/IS/LPIPS-class model" is DONE and its ONE dossier is
+`docs/research/FG_METRIC_MODEL_PRIOR_ART.md` — Phase 1 (the frozen identity) is the OPERATOR's decision
+and has not been taken; do not take it for him and do not re-run the sweep.** Re-read first:
+BOOT_PROTOCOL (R5: the model per subordinate, Fable = critical analysis only), that dossier's §1 and §6,
+memories `phyriadfg-metric-paper.md` + `phyriadfg-scene-truth.md`, sections 4z + 4aa + NEXT above, and
+P-025 in `docs/LEARNING_LOG.md` (the June dossiers contradict each other on FloLPIPS's venue and their
+ordering claim is refuted — cite the new dossier's Q2-5/Q2-6, never the June sentence). Do NOT re-derive
+the gdump gates, the disk measurement or the panel's corrections. Runs live in `C:\PhyriadFG\runs\`; the
+pages at `F:\Phyriad\scene_pages\` are served by `.claude/launch.json` → `scene-pages` on :8765 (the app
+stops it between sessions — restart with preview_start). Live runs take the operator's screen — ask.
+Push is NOT authorized.
+
+The 15:40 self-prompt follows, kept:
 
 I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **The live
 work (2026-09-09) is building `--gdump`, the every-tick capture tap, per `docs/planning/GDUMP_PLAN.md`
