@@ -43,6 +43,13 @@ shape 0.137 px (5.9 %), halluc 51.2 px² (2.1 %), lead +8.82 px (3.1 %), missing
 rulers move as little, `nearest` 0.275 → 0.279 and `oracle2` 0.097 → 0.102. The worst deviation on the citable
 terms is 13.1 %, under the 20 % threshold; the verdict is ACCEPT on both seeds (§2b).
 
+The same two captures re-scored under the gate-passing operator `--silhouette coverage` (2026-09-10, no new capture)
+give arm position error **0.204 px** on seed 7 and **0.197 px** on seed 11, a run-to-run deviation of **3.5 %**,
+verdict ACCEPT on both (`fg_k4_cov.md` beside each run; `REGIME_TEST_MATRIX.md` §9). This row is therefore the one
+number in this paper that is both two-seed and measured under the operator whose gate passes on its corpus
+(§03.6): the `tau` figures above and the `coverage` figures here agree within 6 %, and the operator correction that
+moves the high-displacement rows by a factor of two (§05.3) barely moves this one.
+
 ## 5.2 — The phase signature: error falling with phase on the fastest mover (M1_LOWPHASE reproduced by an instrument that did not know it)
 
 *serves:* CA (phase) · *evidence:* `B1_FIRST_FG_ROW.md` §2; `docs/planning/records/M1_LOWPHASE_FINDING.md` · *status:* `EXISTS`
