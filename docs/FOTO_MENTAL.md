@@ -4,16 +4,16 @@
 > [`planning/ACTION_PLAN.md`](planning/ACTION_PLAN.md); the durable knowledge is the D-22 memory
 > (`phyriadfg-*.md`). Rewritten at every checkpoint; older snapshots are not kept (the spine is).
 
-**Taken:** 2026-09-09, 23:10 — the `--gdump` arc is BUILT, GATED and COMMITTED (4z); the KAP Phase 0
-sweep for the metric-paper question is DONE and its single dossier written (4aa); the operator's Phase 1
-freeze is pending. The 15:40 stamp is superseded. Sections 4b-4z are the accumulated record and are NOT
-rewritten — only the orientation (0, 2, 4aa, 5, Self-prompt) is.
+**Taken:** 2026-09-10, 02:30 — I-A is FROZEN (4ab); the regime test matrix for the operator's four
+scenarios is written and verified, every family waiting on his screen (4ab); the 23:10 stamp is
+superseded. Sections 4b-4aa are the accumulated record and are NOT rewritten — only the orientation (0,
+2, 4ab, 5, Self-prompt) is.
 
-0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` → **`P → S2 MOTION_TRUTH · the
-   scene_truth instrument (exact 3-D truth) → `--gdump` gated (`records/GDUMP_GATE.md`) → the operator's
-   measuring session (desktop 10.12) and, in parallel, the research direction "our own metric/model" at
-   KAP Phase 1 (`docs/research/FG_METRIC_MODEL_PRIOR_ART.md` §6 — his freeze)`**. The convergence spine
-   R0–R7 is CLOSED (4q–4y); MR-8 and C-2(a) remain the operator's.
+0. **ACTION-PLAN POINTER** — `docs/planning/ACTION_PLAN.md:14` → **`P → S2 MOTION_TRUTH · scene_truth +
+   `--gdump` gated → (a) the operator's measuring session, now the eight-family matrix
+   `docs/planning/REGIME_TEST_MATRIX.md` (proposed, his screen) · (b) the metric paper at KAP Phase 1
+   DONE — I-A FROZEN (`docs/research/FG_METRIC_MODEL_SPINE.md`, SHA-256 stamped) → Phase 2 (scaffold)
+   next`**. The convergence spine R0–R7 is CLOSED (4q–4y); MR-8 and C-2(a) remain the operator's.
 1. **OBJECTIVE** — P: perfect PhyriadFG as ONE final FG = the clean minimal core (`apps/minimal_fg`, the
    SG seam) + the layers that earn their place, on the LAYERTAB contract; exact motion measured as DATA
    (S2 MOTION_TRUTH), perceptual quality parked (S5).
@@ -431,7 +431,33 @@ rewritten — only the orientation (0, 2, 4aa, 5, Self-prompt) is.
    needs I-A's rows), I-C a distribution metric (refuted for fidelity). NOT frozen — the operator's
    call.
 
-5. **NEXT (2026-09-09, 23:10)** — nothing runs without him: (1) his freeze of the Phase 1 identity (I-A
+4ab. **I-A FROZEN + THE REGIME MATRIX (2026-09-09 23:55 → 2026-09-10 02:30)** — the operator: "Congela
+   I-A, adelante con la Fase 1" + the four scenarios + "¿el modelo propio puede automatizar la
+   afinación?". (1) Phase 1: identity drafted, three Opus T1 gates (all `FREEZE WITH FIXES`), 16 fixes
+   each re-verified against B1/GDUMP_GATE/scene_zoo/scene_report before applying — fix 9 overturned by
+   the code (`verdict()` vetoes on `missing` and `bg_err`); block SHA-256
+   `427ac7489c5fdd7f15a34907e20313597256a0f52d0361824d193c29aa3314bf`, commit `b97b834`. (2) The matrix:
+   workflow `wf_cce9fbbd-22b` (6 Sonnet readers, 1 Opus designer, 3 Opus verifiers — the verifiers died
+   at the 5-hour limit and were re-run from cache at 01:19); all three `PARTIAL`, 31 issues, four
+   changing a family's design; the supervisor re-opened every load-bearing line (§6 of the plan). What
+   steers: the marker zoo (`tools/motion_truth/`) was BUILT for these regimes and never played on
+   grating; size is confounded with speed in one corpus; `hud` at size 6 is a 0.573 px static pedestal;
+   M1_SRC_RATE's "twice the displacement" is refuted by `v_px_s = spf * fps` (P-026); the scorer's
+   window scales with displacement and censors the cliff; the sphere exits at 0.21 s at ×16;
+   `--mv-candsel` / `--asw` help texts and three docs state OFF against structs that say ON (P-027).
+   Eight families, family 0 = the attribution session B1 §4 named. The I-B answer: a knob sweep against
+   scene_truth needs no model (first find known: `--no-mv-guided`); I-B is the follow-on the matrix
+   feeds; runtime adaptation not before that. NOT run: every family.
+
+5. **NEXT (2026-09-10, 02:30)** — every item is his: (1) which families of `REGIME_TEST_MATRIX.md` run,
+   the `mv_guided` level, the workload, the two preset edits (families 3, 7); on his word the session
+   builds the cut-scoring branch, the `reverse` class and the per-size r column (tooling); (2) with his
+   screen: family 0 first (~100 s, includes the async row's DI-3); (3) KAP Phase 2 (the paper's
+   scaffold) after the freeze — conforms to the block, never edits it; (4) his repo fixes: P-027 texts;
+   (5) still open: BOOT §4 row (L-009 rec. 2), MR-8, C-2(a), push. The 23:10 NEXT below is executed and
+   kept.
+
+5-prev2. **NEXT (2026-09-09, 23:10 — executed, kept)** — nothing runs without him: (1) his freeze of the Phase 1 identity (I-A
    recommended, or his own wording) → then KAP Phase 1 writes the frozen-identity block and the T1 gate
    runs; (2) with his screen: the DI-3 second run of the async row (`scene_live.ps1 -Gdump`, 20 s), the
    three A/Bs of 10.12(b), a second scene family, a 1080p row under the tap — each changes I-A's
@@ -477,6 +503,21 @@ evidencia; no pedirle decisiones que ya delegó.
    only on request; heavy-compute pre-flight; DI-3.
 
 ## Self-prompt (read this first after a compaction)
+
+I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **State
+(2026-09-10, 02:30): `--gdump` gated and committed; the metric paper's identity I-A is FROZEN
+(`docs/research/FG_METRIC_MODEL_SPINE.md`, SHA-256 in its status line — never edit the block; a gate
+reports DRIFTED, it does not fix); the operator's four scenarios have a verified eight-family test
+matrix (`docs/planning/REGIME_TEST_MATRIX.md`, `proposed`) and NOTHING in it has run — every family
+takes his screen and several of his decisions (§7).** Re-read first: BOOT (R5: model per subordinate,
+Fable = critical analysis only), the matrix §1 and §6, the spine's block, memory
+`phyriadfg-metric-paper.md`, and P-025/P-026/P-027 in `docs/LEARNING_LOG.md` (the record contradicts
+itself on FloLPIPS's venue, on the source-rate premise and on two defaults — cite the code and the new
+docs, never the stale rows). Do NOT re-derive the gdump gates, the KAP sweep, the T1 fixes or the
+verifiers' 31 issues. Runs live in `C:\PhyriadFG\runs\`; pages on :8765 via `.claude/launch.json` →
+`scene-pages`. Live runs need his word. Push is NOT authorized.
+
+The 23:10 self-prompt follows, kept:
 
 I am the Phyriad session working PhyriadFG for the operator (usted, Spanish chat, English docs). **State
 (2026-09-09, 23:10): `--gdump` is built, gated and committed (`records/GDUMP_GATE.md`); the KAP Phase 0

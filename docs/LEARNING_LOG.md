@@ -200,6 +200,45 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-026 · A measurement record's own method sentence was refuted by the generator it used
+- **class:** refuted-premise · **date:** 2026-09-10 · **recurrences:** 0 · **status:** corrected
+- **evidence:** `docs/evidence/M1_SRC_RATE.md:21` — "p(t) is parameterised in SECONDS, so the 30 fps
+  corpus is the same motion with twice the [per-pair displacement]" — and its verdict "Halving the
+  source rate — doubling the per-pair displacement — did not degrade positional accuracy" (line 42-43).
+  The generator authors speed in px PER FRAME and converts it: `tools/motion_truth/marker_zoo.py:213`
+  `v_px_s = spf * fps` with `spf = 0.5 + 7.5 * frac` (line 210), so displacement per source frame is
+  INVARIANT under `--fps`. Found by the measurement-validity verifier of workflow `wf_cce9fbbd-22b`, who
+  executed `build_markers` + `eval_traj` at both rates (1.7500 / 4.2500 / 6.7500 px per frame at sizes 6
+  / 12 / 24, identical); the supervisor re-read both lines.
+- **lesson:** M1_SRC_RATE was already a matched-displacement comparison (30 fps × 8 vs 60 fps × 4 at the
+  same px/pair); its "Indistinguishable" is about the multiplier and the phase density, not displacement
+  — and it is then the SAME comparison `B1_SPEED_TEST.md` §3 made with the opposite answer (1.10–1.72×).
+  A record's method paragraph is a claim about the generator's code and is checked there before the
+  record's finding steers a design; the 'source-rate term' is unresolved until `REGIME_TEST_MATRIX.md`
+  family 4 runs.
+- **corrective:** `docs/planning/REGIME_TEST_MATRIX.md` §1-5 and family 4 (no speed-band halving; the
+  multiplier held with `--fg-factor`; `--no-asw`; an absolute bar above the 0.116–0.119 px capture
+  floor). The June-era record is a dated document and is not edited; this entry is the correction.
+
+### P-027 · Two help texts and three documents state a default the struct contradicts
+- **class:** refuted-premise · **date:** 2026-09-10 · **recurrences:** 0 · **status:** open
+- **evidence:** `src/control/cli.hpp:947` `bool mv_candsel=true;` (and both init sites pass
+  `cfg.mv_candsel`, `src/flow/flow_init.cpp:40,142`) while `cli.cpp:104` (usage) and `cli.cpp:809` (the
+  `--mv-candsel` printf) say "DEFAULT OFF", and `docs/research/FG_VFI_PRIOR_ART.md:639` ("built,
+  default-OFF"), `PHYRIADFG_PERFECTION_ROADMAP.md:101` ("built-off parity levers mv_candsel") and
+  `catalog/cpp/docs/evidence/baselines/FG_PERF_BASELINE.json:21` ("ALL levers OFF … mv_candsel = false")
+  repeat it — they describe the framework's generic `OpticalFlowPipeline` default, not PhyriadFG's.
+  Likewise `cli.hpp:222` `bool asw=true;` while the `--asw` printf (`cli.cpp:448`) says "DEFAULT OFF,
+  byte-identical off." and `--no-asw` (`cli.cpp:353`) says "DEFAULT es ON". Found by two verifiers of
+  `wf_cce9fbbd-22b`; each line re-read by the supervisor.
+- **lesson:** the struct initialiser is the only authoritative default; a printf or a doc row is a claim
+  about it. An A/B whose arm is recorded from the binary's own output can record the wrong arm — the
+  record states the arm by the printf actually emitted (`--no-mv-candsel` at `cli.cpp:344` fires only
+  when passed).
+- **corrective:** none applied — the source and the doc rows are the operator's to fix (his repo);
+  `REGIME_TEST_MATRIX.md` §4 carries the trap and every family states its arm by the emitted printf.
+  `status: open` until the texts are fixed.
+
 ### P-025 · Two [V1] rows contradicted each other, and a synthesis sentence was refuted by the source it cited
 - **class:** refuted-premise · **date:** 2026-09-09 · **recurrences:** 0 · **status:** corrected
 - **evidence:** (1) `docs/research/FG_VFI_MEASUREMENT_SOTA.md` (§3 and source row 5) gives FloLPIPS the venue
