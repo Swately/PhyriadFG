@@ -4,7 +4,7 @@
 
 ## D.1 — What the terms separate, as measured: phase, displacement, source rate; the lead sign as a reading
 
-*serves:* CA · *evidence:* §05.1–05.4 today; §05.6–05.9 when filled · *status:* `EXISTS`
+*serves:* CA · *evidence:* §05.1–05.4 today (§05.3 in its two-sided form); §05.6–05.12 when filled · *status:* `EXISTS`
 
 *[empty slot]*
 

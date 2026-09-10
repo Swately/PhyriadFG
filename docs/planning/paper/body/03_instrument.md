@@ -34,7 +34,7 @@
 
 ## M1.6 — The instrument's own gate (T1–T6): what each tests; the two silhouette operators (`tau`, `coverage`) and the occlusion-aware window; the border-clip rule; the gate state per corpus — a gate binds to the corpus it ran on (T3 open at ×4 / ×8, bar not relaxed)
 
-*serves:* ET · RE · *evidence:* `REGIME_TEST_MATRIX.md` §9; `docs/planning/records/S2_T*_GATE.md`; `docs/LEARNING_LOG.md` P-029 · *status:* `EXISTS`
+*serves:* ET · RE · *evidence:* `scene_report.py` (the gate: its docstring and `gate()`); `REGIME_TEST_MATRIX.md` §9; the gate logs under `C:\PhyriadFG\runs\_render_logs\`; `docs/LEARNING_LOG.md` P-029 · *status:* `EXISTS`
 
 *[empty slot]*
 
@@ -46,7 +46,7 @@
 
 ## M1.8 — The second instrument (`tools/motion_truth/`, marker classes / sizes / backdrops / `--fps`, its capture floor, the `ambig` exemption): used for CORROBORATING readings only, because its terms are not the six verdict terms
 
-*serves:* SS · PO · *evidence:* `docs/evidence/MOTION_TRUTH_BASELINE.md`; `M1_SRC_RATE.md`; `REGIME_TEST_MATRIX.md` §2 · *status:* `EXISTS`
+*serves:* SS · PO · *evidence:* `docs/evidence/MOTION_TRUTH_BASELINE.md`; `M1_SRC_RATE.md`; its own gate records `docs/planning/records/S2_T2_GATE.md` … `S2_T6_GATE.md`; `REGIME_TEST_MATRIX.md` §2 · *status:* `EXISTS`
 
 *[empty slot]*
 
