@@ -103,8 +103,50 @@ def triples(d, K):
 STRIP = None            # (x0, x1, y0, y1) of a baked barcode strip, set per corpus; masked out of every term
 
 
+SIL_MODE = 'tau'    # 'tau' = the 2026-09-08 operator (default, byte-identical) | 'coverage' = --silhouette coverage
+COV_ANY = 0.004     # |rgb - bg| above this = the pixel carries SOME object (the backdrop is the exact render: 0 elsewhere)
+
+
+def box3(x):
+    """3x3 neighbourhood sum with edge replication (2-D, or 3-D channels-last)."""
+    p = np.pad(x, ((1, 1), (1, 1)) + ((0, 0),) * (x.ndim - 2), mode='edge')
+    out = np.zeros_like(x, dtype=np.float64)
+    H, W = x.shape[:2]
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            out += p[dy:dy + H, dx:dx + W]
+    return out
+
+
 def object_like(rgb, bg):
-    m = np.abs(rgb - bg).max(axis=-1) > OBJ_TAU
+    """The ONE silhouette operator, applied to truth and candidate alike (the gate's own correction: a truth scored
+    against itself must be exactly zero, so both sides go through the same function).
+
+    'tau' (default): a pixel is object where any channel differs from the exact backdrop render by more than OBJ_TAU.
+    Its boundary is where the anti-aliased edge coverage crosses OBJ_TAU / |object - backdrop|, which depends on the
+    backdrop NOISE under the edge -- at x1 the truth and the candidate sit over the same backdrop and the flip cancels;
+    at x8 (13 px apart) it does not: the x8/x16 gates of 2026-09-10 went red on T2/T3/T4 for this reason alone (the
+    nearest arm's residual 2.2 px, the exact-flow oracle 0.9-1.3 px of shape).
+    'coverage' (--silhouette coverage): the boundary is the HALF-COVERAGE contour. Interior pixels (any coverage,
+    eroded twice) are object; an edge pixel is object when its coverage a > 0.5, where a solves
+    rgb = a*obj + (1-a)*bg with obj = the mean colour of the interior pixels within 2 px (the object colour that
+    edge pixel is a partial sample of). The same estimator on both sides, and it no longer depends on what the
+    backdrop is under the edge."""
+    d = np.abs(rgb - bg).max(axis=-1)
+    if SIL_MODE == 'tau':
+        m = d > OBJ_TAU
+    else:
+        any_cov = d > COV_ANY
+        interior = erode4(erode4(any_cov))
+        w = interior.astype(np.float64)
+        num = box3(box3(rgb * w[..., None]))          # 5x5 sums via two 3x3 passes
+        den = box3(box3(w))
+        has = den > 0
+        obj = np.where(has[..., None], num / np.maximum(den, 1e-9)[..., None], rgb)
+        v = obj - bg
+        u = rgb - bg
+        a = (u * v).sum(-1) / np.maximum((v * v).sum(-1), 1e-9)
+        m = interior | (any_cov & has & (a > 0.5))
     if STRIP is not None:
         x0, x1, y0, y1 = STRIP
         m[y0:y1, x0:x1] = False
@@ -158,7 +200,14 @@ def grad_mag(g):
 
 
 # ── scoring one frame ────────────────────────────────────────────────────────────────────────────
-def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near):
+def touches_border(m):
+    """True when a silhouette mask reaches any edge of the image: its centroid is then the VISIBLE part's, not the
+    object's, and no term computed from it is exact. At --speed 8 the `mixed` sphere is partially outside the view in
+    24 of 240 frames (seen 2026-09-10: T2/T3/T4 red on that corpus for this reason alone)."""
+    return bool(m[0, :].any() or m[-1, :].any() or m[:, 0].any() or m[:, -1].any())
+
+
+def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=()):
     """All terms for one intermediate frame.
 
     motion[k] = (unit direction, displacement per SOURCE pair in px) of object k.
@@ -166,6 +215,16 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near):
                 pred_travel_px = the truth centroid's own travel between mid and that frame, on the
                 SAME support the candidate silhouette is measured on — the closed form the `nearest`
                 arm must reproduce.
+    ids_ab    = the exact id planes of the two real frames the candidate was generated from. A pixel that is
+                ANOTHER object in the mid or in either real is outside object k's window: the operator is
+                object-like-vs-backdrop and cannot tell a blue box from a red sphere, so where a mover passes in
+                front of a static object the near real shows that object's pixels exactly where the mid had the
+                mover (fast_train x8, mid 50: nearest's centroid 6 px short of the exact travel; mixed at x2/x4
+                reaches the box the same way). Excluding those pixels on BOTH sides keeps the truth at zero and
+                the rulers honest; the object's silhouette is then overlap-clipped, consistently.
+    An object whose exact silhouette touches the image border in the mid truth or in the nearer real frame
+    carries NO object terms in that frame (row['clipped'] lists it): a clipped centroid is not the object's,
+    and a fast mover spends part of every crossing at the edges.
     """
     tlike, clike = object_like(truth, bg), object_like(cand, bg)
     valid = np.ones(ids.shape, bool)              # the barcode strip is outside EVERY term, not only the masks
@@ -187,17 +246,27 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near):
     gt, gc = grad_mag(ct), grad_mag(cc)
     row['sharp'] = float(gc[tband].mean() / max(gt[tband].mean(), 1e-9)) if tband.any() else float('nan')
     per = {}
+    clipped = []
     for k, (vn, disp) in motion.items():
         tm = ids == k
         if not tm.any():
             continue
+        # only a MOVING object can be clipped by the view: a static one that spans the frame (mixed's occluder
+        # quad covers the full height by design) has the same visible centroid in the mid and in the nearer real
+        if disp > 0.5 and (touches_border(tm) or touches_border(ids_near == k)):
+            clipped.append(int(k))
+            continue
         others = (ids > 0) & (ids != k) & (ids != 255)
+        for ida in ids_ab:
+            others |= (ida > 0) & (ida != k) & (ida != 255)
         # class-0 pixels are the disocclusion bucket: reported apart, NEVER inside an object term --
         # a candidate is free to fill them with the nearest real frame (the graceful answer) without
         # that showing up here as missing or hallucinated mass
-        win = dilate(tm, NEAR_R + int(np.ceil(disp))) & ~others & (cls != 0)
+        reach = dilate(tm, NEAR_R + int(np.ceil(disp)))
+        win = reach & ~others & (cls != 0)
         tsil, csil = tlike & win, clike & win                 # ONE operator, both sides
-        o = {'area_px': int(tsil.sum()), 'perim_px': int(len(boundary_pts(tsil))), 'disp_src_px': float(disp)}
+        o = {'area_px': int(tsil.sum()), 'perim_px': int(len(boundary_pts(tsil))), 'disp_src_px': float(disp),
+             'overlap_px': int((reach & others).sum())}   # another object's pixels inside this object's reach (mid, A or B)
         if not tsil.any():
             continue
         near_m = (ids_near == k) & win
@@ -214,7 +283,68 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near):
             o['lead_px'] = 0.0
         per[k] = o
     row['objects'] = per
+    row['clipped'] = clipped
     return row
+
+
+def score_cut_frame(cand, A, B, idsA, idsB, bg, t):
+    """One frame generated ACROSS A CUT (its two real frames were not k apart -- the loop seam, or a
+    bridged drop), scored against BOTH real endpoints it bridged. There is no interpolation truth for
+    a cut, so there is no pos_err / shape_err / lead_px here: only what the candidate IS relative to
+    each side, with the SAME primitives score_frame uses for a continuous mid -- object_like for both
+    silhouettes, the same edge-ratio helper for sharpness, an RMS distance for how far it fell from the
+    nearer side (score_frame's `graceful` restricts that RMS to the class-0 disocclusion bucket; a cut
+    has no exact-truth id plane to build that bucket from, so this reuses the same RMS-to-nearest-real
+    form over every non-strip pixel instead).
+
+    idsA, idsB = the exact id planes of the two real endpoints (class-0 is not applicable: neither
+    endpoint has an undetermined bucket, each IS a real frame).
+    """
+    valid = np.ones(idsA.shape, bool)
+    if STRIP is not None:
+        x0, x1, y0, y1 = STRIP
+        valid[y0:y1, x0:x1] = False
+    clike, alike, blike = object_like(cand, bg), object_like(A, bg), object_like(B, bg)
+    cc, ca, cb = lum(cand), lum(A), lum(B)
+    row = {'l2_vs_A': float(np.sqrt(((cc - ca)[valid] ** 2).mean())),
+           'l2_vs_B': float(np.sqrt(((cc - cb)[valid] ** 2).mean()))}
+    per = {}
+    for k in sorted(int(x) for x in set(np.unique(idsA)) | set(np.unique(idsB)) if 0 < x < 255):
+        o = {}
+        mA = idsA == k
+        if mA.any():
+            winA = dilate(mA, NEAR_R) & ~((idsA > 0) & (idsA != k) & (idsA != 255))
+            tsil, csil = alike & winA, clike & winA
+            o['halluc_vs_A'] = int((csil & ~tsil).sum())
+            o['missing_vs_A'] = int((tsil & ~csil).sum())
+        mB = idsB == k
+        if mB.any():
+            winB = dilate(mB, NEAR_R) & ~((idsB > 0) & (idsB != k) & (idsB != 255))
+            tsil, csil = blike & winB, clike & winB
+            o['halluc_vs_B'] = int((csil & ~tsil).sum())
+            o['missing_vs_B'] = int((tsil & ~csil).sum())
+        if o:
+            per[k] = o
+    row['objects'] = per
+    tbandA = dilate((idsA > 0) & ~erode4(idsA > 0), 1) & valid
+    tbandB = dilate((idsB > 0) & ~erode4(idsB > 0), 1) & valid
+    gc, ga, gb = grad_mag(cc), grad_mag(ca), grad_mag(cb)
+    row['sharp_vs_A'] = float(gc[tbandA].mean() / max(ga[tbandA].mean(), 1e-9)) if tbandA.any() else float('nan')
+    row['sharp_vs_B'] = float(gc[tbandB].mean() / max(gb[tbandB].mean(), 1e-9)) if tbandB.any() else float('nan')
+    row['nearer'] = nearer = 'A' if t <= 0.5 else 'B'
+    row['graceful'] = row['l2_vs_A'] if nearer == 'A' else row['l2_vs_B']
+    return row
+
+
+def _cut_mean(row, key):
+    """Mean of one per-object term over the objects that carry it (an object absent from one side
+    of the cut carries only the other side's terms -- see score_cut_frame)."""
+    vals = [o[key] for o in row['objects'].values() if key in o]
+    return float(np.nanmean(vals)) if vals else float('nan')
+
+
+def _cut_vs_nearer(row, prefix):
+    return _cut_mean(row, '%s_vs_%s' % (prefix, row['nearer']))
 
 
 # ── synthetic arms ───────────────────────────────────────────────────────────────────────────────
@@ -322,11 +452,12 @@ def exact_phase(d, arm):
 _W = {}   # per-PROCESS scoring state (the corpus, the scene, the backdrop, the arm's exact phases) — see _worker_init
 
 
-def _worker_init(d, arm):
+def _worker_init(d, arm, sil='tau'):
     """Load what every frame of one (corpus, arm) needs, ONCE per process. Runs in the parent for --jobs 1 and in
     each pool worker otherwise (ProcessPoolExecutor initializer). The truth render per frame is the cost that
     made a 4-arm × 180-frame run take ~20 min on one core (2026-09-09, the operator: "apenas usa recursos")."""
-    global _W
+    global _W, SIL_MODE
+    SIL_MODE = sil
     t, sc = load_corpus(d)
     W, H = t['width'], t['height']
     bg = Z.Scene([], W, H, t['fov_deg'], t['seed']).render(0.0, t['ss'])[0]
@@ -378,28 +509,88 @@ def _score_triple(args):
         near_i = tr['N'] if tr['phase'] <= 0.5 else tr['N1']
         phase = tr['phase']
     nearest = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % near_i), W, H)
-    r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H))
+    if tr['mid'] in ex:
+        nA, nB = ex[tr['mid']]['N'], ex[tr['mid']]['N1']
+    else:
+        nA, nB = tr['N'], tr['N1']
+    r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H),
+                    (load_id(d, nA, W, H), load_id(d, nB, W, H)))
     r.update({'mid': tr['mid'], 'near': near_i, 'phase': phase, 'k': K, 'exact_phase': tr['mid'] in ex})
     return ('row', r)
 
 
-def score_arm(d, K, arm, frames=None, jobs=1):
+def score_arm(d, K, arm, frames=None, jobs=1, sil='tau'):
     """Score one arm over the corpus's triples. jobs > 1 = a process pool over the triples (each process
     loads the corpus once; the per-frame work is independent, so the rows are identical to --jobs 1 and in
     the same order — verified 2026-09-09 on g5_live, 6 frames, serial vs 8 workers: JSON-equal)."""
     trs = [(K, tr) for tr in triples(d, K)[:frames]]
     if jobs <= 1 or len(trs) < 2:
-        _worker_init(d, arm)
+        _worker_init(d, arm, sil)
         results = [_score_triple(a) for a in trs]
     else:
         from concurrent.futures import ProcessPoolExecutor
-        with ProcessPoolExecutor(max_workers=min(jobs, len(trs)), initializer=_worker_init, initargs=(d, arm)) as pool:
+        with ProcessPoolExecutor(max_workers=min(jobs, len(trs)), initializer=_worker_init, initargs=(d, arm, sil)) as pool:
             results = list(pool.map(_score_triple, trs, chunksize=2))
     rows = [r for kind, r in results if kind == 'row']
     cut = sum(1 for kind, _ in results if kind == 'cut')
     if cut:
         print('%s/%s k=%d: %d frame(s) whose real pair was NOT %d apart (a cut) counted and excluded'
               % (os.path.basename(os.path.normpath(d)), arm, K, cut, K))
+    return rows
+
+
+_WC = {}   # per-process state for score_cuts — the corpus dims and backdrop, loaded once (see _cuts_worker_init)
+
+
+def _cuts_worker_init(d, sil='tau'):
+    """Load what every cut needs, ONCE per process — same pattern as _worker_init, but a cut needs no
+    Scene reprojection (there is no interpolation truth to reproject to), only the corpus dims and bg."""
+    global _WC, SIL_MODE
+    SIL_MODE = sil
+    t, _ = load_corpus(d)
+    W, H = t['width'], t['height']
+    bg = Z.Scene([], W, H, t['fov_deg'], t['seed']).render(0.0, t['ss'])[0]
+    _WC = {'d': d, 'W': W, 'H': H, 'bg': bg}
+
+
+def _score_cut(args):
+    """One cut row of one arm -> the full row: its own terms plus the two reference candidates (hold,
+    blend) scored through the same score_cut_frame. Reads only _WC and its arguments, so the same cut
+    gives the same row in any process (mirrors _score_triple)."""
+    arm, row, K = args
+    d, W, H, bg = (_WC[k] for k in ('d', 'W', 'H', 'bg'))
+    n = row['cut']
+    cand = load_rgb(os.path.join(d, 'arms', arm, 'cut_%d.rgba' % n), W, H)
+    N, N1, t = row['N'], row['N1'], row['t']
+    A = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % N), W, H)
+    B = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % N1), W, H)
+    idsA, idsB = load_id(d, N, W, H), load_id(d, N1, W, H)
+    r = {'cut': n, 'triple': row['triple'], 'N': N, 'N1': N1, 't': t, 'k': K}
+    r.update(score_cut_frame(cand, A, B, idsA, idsB, bg, t))
+    hold_ref = A if r['nearer'] == 'A' else B
+    r['hold'] = score_cut_frame(hold_ref, A, B, idsA, idsB, bg, t)
+    r['blend'] = score_cut_frame(0.5 * (A + B), A, B, idsA, idsB, bg, t)
+    return r
+
+
+def score_cuts(d, K, arm, jobs=1, sil='tau'):
+    """Score every cut row of one arm's align.json (empty for an arm with no align.json, or none marked
+    'cut' -- the synthetic arms have neither). Same process-pool pattern as score_arm: a worker init that
+    loads the corpus and bg once; serial when jobs <= 1 or fewer than 2 cuts."""
+    p = os.path.join(d, 'arms', arm, 'align.json')
+    if not os.path.exists(p):
+        return []
+    cuts = [r for r in json.load(open(p, encoding='utf-8'))['rows'] if 'cut' in r]
+    if not cuts:
+        return []
+    args = [(arm, r, K) for r in cuts]
+    if jobs <= 1 or len(args) < 2:
+        _cuts_worker_init(d, sil)
+        rows = [_score_cut(a) for a in args]
+    else:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=min(jobs, len(args)), initializer=_cuts_worker_init, initargs=(d, sil)) as pool:
+            rows = list(pool.map(_score_cut, args, chunksize=2))
     return rows
 
 
@@ -412,7 +603,7 @@ def summarize(rows):
     for k in objs:
         g = lambda key: float(np.nanmean([r['objects'][k][key] for r in rows if k in r['objects']]))
         po[k] = {key: g(key) for key in ('pos_err', 'shape_err', 'halluc_px', 'missing_px', 'lead_px',
-                                          'disp_src_px', 'area_px', 'perim_px', 'pred_travel_px')}
+                                          'disp_src_px', 'area_px', 'perim_px', 'pred_travel_px', 'overlap_px')}
     return {'n': len(rows), 'mask_iou': f('mask_iou'), 'l2_det': f('l2_det'), 'bg_err': f('bg_err'),
             'sharp': f('sharp'), 'disocc': f('disocc'), 'graceful': f('graceful'), 'disocc_px': f('disocc_px'),
             'objects': po}
@@ -449,12 +640,41 @@ def table(d_label, K, arms, results, floor):
     return L
 
 
+def cut_table(d_label, K, arm, rows):
+    """One row per cut frame, plus a mean row: the terms score_cut_frame carries, and the two
+    reference candidates (hold, blend) scored alongside it as a built-in sanity check the operator
+    can read straight off the table (hold ≈ 0 everywhere; blend ghosts and blurs)."""
+    L = ['## %s · k = %d · arm `%s` · cut frames' % (d_label, K, arm), '',
+         '| cut | t | nearer | halluc vs A px² | halluc vs B px² | missing vs A px² | missing vs B px² '
+         '| sharp vs A | sharp vs B | graceful | hold graceful | hold halluc | blend graceful | blend halluc |',
+         '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
+    for r in rows:
+        L.append('| %d | %.3f | %s | %.0f | %.0f | %.0f | %.0f | %.3f | %.3f | %.4f | %.4f | %.0f | %.4f | %.0f |'
+                 % (r['cut'], r['t'], r['nearer'], _cut_mean(r, 'halluc_vs_A'), _cut_mean(r, 'halluc_vs_B'),
+                    _cut_mean(r, 'missing_vs_A'), _cut_mean(r, 'missing_vs_B'), r['sharp_vs_A'], r['sharp_vs_B'],
+                    r['graceful'], r['hold']['graceful'], _cut_vs_nearer(r['hold'], 'halluc'),
+                    r['blend']['graceful'], _cut_vs_nearer(r['blend'], 'halluc')))
+    if rows:
+        f = lambda fn: float(np.nanmean([fn(r) for r in rows]))
+        L.append('| mean | %.3f | — | %.0f | %.0f | %.0f | %.0f | %.3f | %.3f | %.4f | %.4f | %.0f | %.4f | %.0f |'
+                 % (f(lambda r: r['t']), f(lambda r: _cut_mean(r, 'halluc_vs_A')), f(lambda r: _cut_mean(r, 'halluc_vs_B')),
+                    f(lambda r: _cut_mean(r, 'missing_vs_A')), f(lambda r: _cut_mean(r, 'missing_vs_B')),
+                    f(lambda r: r['sharp_vs_A']), f(lambda r: r['sharp_vs_B']), f(lambda r: r['graceful']),
+                    f(lambda r: r['hold']['graceful']), f(lambda r: _cut_vs_nearer(r['hold'], 'halluc')),
+                    f(lambda r: r['blend']['graceful']), f(lambda r: _cut_vs_nearer(r['blend'], 'halluc'))))
+    return L
+
+
 # ── the gate ─────────────────────────────────────────────────────────────────────────────────────
-def gate(d, K):
+def gate(d, K, jobs=1, sil='tau'):
     print('GATE on %s at k=%d — five arms with predicted signatures; every check seen RED first.' % (d, K))
     arms = list(SYNTH)                      # computed in memory; nothing is written by the gate
     t, _ = load_corpus(d); W, H = t['width'], t['height']
-    R = {a: score_arm(d, K, a) for a in arms}
+    bg = Z.Scene([], W, H, t['fov_deg'], t['seed']).render(0.0, t['ss'])[0]
+    global SIL_MODE
+    SIL_MODE = sil
+    print('  silhouette operator: %s' % sil)
+    R = {a: score_arm(d, K, a, None, jobs, sil) for a in arms}
     S = {a: summarize(R[a]) for a in arms}
     fl = S['truth']
     fail = []
@@ -485,11 +705,21 @@ def gate(d, K):
 
     # the inversion in its pure form: at phase 0.5 the blend's centroid is EXACT by symmetry -- a
     # position-only verdict would accept the classic ghost. The conjunctive one must not.
-    half = summarize([r for r in R['blend'] if abs(r['phase'] - 0.5) < 1e-9]) or S['blend']
-    p3 = float(np.nanmean([half['objects'][k]['pos_err'] for k in half['objects']]))
-    h3 = float(np.nanmean([half['objects'][k]['halluc_px'] for k in half['objects']]))
+    # ... on the (frame, object) pairs no OTHER object reaches into: a mover passing in front of a static object
+    # clips the two displaced ghosts asymmetrically (2026-09-10, x2/x4/x8) and the symmetry premise stops holding.
+    # The excluded pairs are counted; the FG's own rows keep them (candidate and truth are clipped alike).
+    def free(rows):
+        return [(r, k, o) for r in rows for k, o in r['objects'].items() if o.get('overlap_px', 0) == 0]
+    half_rows = [r for r in R['blend'] if abs(r['phase'] - 0.5) < 1e-9] or R['blend']
+    half = summarize(half_rows) or S['blend']
+    f3 = free(half_rows)
+    n3_all = sum(len(r['objects']) for r in half_rows)
+    p3 = float(np.nanmean([o['pos_err'] for _, _, o in f3])) if f3 else float('nan')
+    h3 = float(np.nanmean([o['halluc_px'] for _, _, o in f3])) if f3 else float('nan')
     v3 = verdict(half, fl)
-    c3 = p3 < 0.15 and h3 > 0 and v3 != 'ACCEPT'
+    c3 = bool(f3) and p3 < 0.15 and h3 > 0 and v3 != 'ACCEPT'
+    print('  T3 overlap    : %d of %d (frame,object) pairs at phase 1/2 are free of other objects; T3 and T5 read those'
+          % (len(f3), n3_all))
     print('  T3 blend φ=½  : pos %.3f (exact by symmetry — position alone would accept), halluc %.0f px², sharp %.3f, verdict %s -> %s'
           % (p3, h3, half['sharp'], v3, c3))
     if not c3: fail.append('T3')
@@ -501,17 +731,37 @@ def gate(d, K):
     if not c4: fail.append('T4')
 
     v5 = verdict(S['blur'], fl)
-    c5 = 'BLUR' in v5 and obj('blur', 'pos_err') < 0.3
+    f5 = free(R['blur'])
+    p5 = float(np.nanmean([o['pos_err'] for _, _, o in f5])) if f5 else obj('blur', 'pos_err')
+    c5 = 'BLUR' in v5 and p5 < 0.3
     print('  T5 blur       : sharp %.3f, pos %.3f, verdict %s (BLUR must be flagged; pos ≈ 0) -> %s'
-          % (S['blur']['sharp'], obj('blur', 'pos_err'), v5, c5))
+          % (S['blur']['sharp'], p5, v5, c5))
     if not c5: fail.append('T5')
+
+    # T6: a cut candidate, built from the corpus's own loop seam (frame 0 and frame n-4=236 — the
+    # SAME two real frames sc_live's live arm bridges across its seam), scored with no align.json in
+    # the loop at all. hold (the nearer real, unchanged) must show pure identity; blend (the classic
+    # ghost) must show the same hallucination + blur signature score_cut_frame is built to catch.
+    A6 = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % 0), W, H)
+    B6 = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % (t['frames'] - 4)), W, H)
+    idsA6, idsB6 = load_id(d, 0, W, H), load_id(d, t['frames'] - 4, W, H)
+    hold6 = score_cut_frame(A6, A6, B6, idsA6, idsB6, bg, 0.0)
+    c6h = hold6['graceful'] == 0.0 and _cut_mean(hold6, 'halluc_vs_A') == 0.0 and abs(hold6['sharp_vs_A'] - 1.0) < 1e-9
+    print('  T6 cut hold   : graceful %.9f, halluc_vs_A %.0f, sharp_vs_A %.9f (all exact identity) -> %s'
+          % (hold6['graceful'], _cut_mean(hold6, 'halluc_vs_A'), hold6['sharp_vs_A'], c6h))
+    blend6 = score_cut_frame(0.5 * (A6 + B6), A6, B6, idsA6, idsB6, bg, 0.0)
+    c6b = _cut_mean(blend6, 'halluc_vs_A') > 0 and _cut_mean(blend6, 'halluc_vs_B') > 0 and blend6['sharp_vs_A'] < 0.9
+    print('  T6 cut blend  : halluc_vs_A %.0f, halluc_vs_B %.0f, sharp_vs_A %.3f (BLUR expected) -> %s'
+          % (_cut_mean(blend6, 'halluc_vs_A'), _cut_mean(blend6, 'halluc_vs_B'), blend6['sharp_vs_A'], c6b))
+    c6 = c6h and c6b
+    if not c6: fail.append('T6')
 
     print()
     print('\n'.join(table(os.path.basename(os.path.normpath(d)), K, arms, S, fl)))
     print()
     if fail:
         sys.exit('GATE FAILED: %s' % ', '.join(fail))
-    print('GATE PASSED (T1..T5).')
+    print('GATE PASSED (T1..T6).')
 
 
 def main():
@@ -523,9 +773,16 @@ def main():
                     help='materialise the synthetic arms to arms/<name>/ (off by default: they are '
                          'computed in memory and are pure functions of the corpus)')
     ap.add_argument('--gate', action='store_true', help='run the red-first gate on the first --run')
+    ap.add_argument('--cuts', action='store_true',
+                    help='also score and print the cut frames (align.json rows with no interpolation '
+                         'truth) of every --arm that has any; off by default')
     ap.add_argument('--frames', type=int, default=None)
     ap.add_argument('--jobs', type=int, default=max(1, (os.cpu_count() or 2) - 2),
                     help='worker processes over the frames (default: cores - 2, COMPUTE_DISCIPLINE); 1 = serial')
+    ap.add_argument('--silhouette', choices=['tau', 'coverage'], default='tau',
+                    help="the silhouette operator (object_like): 'tau' = the 2026-09-08 threshold (default, every recorded row); "
+                         "'coverage' = the half-coverage contour that does not depend on the backdrop under the edge "
+                         "(2026-09-10, for displacements above ~7 px per pair)")
     ap.add_argument('--md'); ap.add_argument('--json')
     a = ap.parse_args()
     if a.jobs > 1:
@@ -535,19 +792,29 @@ def main():
             os.environ.setdefault(v, '1')
     ks = a.k or [4]
     if a.gate:
-        gate(a.run[0], ks[0]); return
+        gate(a.run[0], ks[0], a.jobs, a.silhouette); return
     arms = a.arm or ['truth', 'nearest', 'blend', 'oracle2', 'blur']
-    L = ['# scene_truth report', '']
+    L = ['# scene_truth report', '', 'silhouette operator: `%s`' % a.silhouette, '']
     out = {}
     for d in a.run:
         for K in ks:
             if a.keep_arms:
                 make_arms(d, K, arms)
-            R = {x: score_arm(d, K, x, a.frames, a.jobs) for x in arms}
+            R = {x: score_arm(d, K, x, a.frames, a.jobs, a.silhouette) for x in arms}
             S = {x: summarize(R[x]) for x in arms}
             fl = S.get('truth') or next(v for v in S.values() if v)
             L += table(os.path.basename(os.path.normpath(d)), K, arms, S, fl) + ['']
-            out['%s|k%d' % (d, K)] = {'summary': S, 'rows': R}
+            entry = {'summary': S, 'rows': R}
+            if a.cuts:
+                cuts_out = {}
+                for x in arms:
+                    cut_rows = score_cuts(d, K, x, a.jobs, a.silhouette)
+                    if cut_rows:
+                        cuts_out[x] = cut_rows
+                        L += cut_table(os.path.basename(os.path.normpath(d)), K, x, cut_rows) + ['']
+                if cuts_out:
+                    entry['cuts'] = cuts_out
+            out['%s|k%d' % (d, K)] = entry
     if len(a.run) > 1:
         L += ['DI-3: two corpora given; compare the per-arm rows above run against run. '
               'A term whose two runs disagree by more than 20 % carries no verdict.', '']

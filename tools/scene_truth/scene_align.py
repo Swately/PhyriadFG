@@ -8,14 +8,19 @@ generated from, and decoding the barcodes on those two gives (N, N1) exactly. Th
 then places the generated frame at base index N + t·k.
 
 Two honesties, both recorded per frame in arms/fg/align.json:
-    pair_ok   N1 − N == k. If not, the FG paired across a dropped frame; the frame is kept but
-              flagged, and the scorer is told the real k for that frame.
-    t_resid   |t·k − round(t·k)| in base frames. The FG's phase is its own; the truth it is scored
-              against is the nearest base frame. A residual of 0.1 at k=4 is 0.1 base frames of
-              motion — small, but it is a systematic and it is written down, not absorbed.
+    pair_ok   N1 − N == k. If not, the two real frames the FG paired were NOT k apart — the looped
+              player's seam (e.g. N=236 -> N1=0), or a bridged drop — and N + t·k_real has no honest
+              base-grid position to land on. That frame is filed as a CUT instead: arms/fg/cut_<n>.rgba,
+              an align row with no 'mid' key, no dup competition. It is scored separately, against
+              BOTH real endpoints it bridged (scene_report.score_cut_frame / score_cuts), never mixed
+              into the base-grid sequence.
+    t_resid   |t·k − round(t·k)| in base frames, recorded only for pair_ok triples (a cut has no
+              base-grid position to measure a residual against). The FG's phase is its own; the truth
+              it is scored against is the nearest base frame. A residual of 0.1 at k=4 is 0.1 base
+              frames of motion — small, but it is a systematic and it is written down, not absorbed.
 
 Output: arms/fg/f_<mid>.rgba, the FG's generated frame at its aligned base index, in the layout the
-scorer and the stepper already read.
+scorer and the stepper already read; arms/fg/cut_<n>.rgba for a frame generated across a cut.
 
 Made with my soul - Swately <3
 """
@@ -42,6 +47,7 @@ def main():
     if not os.path.exists(man):
         sys.exit('no manifest.txt in %s' % a.qdump)
     rows, dup = [], {}
+    cut_n = 0
     for line in open(man, encoding='utf-8', errors='replace'):
         if not line.startswith('triple'):
             continue
@@ -53,30 +59,44 @@ def main():
             rows.append({'triple': line.split()[1], 'error': str(e)}); continue
         N, N1, tt = decode_barcode(prev), decode_barcode(nxt), float(f['t'])
         k_real = N1 - N
+        if k_real != a.k:
+            # The two real frames the FG paired were NOT k apart -- the looped player's seam (e.g.
+            # N=236 -> N1=0), or a bridged drop. N + t*k_real has no honest base-grid position: the
+            # loop seam used to put it at a legitimate-looking mid (t=0.874 -> mid 30) that, arriving
+            # first because the player was already mid-sequence when the FG started, claimed the file
+            # and turned every genuine mid-30 frame into a 'dup_of' it -- the stepper then showed a CUT
+            # badge where the FG had three good frames (seen 2026-09-09 on g5_live: mids 30, 89, 148,
+            # 210). A cut now never touches the dup table at all: filed on its own, no mid, no
+            # competition. scene_report's exact_phase() and scene_step's cut set both filter on
+            # 'mid' in r, so a row with no 'mid' key is invisible to them by construction -- this frame
+            # simply isn't part of the base-grid sequence; it is scored separately, against both real
+            # endpoints (scene_report.score_cut_frame / score_cuts).
+            rec = {'triple': line.split()[1], 'N': N, 'N1': N1, 't': tt, 'k_real': k_real,
+                   'pair_ok': False, 'cut': cut_n}
+            live.tofile(os.path.join(out, 'cut_%d.rgba' % cut_n))
+            cut_n += 1
+            rows.append(rec)
+            continue
         pos = N + tt * k_real
         mid = int(round(pos))
         rec = {'triple': line.split()[1], 'N': N, 'N1': N1, 't': tt, 'k_real': k_real,
-               'pair_ok': k_real == a.k, 't_resid': float(abs(pos - mid)), 'mid': mid}
+               'pair_ok': True, 't_resid': float(abs(pos - mid)), 'mid': mid}
         if not (0 < mid < t['frames']) or mid == N or mid == N1:
             rec['skipped'] = 'lands on a real frame or outside the corpus'
         else:
-            # Which triple owns a base index when several claim it (a looped corpus shows every mid once per
-            # lap)? A pair_ok triple ALWAYS beats a cut: the loop seam (N=236 -> N1=0) puts t·k_real at a
-            # legitimate-looking mid (t=0.874 -> mid 30) and, arriving first because the player was already
-            # mid-sequence when the FG started, it used to claim the file and every genuine mid-30 frame
-            # became a 'dup_of' it — the stepper then showed a CUT badge where the FG had three good frames
-            # (seen 2026-09-09 on g5_live: mids 30, 89, 148, 210). Among equals the first arrival stays.
-            if mid in dup and not (rec['pair_ok'] and not dup[mid][1]):
+            # Which triple owns a base index when several claim it (a looped corpus shows every mid
+            # once per lap)? Only pair_ok triples ever reach here now (a cut never enters the dup
+            # table), so this is a genuine collision between two laps; among equals the first arrival
+            # stays.
+            if mid in dup:
                 rec['dup_of'] = dup[mid][0]        # two generated frames claim the same base index
             else:
-                if mid in dup:                     # a genuine pair supersedes the cut that got there first
-                    rows[dup[mid][2]]['dup_of'] = rec['triple']
-                    rows[dup[mid][2]]['superseded'] = 'a cut; replaced by a pair_ok triple'
-                dup[mid] = (rec['triple'], rec['pair_ok'], len(rows))
+                dup[mid] = (rec['triple'], len(rows))
                 live.tofile(os.path.join(out, 'f_%06d.rgba' % mid))
         rows.append(rec)
     good = [r for r in rows if 'mid' in r and 'skipped' not in r and 'dup_of' not in r]
     bad_pairs = sum(1 for r in good if not r['pair_ok'])
+    cuts = sum(1 for r in rows if 'cut' in r)
     json.dump({'k': a.k, 'rows': rows}, open(os.path.join(out, 'align.json'), 'w', encoding='utf-8'), indent=1)
     print('%d triples read, %d aligned to arms/%s/ (%d dup, %d skipped, %d errors); pairs not k apart: %d; '
           't_resid mean %.3f max %.3f base frames'
@@ -84,6 +104,7 @@ def main():
              sum('error' in r for r in rows), bad_pairs,
              float(np.mean([r['t_resid'] for r in good])) if good else float('nan'),
              float(np.max([r['t_resid'] for r in good])) if good else float('nan')))
+    print('%d cut frame(s) filed as arms/%s/cut_*.rgba' % (cuts, a.arm))
 
 
 if __name__ == '__main__':
