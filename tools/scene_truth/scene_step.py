@@ -122,12 +122,12 @@ def write_html(out, frames, W, H, K, arm, corpus, rates):
     css = """
 :root{--bg:#f6f5f2;--ink:#1c1b19;--mut:#6b675f;--line:#dcd8d0;--real:#2f8f5e;--gen:#c98a1a;--red:#b03a2e}
 @media(prefers-color-scheme:dark){:root{--bg:#121210;--ink:#e8e4da;--mut:#9b968a;--line:#2d2b25;--real:#5fd39a;--gen:#f0b545;--red:#e0705f}}
-html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;height:100%%}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;height:100%}
 #wrap{display:grid;grid-template-rows:auto 1fr auto auto;height:100vh}
 header{display:flex;gap:18px;align-items:baseline;padding:10px 18px;border-bottom:1px solid var(--line)}
 header h1{margin:0;font-size:16px;font-weight:600} header .sub{color:var(--mut);font-size:12px}
 #stage{position:relative;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden}
-canvas{max-width:100%%;max-height:100%%;image-rendering:pixelated}
+canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
 #badge{position:absolute;left:18px;top:14px;font-size:28px;font-weight:700;letter-spacing:.04em;padding:6px 14px;border-radius:8px;color:#000}
 #badge.real{background:var(--real)} #badge.gen{background:var(--gen)}
 #idx{position:absolute;right:18px;top:14px;font-size:22px;font-weight:600;color:#fff;text-shadow:0 1px 3px #000}
@@ -135,7 +135,7 @@ canvas{max-width:100%%;max-height:100%%;image-rendering:pixelated}
 #panel{display:grid;grid-template-columns:1fr auto;gap:14px;padding:10px 18px;border-top:1px solid var(--line);font-size:13px;min-height:52px}
 #panel b{font-weight:600} .k{color:var(--mut)} .bad{color:var(--red);font-weight:600}
 #tl{position:relative;height:38px;margin:0 18px 10px;border:1px solid var(--line);border-radius:6px;cursor:pointer;overflow:hidden}
-#tl canvas{position:absolute;inset:0;width:100%%;height:100%%;image-rendering:auto}
+#tl canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:auto}
 #help{padding:0 18px 10px;color:var(--mut);font-size:12px}
 #prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--gen);transform-origin:left;transform:scaleX(0)}
 """

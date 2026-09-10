@@ -41,6 +41,8 @@ def load_rows(path):
             r[k] = float(r[k]) if r.get(k) not in (None, '', 'nan') else float('nan')
         for k in ('k_prev', 'k_next', 'span', 'marker', 'size', 'n_peaks'):
             r[k] = int(r[k])
+        # older CSVs (pre wrap column) have no 'wrap' key at all -- absent means not the loop seam
+        r['wrap'] = int(r['wrap']) if r.get('wrap') not in (None, '') else 0
     return rows
 
 
@@ -124,11 +126,19 @@ def main():
     ap.add_argument('--label', default='the shipping default')
     ap.add_argument('--md', default=None, help='write the baseline table as Markdown here')
     ap.add_argument('--fps', type=float, default=None)
+    ap.add_argument('--keep-wrap', action='store_true',
+                    help='keep loop-seam (wrap) rows instead of dropping them before every statistic '
+                         '(default: dropped -- the wrap pair scores the marker ABSENT, not a real miss)')
     a = ap.parse_args()
 
     traj = json.load(open(os.path.join(a.zoo, 'trajectories.json'), encoding='utf-8'))
     fps = a.fps or float(traj['fps'])
     runs = [load_rows(p) for p in a.run]
+    if not a.keep_wrap:
+        for p, rows in zip(a.run, runs):
+            n_wrap = sum(1 for r in rows if r['wrap'])
+            print(f'{n_wrap} loop-seam (wrap) rows excluded ({os.path.basename(p)})')
+        runs = [[r for r in rows if not r['wrap']] for rows in runs]
     for rows in runs:
         for r in rows:
             if r['plane'] == 'live' and r['n_peaks'] > 0:

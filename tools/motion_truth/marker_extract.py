@@ -256,6 +256,9 @@ def extract_triple(rec, dump_dir, W, H, traj, pats, fps, R, planes=('prev', 'liv
     T = int(traj['frames'])
     # the sequence loops; the pair straddling the wrap is k_next = 0 after k_prev = T-1
     span = ((k_next - k_prev) % T) if (k_prev is not None and k_next is not None) else None
+    # the wrap pair itself: k_next < k_prev, which the % T above turns into a small positive span
+    # that makes the wrap look like an ordinary short-span triple instead of the seam it is
+    wrap = 1 if (k_next is not None and k_prev is not None and k_next < k_prev) else 0
     rows = []
     grey = {p: mask_barcode(luma(im)) for p, im in imgs.items()}
     for m in traj['markers']:
@@ -286,6 +289,7 @@ def extract_triple(rec, dump_dir, W, H, traj, pats, fps, R, planes=('prev', 'liv
                 # 0.3-0.5 near the expectation is a DEGRADED marker; ncc_max ~0 is an ABSENT one
                 'ncc_max': near['ncc'], 'near_x': near['x'], 'near_y': near['y'],
                 'near_dist': float(np.hypot(near['x'] - e_model[0], near['y'] - e_model[1])),
+                'wrap': wrap,
             })
     return rows
 
@@ -293,7 +297,29 @@ def extract_triple(rec, dump_dir, W, H, traj, pats, fps, R, planes=('prev', 'liv
 FIELDS = ['triple', 't', 'k_prev', 'k_next', 'span', 'marker', 'class', 'size', 'plane',
           'exp_model_x', 'exp_model_y', 'exp_true_x', 'exp_true_y', 'n_peaks',
           'obs_x', 'obs_y', 'ncc', 'err_model_px', 'err_true_px',
-          'ncc_max', 'near_x', 'near_y', 'near_dist']
+          'ncc_max', 'near_x', 'near_y', 'near_dist', 'wrap']
+
+
+# ── parallel over triples ─────────────────────────────────────────────────────────────────────
+_W = {}   # per-PROCESS state (dump dir, W/H, traj, pats, fps, R) — see _worker_init
+
+
+def _worker_init(dump, zoo, fps, R):
+    """Load what every triple needs, ONCE per process (ProcessPoolExecutor initializer). Runs in the
+    parent for --jobs 1 and in each pool worker otherwise; the per-triple work (extract_triple) then
+    reads only _W and its own record, so the same triple gives the same row in any process — the
+    same pattern as tools/scene_truth/scene_report.py's _worker_init / _score_triple."""
+    global _W
+    traj, pats = load_zoo(zoo)
+    size, _ = load_manifest(os.path.join(dump, 'manifest.txt'))
+    W, H = size
+    _W = {'dump': dump, 'W': W, 'H': H, 'traj': traj, 'pats': pats, 'fps': fps, 'R': R}
+
+
+def _extract_one(rec):
+    """One triple -> its rows, reading only _W and its own record (see _worker_init)."""
+    w = _W
+    return extract_triple(rec, w['dump'], w['W'], w['H'], w['traj'], w['pats'], w['fps'], w['R'])
 
 
 # ── the self-test: the gate seen red before green ──────────────────────────────────────────────
@@ -376,6 +402,8 @@ def main():
     ap.add_argument('--selftest-frame', type=int, default=None,
                     help='run the self-test on this RAW zoo frame instead of a captured plane '
                          '(section 4.1: the extractor alone, no capture path)')
+    ap.add_argument('--jobs', type=int, default=max(1, (os.cpu_count() or 2) - 2),
+                    help='worker processes over the triples (default: cores - 2); 1 = serial')
     a = ap.parse_args()
 
     traj, pats = load_zoo(a.zoo)
@@ -391,9 +419,23 @@ def main():
               f'positions would be in the wrong frame'); return 1
     out = a.out or os.path.join(a.dump, 'detections.csv')
     print(f'extract: {len(recs)} triples, {len(traj["markers"])} markers, R={R}, fps={fps:g}')
+
+    if a.jobs > 1:
+        # one BLAS/OpenMP thread per worker: the parallelism is across triples, never inside one
+        # (an oversubscribed pool is slower than the serial loop it replaces). Workers inherit this.
+        for v in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
+            os.environ.setdefault(v, '1')
+    if a.jobs <= 1 or len(recs) < 2:
+        _worker_init(a.dump, a.zoo, fps, R)
+        per_rec = [_extract_one(rec) for rec in recs]
+    else:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=min(a.jobs, len(recs)), initializer=_worker_init,
+                                  initargs=(a.dump, a.zoo, fps, R)) as pool:
+            per_rec = list(pool.map(_extract_one, recs, chunksize=2))
+
     allrows = []
-    for rec in recs:
-        rows = extract_triple(rec, a.dump, W, H, traj, pats, fps, R)
+    for rec, rows in zip(recs, per_rec):
         allrows.extend(rows)
         live = [r for r in rows if r['plane'] == 'live' and r['n_peaks'] > 0]
         real = [r for r in rows if r['plane'] in ('prev', 'next') and r['n_peaks'] > 0]

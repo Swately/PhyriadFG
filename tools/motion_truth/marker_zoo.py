@@ -183,6 +183,10 @@ def eval_traj(model, t):
         c = np.array(model['c'], np.float64)
         R = float(model['R']); w = float(model['omega']); ph = float(model['phase'])
         return c + R * np.array([np.cos(w * t + ph), np.sin(w * t + ph)], np.float64)
+    if ty == 'sine':
+        p0 = np.array(model['p0'], np.float64)
+        A = float(model['A']); w = float(model['omega']); ph = float(model['phase'])
+        return p0 + np.array([A * np.sin(w * t + ph), 0.0], np.float64)
     raise ValueError('unknown trajectory type ' + ty)
 
 
@@ -192,7 +196,10 @@ def build_markers(classes, K, W, H, fps, sizes, patterns, rng):
     linear/accel/circular span 0.5-8 px/frame — inside the 8 px block matcher's reach. `fast` sits at
     12-16 px/frame, OUTSIDE it: an expected-failure control. A run whose fast markers do NOT show
     error is a run whose instrument is not measuring, which is the "gate seen red" the empirical-test
-    protocol asks for before any green is believed.
+    protocol asks for before any green is believed. `reverse` is the sign-flip class: it oscillates
+    sinusoidally through the SAME peak per-frame speed as `linear`, reversing direction every 0.5 s,
+    because a temporal MV carrier — the EMA behind --mv-smooth or --mv-prior — would lag a reversal
+    like that; the default has both off, so this regime had no content in the zoo until now.
     """
     y_lo, y_hi = TOP_BORDER + 24, H - 24
     x_lo, x_hi = 24, W - 24
@@ -233,6 +240,17 @@ def build_markers(classes, K, W, H, fps, sizes, patterns, rng):
                          'v': [float(v_px_s), float((y1 - y0) / 4.0)]}
             elif cls == 'hud':
                 model = {'type': 'static', 'p0': [float(x_lo + (x_hi - x_lo) * frac), float(y)]}
+            elif cls == 'reverse':
+                # peak per-frame speed = spf (the linear band): A*omega = spf*fps = v_px_s.
+                # omega = 2*pi*1.0 rad/s -> a full reversal every 0.5 s.
+                omega = 2.0 * np.pi * 1.0
+                A = v_px_s / omega
+                max_A = (W * 0.5) - 24 - s
+                if A > max_A:
+                    A = max_A
+                    omega = v_px_s / A               # keep the peak speed in band after the clamp
+                model = {'type': 'sine', 'p0': [float(W * 0.5), float(y)],
+                         'A': float(A), 'omega': float(omega), 'phase': 0.0}
             else:
                 raise ValueError('unknown class ' + cls)
             ms.append({'id': mid, 'class': cls, 'size': int(s), 'pattern': int(pat_i),
@@ -294,7 +312,9 @@ def main():
     ap.add_argument('--height', type=int, default=720)
     ap.add_argument('--fps', type=float, default=60.0)
     ap.add_argument('--seconds', type=float, default=2.0)
-    ap.add_argument('--classes', default='linear,accel,circular,crossing,hud,fast')
+    ap.add_argument('--classes', default='linear,accel,circular,crossing,hud,fast',
+                    help='comma-separated marker classes: linear,accel,circular,crossing,hud,fast,'
+                         'reverse (reverse is opt-in — the default above is unchanged)')
     ap.add_argument('--bg', default='noise', choices=['flat', 'noise', 'grating'])
     ap.add_argument('--bg-pan', type=float, default=None,
                     help='background pan in px/s (default: 0, or 120 when the hud class is present — '

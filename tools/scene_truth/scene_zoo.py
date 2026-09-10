@@ -213,6 +213,17 @@ PRESETS = {
                    'albedo': [0.95, 0.75, 0.2], 'tex': 'noise', 'tex_freq': 6}],
 }
 PRESETS['mixed'] = PRESETS['translate'] + [PRESETS['occlude'][1]] + [dict(PRESETS['spin'][0], pos=[1.5, -0.6, 7])]
+# the extreme-speed corpus (REGIME_TEST_MATRIX.md family 3, 2026-09-10): at --speed 16 the `mixed` sphere crosses the
+# 640x360 view in 0.21 s of a 1 s corpus (measured on the id planes: 38 base frames fully inside; 76 at x8). A TRAIN of
+# identical spheres spaced one view-width MINUS one diameter apart (2*3.46 - 1.4 = 5.52 units at z = 6, fov 60; 5.5
+# used) keeps at least one sphere FULLY inside the view at every t: a centre is fully inside on a 5.52-unit interval,
+# so a 5.5 spacing always has one there (a first try at width PLUS diameter, 8.33, left 85 of 240 frames with no
+# sphere fully inside — measured on the id planes). At x16 (32 units/s) a sphere enters every 0.172 s, so a 1 s
+# corpus needs 7; the corpus then carries ~6 crossings per second (about 10 source pairs each at k = 4, 53.8 px per
+# pair) instead of one. Same sphere, same backdrop, the spinning box kept as the last object; nothing in `mixed`
+# changes. Object ids: spheres 1..7, the box 8.
+PRESETS['fast_train'] = [dict(PRESETS['translate'][0], pos=[-2.4 - 5.5 * i, 0.0, 6]) for i in range(7)] \
+    + [dict(PRESETS['spin'][0], pos=[1.5, -0.6, 7])]
 BACKDROP = {'shape': 'quad', 'size': [30, 30], 'pos': [0, 0, 12], 'albedo': [0.75, 0.72, 0.68],
             'tex': 'noise', 'tex_freq': 0.9}
 LIGHT = np.array([0.35, -0.5, -0.8]); LIGHT /= np.linalg.norm(LIGHT)
