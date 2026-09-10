@@ -1,6 +1,15 @@
 # scene_live.ps1 - B1: show the corpus to the LIVE FG, capture what it generates, align it, score it.
 #
 #   tools\scene_truth\scene_live.ps1 -Run <corpus> -K 4 [-Seconds 20] [-Fg build-release\phyriad_fg.exe]
+#                                   [-Tag nostasis -FgFlags '--no-stasis'] [-Jobs 14] [-DryRun]
+#
+# AN A/B ARM IS A TAG (2026-09-10, REGIME_TEST_MATRIX.md family 0). -Tag <t> writes the capture to
+# qdump_k<K>_<t> (or gdump_k<K>_<t>), the FG log to fg_k<K>_<t>.log, the aligned arm to arms/fg_k<K>_<t>/ and
+# the scores to fg_k<K>_<t>.{md,json} -- so the DEFAULT capture (no tag) is never overwritten by an arm, and
+# two arms of one corpus sit side by side. -FgFlags is the arm's extra FG flags, split on whitespace and
+# appended verbatim to the FG's argument list ('--no-stasis', '--mv-sim 0.30', '--no-asw --no-mv-guided').
+# The record states the arm by the flags the FG printed, not by the tag (P-027: two help texts lie about
+# their default). -DryRun prints every command line exactly as it would be passed and starts nothing.
 #
 # What happens, in order: play_frames.ps1 presents source_k<K>/ at base_fps/K in its own window
 # ("RA Motion Zoo"); the FG captures that window and, with --qdump, writes every sampled generated frame
@@ -30,6 +39,12 @@ param(
   [string]$FgExe = "",
   [string]$Title = 'RA Motion Zoo',
   [switch]$NoScore,        # capture + align only; score later (lets several captures run back to back)
+  [string]$Tag = '',       # the A/B arm's name; '' = the default capture (qdump_k<K>, arms/fg_k<K>)
+  [string]$FgFlags = '',   # extra FG flags for this arm, whitespace-split, appended verbatim. NOT -FgArgs:
+                           # PowerShell names are case-insensitive, so $FgArgs IS this script's $fgArgs array;
+                           # the header's trap bit a second time here (2026-09-10: a duplicated FG line).
+  [int]$Jobs = 0,          # scene_report.py --jobs (0 = the scorer's own default, cores - 2)
+  [switch]$DryRun,         # print the command lines it would run, start nothing
   [switch]$Loop,           # loop the sequence. Without it the player CLOSES after the last frame, so the
                            # corpus must outlast 3 s + Seconds or the FG captures nothing (seen: 0 triples
                            # on a 1 s corpus). With it, the FG sees a CUT at every seam; the scorer counts
@@ -47,13 +62,14 @@ if (-not $FgExe) { $FgExe = Join-Path $root 'build-release\phyriad_fg.exe' }
 $src = Join-Path $Run ("source_k{0}" -f $K)
 if (-not (Test-Path (Join-Path $src 'manifest.txt'))) { throw "no $src\manifest.txt - render the corpus with --barcode --manifest-k $K" }
 $fps = [double]((Get-Content (Join-Path $src 'manifest.txt') | Where-Object { $_ -like 'fps *' }) -split '\s+')[1]
-$qd = Join-Path $Run ("qdump_k{0}" -f $K)
+$sfx = if ($Tag) { "_" + $Tag } else { "" }
+$qd = Join-Path $Run ("qdump_k{0}{1}" -f $K, $sfx)
 if (Test-Path $qd) { Remove-Item -Recurse -Force $qd }
 New-Item -ItemType Directory -Force $qd | Out-Null
 if ($Gdump) {
   # The tap creates its own directory (GDUMP_PLAN.md S2 "created by the tap"); just clear anything
   # stale from a previous run so the adapter never mixes two captures.
-  $gd = Join-Path $Run ("gdump_k{0}" -f $K)
+  $gd = Join-Path $Run ("gdump_k{0}{1}" -f $K, $sfx)
   if (Test-Path $gd) { Remove-Item -Recurse -Force $gd }
 }
 $q = { param($s) '"' + $s + '"' }
@@ -71,14 +87,24 @@ $player = Start-Process powershell -PassThru -ArgumentList $pargs
 Start-Sleep -Seconds 3
 # The FG's own stdout is the measurement's provenance (present / capture rates, the real+generated
 # tally). It is kept next to the corpus as fg_k<K>.log; the stepper reads it by default.
-$fglog = Join-Path $Run ("fg_k{0}.log" -f $K)
+$fglog = Join-Path $Run ("fg_k{0}{1}.log" -f $K, $sfx)
 if ($Gdump) {
   $fgArgs = @('--window', (& $q $Title), '--gdump', (& $q $gd), '--exit-after', $Seconds, '--fg-factor', $K)
 } else {
   $fgArgs = @('--window', (& $q $Title), '--qdump', (& $q $qd), $Triples, '--exit-after', $Seconds, '--fg-factor', $K)
 }
+if ($FgFlags.Trim()) { $fgArgs += ($FgFlags -split '\s+' | Where-Object { $_ }) }
+$jobsArg = @(); if ($Jobs -gt 0) { $jobsArg = @('--jobs', $Jobs) }
+if ($DryRun) {
+  Write-Host ('[dry-run] player: powershell ' + ($pargs -join ' '))
+  Write-Host ('[dry-run] fg    : ' + $FgExe + ' ' + ($fgArgs -join ' ') + '  > ' + $fglog)
+  if ($Gdump) { Write-Host ('[dry-run] adapt : python gdump_adapter.py --dir ' + $gd + ' --out ' + $qd + ' --link') }
+  Write-Host ('[dry-run] align : python scene_align.py --qdump ' + $qd + ' --run ' + $Run + ' --k ' + $K + ' --arm ' + ('fg_k{0}{1}' -f $K, $sfx))
+  Write-Host ('[dry-run] score : python scene_report.py --run ' + $Run + ' --k ' + $K + ' --arm truth --arm nearest --arm oracle2 --arm ' + ('fg_k{0}{1}' -f $K, $sfx) + ' ' + ($jobsArg -join ' '))
+  exit 0
+}
 $proc = Start-Process $FgExe -PassThru -Wait -NoNewWindow -RedirectStandardOutput $fglog `
-  -RedirectStandardError (Join-Path $Run ("fg_k{0}.err" -f $K)) -ArgumentList $fgArgs
+  -RedirectStandardError (Join-Path $Run ("fg_k{0}{1}.err" -f $K, $sfx)) -ArgumentList $fgArgs
 Get-Content $fglog -Tail 3 | ForEach-Object { Write-Host ('[fg] ' + $_) }
 if (-not $player.HasExited) { Stop-Process -Id $player.Id -Force -ErrorAction SilentlyContinue }
 if ($Gdump) {
@@ -94,8 +120,8 @@ if ($nlive -eq 0) { throw "the FG wrote no triples - check the capture target an
 # odd frame is a k=2 mid AND a k=4 mid AND a k=8 mid), so a shared arms/fg/ let a later run overwrite an
 # earlier run's frames and its align.json -- seen: the k=8 run replaced k=2's, and a concurrent scorer
 # read the mixture. fg_k<K> keeps every run's output intact and the scorer reads only its own.
-$arm = "fg_k{0}" -f $K
+$arm = "fg_k{0}{1}" -f $K, $sfx
 & python (Join-Path $here 'scene_align.py') --qdump $qd --run $Run --k $K --arm $arm
 if ($NoScore) { Write-Host "[scene-live] -NoScore: aligned into arms\$arm; score with scene_report.py --arm $arm"; exit 0 }
 & python (Join-Path $here 'scene_report.py') --run $Run --k $K --arm truth --arm nearest --arm oracle2 --arm $arm `
-    --md (Join-Path $Run ("fg_k{0}.md" -f $K)) --json (Join-Path $Run ("fg_k{0}.json" -f $K))
+    --md (Join-Path $Run ("fg_k{0}{1}.md" -f $K, $sfx)) --json (Join-Path $Run ("fg_k{0}{1}.json" -f $K, $sfx)) @jobsArg
