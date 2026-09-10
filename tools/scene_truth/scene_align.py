@@ -60,10 +60,19 @@ def main():
         if not (0 < mid < t['frames']) or mid == N or mid == N1:
             rec['skipped'] = 'lands on a real frame or outside the corpus'
         else:
-            if mid in dup:
-                rec['dup_of'] = dup[mid]           # two generated frames claim the same base index
+            # Which triple owns a base index when several claim it (a looped corpus shows every mid once per
+            # lap)? A pair_ok triple ALWAYS beats a cut: the loop seam (N=236 -> N1=0) puts t·k_real at a
+            # legitimate-looking mid (t=0.874 -> mid 30) and, arriving first because the player was already
+            # mid-sequence when the FG started, it used to claim the file and every genuine mid-30 frame
+            # became a 'dup_of' it — the stepper then showed a CUT badge where the FG had three good frames
+            # (seen 2026-09-09 on g5_live: mids 30, 89, 148, 210). Among equals the first arrival stays.
+            if mid in dup and not (rec['pair_ok'] and not dup[mid][1]):
+                rec['dup_of'] = dup[mid][0]        # two generated frames claim the same base index
             else:
-                dup[mid] = rec['triple']
+                if mid in dup:                     # a genuine pair supersedes the cut that got there first
+                    rows[dup[mid][2]]['dup_of'] = rec['triple']
+                    rows[dup[mid][2]]['superseded'] = 'a cut; replaced by a pair_ok triple'
+                dup[mid] = (rec['triple'], rec['pair_ok'], len(rows))
                 live.tofile(os.path.join(out, 'f_%06d.rgba' % mid))
         rows.append(rec)
     good = [r for r in rows if 'mid' in r and 'skipped' not in r and 'dup_of' not in r]
