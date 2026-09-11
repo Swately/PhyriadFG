@@ -48,23 +48,50 @@ def scene_row_from_json(json_path, K, arm, obj):
             'halluc': o.get('halluc_px'), 'lead': o.get('lead_px'), 'sharp': S['sharp'], 'arm': a}
 
 
+def presented_cell(pages, row):
+    """The link to a run's presented-sequence page, with the count of what that page actually holds.
+
+    The count is read back from the page's own frames.json and never carried in runs.json. The two counts
+    in this table answer different questions -- how many frames the base-grid page walks, and how many
+    ticks the tap stored -- and a remembered second number is exactly how they would drift apart.
+    """
+    fj = os.path.join(pages, row['name'], 'presented', 'frames.json')
+    if not os.path.exists(fj):
+        return '<span class="k">-</span>'
+    try:
+        blob = json.load(open(fj, encoding='utf-8'))
+    except (ValueError, OSError):
+        return '<span class="k">-</span>'
+    n = len(blob.get('frames', []))
+    pc = (blob.get('meta') or {}).get('pace') or {}
+    tail = (' <small>%d pasos dobles</small>' % pc['double']) if pc.get('double') else ''
+    return '<a href="%s/presented/index.html">totalidad (%d)</a>%s' % (html.escape(row['name']), n, tail)
+
+
 def build(pages, db):
     f = lambda v, d: ('—' if v is None else ('%+.1f' % v if d == 'lead' else ('%.*f' % (d, v))))
     L = ['<!doctype html><meta charset="utf-8"><title>scene_truth — the FG runs</title><style>%s</style><main>' % CSS,
          '<h1>scene_truth — every live FG run, ready to walk</h1>',
          '<p>Each row is one live capture of the shipping default scored against exact truth at its own phase. '
-         '<b>step</b> walks the whole sequence frame by frame (real / generated, hold to advance); <b>review</b> '
-         'shows the worst frames per term. The numbers are the arm\'s summary from the scorer\'s own JSON.</p>',
+         '<b>step</b> walks the BASE GRID frame by frame (real / generated, hold to advance); <b>review</b> '
+         'shows the worst frames per term. The numbers are the arm\'s summary from the scorer\'s own JSON, and '
+         'the <b>frames</b> column counts what those two pages carry.</p>',
+         '<p><b>presentado</b> is a different sequence and a different count: every frame the tap STORED, in the '
+         'order the FG presented it, nothing deduplicated and nothing real. The aligner behind <b>step</b> files '
+         'one frame per base index, so a looped capture -- the same corpus shown twenty times -- collapses to one '
+         'lap and most of what was on the screen never reaches that page. The presented page also carries the '
+         'pacing block: which phase slots the generator dropped, and where the scene advances two base frames in '
+         'one presented frame instead of one.</p>',
          '<h2>Scene runs (scene_truth: silhouette terms)</h2>',
          '<table><tr><th>run</th><th>seed</th><th>speed</th><th>k</th><th>frames</th><th>sphere px/pair</th>'
-         '<th>pos px (all obj)</th><th>sphere pos</th><th>halluc px²</th><th>lead</th><th>sharp</th><th></th><th></th></tr>']
+         '<th>pos px (all obj)</th><th>sphere pos</th><th>halluc px²</th><th>lead</th><th>sharp</th><th></th><th></th><th>presentado</th></tr>']
     for r in db['scene']:
         note = (' <small>%s</small>' % html.escape(r['note'])) if r.get('note') else ''
         L.append('<tr><td><b>%s</b>%s</td><td>%s</td><td>%s×</td><td>%d</td><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>'
-                 '<td><a href="%s/step/index.html">step</a></td><td><a href="%s/review/index.html">review</a></td></tr>'
+                 '<td><a href="%s/step/index.html">step</a></td><td><a href="%s/review/index.html">review</a></td><td>%s</td></tr>'
                  % (html.escape(r['name']), note, r.get('seed', '—'), r.get('speed', '—'), r['k'], r['frames'], f(r.get('disp'), 2),
                     f(r.get('pos_all'), 3), f(r.get('pos_obj'), 3), f(r.get('halluc'), 0), f(r.get('lead'), 'lead'), f(r.get('sharp'), 3),
-                    html.escape(r['name']), html.escape(r['name'])))
+                    html.escape(r['name']), html.escape(r['name']), presented_cell(pages, r)))
     L.append('</table>')
     if db.get('marker'):
         L += ['<h2>Marker runs (motion_truth: err_model per class, px; r = run-to-run reliability)</h2>',

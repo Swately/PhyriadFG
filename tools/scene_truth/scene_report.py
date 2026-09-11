@@ -483,6 +483,57 @@ def _worker_init(d, arm, sil='tau'):
     _W = {'d': d, 'arm': arm, 't': t, 'sc': sc, 'W': W, 'H': H, 'bg': bg, 'ex': exact_phase(d, arm)}
 
 
+def _score_core(cand, truth, ids, tm, tA, tB, N, N1, phase, want_masks=False):
+    """The half of a frame's score that does not care WHERE the truth came from.
+
+    Both paths arrive here with the truth image and its label map already in hand: the base-grid path loads
+    them from the corpus, the live path renders them at the FG's own phase. Everything after that -- the
+    visibility classes, the per-object motion, the nearest real frame, the six terms -- is one body, written
+    once so the report's rows and the stepper's presented-sequence page cannot drift apart.
+
+    Returns (row, near_i, masks). The caller stamps mid/near/phase/k/exact_phase itself, in that order,
+    because the JSON those keys land in is diffed against earlier runs.
+    """
+    d, t, sc, W, H, bg = (_W[k] for k in ('d', 't', 'sc', 'W', 'H', 'bg'))
+    cls = sc.visibility(tm, tA, tB)
+    k, _, L = sc.labels(tm)
+    uvA, _ = sc.reproject(k, L, tA); uvB, _ = sc.reproject(k, L, tB)
+    fl = uvB - uvA                                          # per SOURCE pair
+    motion = {}
+    for kk in sorted(int(x) for x in np.unique(ids) if 0 < x < 255):
+        v = fl[ids == kk].mean(axis=0); n = np.linalg.norm(v)
+        motion[kk] = (v / (n + 1e-12), float(n))
+    near_i = N if phase <= 0.5 else N1
+    nearest = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % near_i), W, H)
+    mk = {} if want_masks else None
+    r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H),
+                    (load_id(d, N, W, H), load_id(d, N1, W, H)), masks=mk)
+    return r, near_i, mk
+
+
+def score_live(cand, N, N1, phase, barcode=None, want_masks=False):
+    """One candidate scored against the truth rendered at ITS OWN phase between real frames N and N1.
+
+    The whole live path, and now the only copy of it. `_score_triple` takes it for a triple that align.json
+    gave an exact phase; `scene_step`'s presented-sequence page takes it for a frame that never reached
+    `arms/` at all -- a lap repeat, a slot the aligner filed `skipped`, a second frame that claimed an
+    occupied base index. None of those has a base-grid position and none of them needs one: N, N1 and the
+    FG's own t are the entire input. Reads the per-process state `_W` (see `_worker_init`).
+
+    Returns (row, near_i, truth, masks). The truth comes back because it is the image the frame was actually
+    scored against; a viewer that draws the base-grid frame instead shows up to half a base frame of motion
+    the FG never made.
+    """
+    t, sc = _W['t'], _W['sc']
+    tA, tB = t['t'][N], t['t'][N1]
+    tm = tA + phase * (tB - tA)
+    truth, (ids, _, _) = sc.render(tm, t['ss'])
+    if STRIP is not None:
+        Z.draw_barcode(truth, N if barcode is None else barcode)   # masked out of every term; keep the bytes alike
+    r, near_i, mk = _score_core(cand, truth, ids, tm, tA, tB, N, N1, phase, want_masks)
+    return r, near_i, truth, mk
+
+
 def _score_triple(args):
     """One triple of one arm -> ('row', r) | ('cut', None) | ('skip', None). The former loop body of score_arm,
     verbatim; it reads only _W and its arguments, so the same triple gives the same row in any process.
@@ -497,7 +548,6 @@ def _score_triple(args):
     cand = arm_frame(t, sc, d, tr, arm)
     if cand is None:
         return ('skip', None)
-    tm, tA, tB = t['t'][tr['mid']], t['t'][tr['N']], t['t'][tr['N1']]
     if tr['mid'] in ex:
         # A LIVE arm is scored against the truth AT ITS OWN PHASE, rendered on demand: the FG's t
         # need not sit on the base grid, and comparing to the nearest base frame would charge the
@@ -510,37 +560,14 @@ def _score_triple(args):
             # this, the loop seam, and was nearly recorded as a hallucination on continuous motion.
             # Counted, never scored.
             return ('cut', None)
-        tA, tB = t['t'][e['N']], t['t'][e['N1']]
-        tm = tA + e['t'] * (tB - tA)
-        truth, (ids, _, _) = sc.render(tm, t['ss'])
-        if STRIP is not None:
-            Z.draw_barcode(truth, tr['mid'])          # the strip is masked anyway; keep the bytes alike
+        phase = e['t']
+        r, near_i, truth, mk = score_live(cand, e['N'], e['N1'], phase, barcode=tr['mid'], want_masks=want_masks)
     else:
         truth = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % tr['mid']), W, H)
         ids = load_id(d, tr['mid'], W, H)
-    cls = sc.visibility(tm, tA, tB)
-    k, _, L = sc.labels(tm)
-    uvA, _ = sc.reproject(k, L, tA); uvB, _ = sc.reproject(k, L, tB)
-    fl = uvB - uvA                                          # per SOURCE pair
-    motion = {}
-    for kk in sorted(int(x) for x in np.unique(ids) if 0 < x < 255):
-        v = fl[ids == kk].mean(axis=0); n = np.linalg.norm(v)
-        motion[kk] = (v / (n + 1e-12), float(n))
-    if tr['mid'] in ex:
-        e = ex[tr['mid']]
-        near_i = e['N'] if e['t'] <= 0.5 else e['N1']
-        phase = e['t']
-    else:
-        near_i = tr['N'] if tr['phase'] <= 0.5 else tr['N1']
+        tm, tA, tB = t['t'][tr['mid']], t['t'][tr['N']], t['t'][tr['N1']]
         phase = tr['phase']
-    nearest = load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % near_i), W, H)
-    if tr['mid'] in ex:
-        nA, nB = ex[tr['mid']]['N'], ex[tr['mid']]['N1']
-    else:
-        nA, nB = tr['N'], tr['N1']
-    mk = {} if want_masks else None
-    r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H),
-                    (load_id(d, nA, W, H), load_id(d, nB, W, H)), masks=mk)
+        r, near_i, mk = _score_core(cand, truth, ids, tm, tA, tB, tr['N'], tr['N1'], phase, want_masks)
     r.update({'mid': tr['mid'], 'near': near_i, 'phase': phase, 'k': K, 'exact_phase': tr['mid'] in ex})
     if mk is not None:
         # the truth this frame was actually scored against. For a LIVE arm it is rendered at the FG's own

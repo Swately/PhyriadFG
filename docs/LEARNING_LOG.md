@@ -200,8 +200,74 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-038 · The generator targets k phase slots, not k-1, and abandons the last one in every capture the project holds
+- **class:** premise refuted (twice: the slot count, and the reach of the finding) · **date:** 2026-09-11 · **recurrences:** 1 (P-037 is the same defect on one corpus) · **status:** measured on 16 every-tick captures; the cause in the present loop is still not read
+- **evidence:** P-037 measured the dropped last slot on ONE corpus at ONE multiplier and said so. The
+  presented-sequence page built for `sc_live · k = 8 · fg_k8_ph8` (4488 stored ticks, all of them, none
+  deduplicated) made the same measurement cheap everywhere, because it needs no rendering: N, N1, the FG's
+  own t and the presentation order are all in `align.json` and `gdump_map.tsv`. Two premises fell.
+
+  **First: the slot count is k, never k - 1.** A multiplier of k implies k-1 generated frames between two
+  real ones, and the prompt this page was written from asserted 7 slots at k = 8 for that reason. The
+  capture locks to EIGHT, at (2j+1)/16, with a grid concentration of 0.883 and a mean residual of 0.042
+  base frames. The same test returns 4 at k = 4 and 2 at k = 2. Sixteen every-tick captures, three
+  multipliers, five corpora, two seeds, two speeds: the answer is k every time.
+
+  **Second: the drop is everywhere, and it is the LAST slot everywhere.** Percentage of pair
+  presentations missing the final slot, one every-tick capture per row, the rest of the slots missing in
+  0-6 %:
+
+  | corpus | arm | k | ticks | last slot missing | frames/pair | double steps |
+  |---|---|---|---|---|---|---|
+  | sc_live | `fg_k2_ph2` | 2 | 4260 | **14 %** | 1.89 | 7.1 % |
+  | g5_live | `fg_k4` | 4 | 1805 | 26 % | 3.75 | 7.0 % |
+  | sc_v4 | `fg_k4_v4` | 4 | 4500 | 27 % | 3.76 | 7.0 % |
+  | sc_live2 | `fg_k4_s11mvg` | 4 | 4501 | 27 % | 3.75 | 7.1 % |
+  | sc_v2 | `fg_k4_v2` | 4 | 4090 | 27 % | 3.74 | 7.2 % |
+  | sc_live2 | `fg_k4_s11base` | 4 | 4338 | 28 % | 3.75 | 7.2 % |
+  | sc_live | `fg_k4_base` | 4 | 4382 | 28 % | 3.75 | 7.3 % |
+  | sc_live | `fg_k4_nocand` | 4 | 4467 | 28 % | 3.74 | 7.4 % |
+  | sc_live | `fg_k4_mvg` | 4 | 4465 | 30 % | 3.72 | 7.9 % |
+  | sc_live | `fg_k4_nostasis` | 4 | 4250 | 30 % | 3.72 | 8.0 % |
+  | sc_live | `fg_k4_noambig` | 4 | 3875 | 32 % | 3.70 | 8.5 % |
+  | sc_live | `fg_k4_smooth` | 4 | 4272 | 32 % | 3.69 | 8.5 % |
+  | sc_live | `fg_k4_nocand2` | 4 | 4094 | 33 % | 3.69 | 8.8 % |
+  | sc_live | `fg_k4_prior` | 4 | 3796 | 35 % | 3.66 | 9.4 % |
+  | sc_live | `fg_k8_ph8` | 8 | 4488 | **44 %** | 7.46 | 6.1 % |
+  | sc_live | `fg_k8_ph8mvg` | 8 | 2174 | **85 %** | 5.20 | 25.8 % |
+
+  Read across, not down. **The drop scales with k** (14 / 26-35 / 44 %) and is flat in everything else:
+  two seeds, two scene speeds and two corpora give 26-28 % for the plain default, and the eight MV knobs
+  span 28-35 % with no knob outside that band. A defect that ignores the seed, the speed, the corpus and
+  every knob of the warp is not in the warp. P-037 conjectured the present loop; this is the evidence for
+  it, and the reverse test is in the table: `--no-mv-candsel`, `--mv-prior`, `--mv-smooth`, `--no-ambig`,
+  `--no-stasis` and `--no-mv-guided` all change the PICTURE and none of them moves the pacing out of band.
+
+  **What it costs on the screen.** 6-9 % of every presented frame advances the scene twice as far as the
+  one before it. Zero reversals in any capture. At a 240 fps presented rate that is 15-22 double steps per
+  second, and every one of those frames is CORRECT for its own phase: `fg_k8_ph8` scores pos_err 0.316 px
+  under `coverage` and the report's verdict on it is ACCEPT.
+
+  **The outlier is a lead, not noise.** `fg_k8_ph8mvg` -- the `--no-mv-guided` ablation at k = 8 -- loses
+  the last slot in 85 % of pairs, runs 5.20 frames per pair against 7.46, and its phases barely lock to
+  the grid at all (0.540 against 0.883). It also stored 2174 ticks where its twin stored 4488. Whatever
+  the present loop is doing, that arm does much more of it; it is one run and it has not been repeated.
+- **lesson:** a count the multiplier implies is a premise, not a measurement, and it was wrong by one in
+  the very document written to guard the measurement. The estimator that caught it assumes only that the
+  slots are evenly spaced and asks the data how many there are -- and the first version of it, which split
+  sorted phases on gaps, returned 7 and hid the drop by merging the last slot with its own jitter tail. An
+  instrument that discovers a grid must be shown a case where it would report the wrong grid.
+- **corrective:** `scene_step.py --presented` (every stored tick, in presentation order, nothing
+  deduplicated, nothing real) with the pacing block on the page; `slot_grid()` as the named estimator with
+  its lock reported beside every census, because a capture whose phases do not lock has no slots to be
+  missing. The page for `sc_live k=8 fg_k8_ph8` is `F:\Phyriad\scene_pages\ph8_k8\presented` -- 4488
+  frames, 264 double steps, each one reachable by a chip or the J key. **Still owed:** why the last slot
+  is abandoned (the present loop, not the warp -- now with a reverse test saying so); a term over
+  CONSECUTIVE presented frames, which would be the first term this instrument has that is not per-frame;
+  and a second run of the `fg_k8_ph8mvg` outlier.
+
 ### P-037 · The generator drops the last slot of one pair in four, and every term the instrument has is blind to it
-- **class:** premise refuted (the instrument's population was never the presented sequence) · **date:** 2026-09-11 · **recurrences:** 0 · **status:** measured; the cause in the clock is not yet read
+- **class:** premise refuted (the instrument's population was never the presented sequence) · **date:** 2026-09-11 · **recurrences:** 0 · **status:** measured on ONE corpus at ONE multiplier; generalised by P-038, which finds k slots rather than k-1 and the same abandoned last slot in sixteen captures
 - **evidence:** the operator kept reporting displacements and hallucinations on screen that the review pages did
   not contain, and finally described it exactly: "the motion is correctly presented but frame by frame it shifts
   in presentation time". Four hypotheses were tested and killed first — the tap misses frames (it records

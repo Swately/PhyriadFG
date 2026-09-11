@@ -236,9 +236,19 @@ class Scene:
         self.W, self.H, self.fov, self.seed = W, H, float(fov_deg), seed
         self.f = (W * 0.5) / np.tan(np.deg2rad(self.fov) * 0.5)
         self.cx, self.cy = W * 0.5, H * 0.5
+        # Two caches, both pure functions of state that never changes after __init__ (the ray grid) or of
+        # the time asked for (the label maps). They exist because scoring ONE frame asks for the same map
+        # more than once: visibility(tm, tA, tB) calls labels() three times and the scorer calls it a
+        # fourth for tm, and tA/tB are THE SAME for every frame of one pair -- at k = 8 that is eight
+        # frames sharing one endpoint pair. Nothing returned here is ever mutated by a caller (verified
+        # across every .labels( / .rays( call site in tools/), so handing out the same array is safe.
+        self._rays, self._lab = {}, {}
 
     # rays for every subsample of every pixel, shape (ss*ss, H*W, 3), unit length
     def rays(self, ss):
+        hit = self._rays.get(ss)
+        if hit is not None:
+            return hit
         js, is_ = np.mgrid[0:self.H, 0:self.W]
         out = []
         for b in range(ss):
@@ -247,7 +257,8 @@ class Scene:
                 d = np.stack([(u - self.cx) / self.f, (v - self.cy) / self.f, np.ones_like(u)], axis=-1)
                 d = d.reshape(-1, 3); d /= np.linalg.norm(d, axis=1)[:, None]
                 out.append(d)
-        return np.stack(out)
+        self._rays[ss] = np.stack(out)      # ss is 1 or the corpus's ss; at most two entries ever live
+        return self._rays[ss]
 
     def project(self, P):
         z = P[:, 2]
@@ -299,9 +310,17 @@ class Scene:
         return rgb, labels
 
     def labels(self, t):
+        key = float(t)
+        hit = self._lab.get(key)
+        if hit is not None:
+            return hit
         d = self.rays(1)[0]
         k, P, Nw, L, z = self.hit(t, d)
-        return k.reshape(self.H, self.W), z.reshape(self.H, self.W), L.reshape(self.H, self.W, 3)
+        hit = k.reshape(self.H, self.W), z.reshape(self.H, self.W), L.reshape(self.H, self.W, 3)
+        if len(self._lab) >= 4:            # tm, tA, tB and one spare: a pair's worth, then start over
+            self._lab.clear()
+        self._lab[key] = hit
+        return hit
 
     def reproject(self, k, L, t_to):
         """Where does each material point (k, L) sit in the image at time t_to? -> (uv, z)."""

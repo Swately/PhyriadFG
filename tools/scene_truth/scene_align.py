@@ -97,7 +97,11 @@ def main():
     good = [r for r in rows if 'mid' in r and 'skipped' not in r and 'dup_of' not in r]
     bad_pairs = sum(1 for r in good if not r['pair_ok'])
     cuts = sum(1 for r in rows if 'cut' in r)
-    json.dump({'k': a.k, 'rows': rows}, open(os.path.join(out, 'align.json'), 'w', encoding='utf-8'), indent=1)
+    # The qdump is recorded because the presented-sequence page reads its frames from THERE, not from
+    # arms/: the rows filed as dup_of or skipped never got a file in arms/, and they are most of what the
+    # operator watched. Without this key that page needs the path re-typed on every call.
+    json.dump({'k': a.k, 'qdump': os.path.abspath(a.qdump), 'rows': rows},
+              open(os.path.join(out, 'align.json'), 'w', encoding='utf-8'), indent=1)
     print('%d triples read, %d aligned to arms/%s/ (%d dup, %d skipped, %d errors); pairs not k apart: %d; '
           't_resid mean %.3f max %.3f base frames'
           % (len(rows), len(good), a.arm, sum('dup_of' in r for r in rows), sum('skipped' in r for r in rows),
