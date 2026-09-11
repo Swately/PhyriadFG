@@ -200,6 +200,50 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-036 · The knob that costs 42 % at one displacement pays for itself at twice that, and the sign flips with phase
+- **class:** premise refuted · **date:** 2026-09-11 · **recurrences:** 0 · **status:** the default was NOT flipped; the evidence says it should not be
+- **evidence:** the operator, after seeing the colour-guided MV pick cost 42 % of the position error at k = 4,
+  said to apply it as the default and re-run the same scene to compare. The comparison run refutes the flip.
+  Same corpus, same every-tick tap, one run per arm, n = 203 each, scored under `coverage`:
+
+  | | k = 4 (3.4 px/pair) | k = 8 (6.7 px/pair) |
+  |---|---|---|
+  | default | 0.213 px | 0.316 px |
+  | `--no-mv-guided` | 0.124 px | 0.316 px |
+  | change | **−42.0 %** | **−0.2 %** |
+
+  At k = 8 the net is zero because the sign flips inside the pair, and the flip is clean at n = 29 per bin:
+
+  | phase | default | `--no-mv-guided` | change |
+  |---|---|---|---|
+  | 0.125 | 0.645 | 0.690 | **+7.0 %** |
+  | 0.250 | 0.473 | 0.508 | **+7.5 %** |
+  | 0.375 | 0.341 | 0.358 | +5.0 % |
+  | 0.500 | 0.234 | 0.271 | +15.6 % |
+  | 0.625 | 0.213 | 0.177 | −16.8 % |
+  | 0.750 | 0.183 | 0.111 | **−39.2 %** |
+  | 0.875 | 0.125 | 0.094 | −24.6 % |
+
+  Removing the layer HURTS the first half of the pair and HELPS the second, and the two halves cancel.
+  This lines up with the mechanism read from the shaders (P-034): `phase_anchor.glsl:11-14` switches the
+  vector source from the forward field to the backward one by `smoothstep(0.35, 0.65, t)`, and `cli.hpp:491`
+  states that `mv_guided` weights the 3x3 consensus by colour membership on BOTH fields. So the colour-guided
+  consensus helps the forward field at large displacement and hurts the backward one, and which effect wins
+  depends on the phase — and, through the displacement, on k.
+- **lesson:** a knob measured in ONE regime is a knob measured in one regime. The k = 4 result was two seeds
+  and a 42 % effect, which felt like enough to move a shipping default; one capture at twice the displacement
+  showed the effect is not a property of the knob but of the knob crossed with phase and displacement. The
+  project's own scenario matrix exists to say exactly this, and the session was one command away from
+  flipping a default on evidence from a single point of it.
+- **corrective:** the default is untouched. What a flip would take, mapped and recorded so the decision is
+  cheap when it is taken: `layer_table.def:43` (the layer row), `cli.hpp:491` (the struct field),
+  `cli.cpp:591` and `:645` (the two flag handlers trade places), the three help lines at `cli.cpp:15, 23, 130`,
+  and `CMakeLists.txt:268`, which pins the contract hash `0x9517AE73A530EAFE` as a test and would have to be
+  updated to the value the build prints. The frozen paper identity also names the object as "the shipping
+  default kernel as configured by its default flags", so a flip makes every existing row a measurement of a
+  different object — the identity already handles that by pinning a build per row, but the record must say so.
+  What is owed before any flip: the same A/B at ×2 and ×4 speed, and a second seed at k = 8.
+
 ### P-035 · The give-back that holds the panel: the plane watchdog and the thread that joins it deadlock each other on a normal quit
 - **class:** premise refuted (a hazard the repo had written down was fixed on one path and left open on the other) · **date:** 2026-09-11 · **recurrences:** 1 (R4c, the TDR path) · **status:** fixed, unverified live
 - **evidence:** the operator reported the FG frozen with its window scaled to fullscreen while the process still
