@@ -200,6 +200,49 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-037 · The generator drops the last slot of one pair in four, and every term the instrument has is blind to it
+- **class:** premise refuted (the instrument's population was never the presented sequence) · **date:** 2026-09-11 · **recurrences:** 0 · **status:** measured; the cause in the clock is not yet read
+- **evidence:** the operator kept reporting displacements and hallucinations on screen that the review pages did
+  not contain, and finally described it exactly: "the motion is correctly presented but frame by frame it shifts
+  in presentation time". Four hypotheses were tested and killed first — the tap misses frames (it records
+  1805 of 1805 presents), the discards are phase-biased (mean phase 0.439 scored vs 0.526 discarded), the
+  "duplicates" are not duplicates (69 % are within 0.02 of the kept frame's phase), and the generator is
+  non-deterministic across loop passes (the same instant reproduces to 0.001/255). All false.
+  **What is true.** At k = 4 the generator does not emit the 3 frames the multiplier implies at 0.25/0.50/0.75.
+  It targets FOUR interior slots — 0.125, 0.375, 0.625, 0.875 — and over 481 presented pairs of `g5_live`:
+
+  | slot | missing in |
+  |---|---|
+  | 0.125 | 0 % |
+  | 0.375 | 0 % |
+  | 0.625 | 1 % |
+  | **0.875** | **26 %** |
+
+  127 of 481 pairs (26 %) drop at least one slot, almost always the last. A dropped slot is a presented frame
+  whose scene time advances TWO base frames instead of one: on a contiguous six-pair run the advance is 1.000
+  in twenty of twenty-one steps and 1.986 / 2.055 in the two that follow a dropped slot, with zero reversals.
+  At a 60 fps source that is about **16 double-steps per second** — the object jumping twice its distance, 16
+  times a second, while every individual frame is correctly placed for its own phase.
+  **Why nothing saw it.** Every one of the six verdict terms scores ONE frame against the truth rendered at
+  THAT frame's phase. A frame emitted at 0.625 when 0.875 was due is not wrong — it is a correct frame at
+  0.625. The defect exists only in the RELATION between consecutive presented frames, and the instrument has
+  no term over pairs of frames. The review page compounds it twice over: it walks the base grid rather than
+  the presented order, and it marks every k-th frame REAL and loads the corpus's own source frame for it, so a
+  quarter of that page is the truth itself, exact by construction, while the panel shows only synthesised frames.
+- **lesson:** an instrument that scores frames cannot see a defect that lives between frames, and a viewer that
+  reconstructs an idealised ladder cannot show one either. Both were built to answer "is this frame right?" and
+  both answer it correctly. The operator was looking at the thing they were not built to show, which is why he
+  could see it for days and the numbers could not. Second lesson, paid twice in this session: he found the
+  three discontinuities in the first version of this very test and located them exactly — they were the seams
+  of MY OWN pair selection, which had picked six pairs by frame count rather than contiguity. A test for a
+  continuity defect must itself be continuous.
+- **corrective:** the presented-sequence page (`F:\Phyriad\scene_pages\presentado_g5\step`, six contiguous
+  pairs, every frame the tap recorded, in presentation order, each with its exact-phase truth and masks).
+  Owed: why the last slot is abandoned — the candidates are the clock that paces the slots and the arrival of
+  the next source frame, and the answer is in the present loop, not in the warp; a term over CONSECUTIVE
+  presented frames, which is the first term this instrument would gain that is not a per-frame term; and the
+  same count on the other corpora, since 26 % is one run on one corpus.
+
 ### P-036 · The knob that costs 42 % at one displacement pays for itself at twice that, and the sign flips with phase
 - **class:** premise refuted · **date:** 2026-09-11 · **recurrences:** 0 · **status:** the default was NOT flipped; the evidence says it should not be
 - **evidence:** the operator, after seeing the colour-guided MV pick cost 42 % of the position error at k = 4,
