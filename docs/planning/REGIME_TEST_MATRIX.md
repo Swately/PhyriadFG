@@ -367,7 +367,12 @@ place of `B1_SPEED_TEST.md`'s 0.30·disp^0.32 (gentle growth). One seed, one run
 identity's clause (a) quotes the old law: it is not edited (KAP §7); the finding stands beside it as a post-freeze consequence
 for the operator's decision.
 
-**The canonical row is now two seeds under the gate-passing operator (2026-09-10, CPU, no screen).** The arms captured on 2026-09-08 were re-scored with `--silhouette coverage`: `sc_live` seed 7 k = 4 gives arm pos_err **0.204 px** and `sc_live2` seed 11 k = 4 gives **0.197 px**, a run-to-run deviation of **3.5 %**, verdict ACCEPT on both (`fg_k4_cov.md` beside each run). Under `tau` the same two seeds read 0.216 / 0.212 px (2.2 %). This closes the gap that no number in the record was both two-seed AND measured under the operator that passes the gate. Also re-scored, one run and thin: `sc_live` k = 2, arm pos_err 0.085 px on 5 frames. **NOT re-scored: `sc_live` k = 8** — the run was stopped by the operator before it finished (its log is kept as `rescore_sc_live_fg_k8.KILLED-EMPTY.log`, zero bytes, and no partial output was written). The k = 8 arm is on disk and the re-score is one command whenever work resumes.
+**The canonical row is now two seeds under the gate-passing operator (2026-09-10, CPU, no screen).** The arms captured on 2026-09-08 were re-scored with `--silhouette coverage`: `sc_live` seed 7 k = 4 gives arm pos_err **0.204 px** and `sc_live2` seed 11 k = 4 gives **0.197 px**, a run-to-run deviation of **3.5 %**, verdict ACCEPT on both (`fg_k4_cov.md` beside each run). Under `tau` the same two seeds read 0.216 / 0.212 px (2.2 %). This closes the gap that no number in the record was both two-seed AND measured under the operator that passes the gate. Also re-scored, one run and thin: `sc_live` k = 2, arm pos_err 0.085 px on 5 frames. `sc_live` k = 8 completed on the second attempt: arm pos_err **0.315 px**, ACCEPT (168 frames, one run). The four
+coverage rows of the k path and the speed path are therefore complete. **Every one of them is now walkable frame by frame**
+at `F:\Phyriad\scene_pages\<run>\step\index.html`, with the scorer's own hallucinated / missing masks drawn over the
+frame (key `H`), the truth rendered at the FG's own phase rather than the base-grid frame, and the ten worst frames by
+hallucinated mass and by position error as clickable chips. The previous `tau`-era pages are kept beside them as
+`<run>\step_tau\`.
 
 **Cut scoring** (`sc_live2`, 9 cut triples captured 2026-09-08, arm `fg_k4_cuts`, `cuts_k4.md/.json`; review page
 `F:\Phyriad\scene_pages\sc_live2_cuts\index.html`): the FG blends across the seam — halluc vs the nearer real 86–88 px² but

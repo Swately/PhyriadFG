@@ -46,7 +46,33 @@ def measured_rates(fg_log):
             'seconds': len(pres), 'done': done}
 
 
-def build(d, K, arm, out, scores_json, start, count, fg_log=None):
+def png_rgba(path, rgba8):
+    """Lossless RGBA PNG (colour type 6), stdlib only — the overlay needs an alpha channel, which
+    scene_report.png (RGB, type 2) does not carry. Same chunk writer, one byte of IHDR apart."""
+    import struct, zlib
+    H, W = rgba8.shape[:2]
+    raw = b''.join(b'\x00' + rgba8[y].tobytes() for y in range(H))
+    def ch(tag, dat):
+        return struct.pack('>I', len(dat)) + tag + dat + struct.pack('>I', zlib.crc32(tag + dat) & 0xffffffff)
+    open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 6, 0, 0, 0))
+                           + ch(b'IDAT', zlib.compress(raw, 6)) + ch(b'IEND', b''))
+
+
+def overlay_png(path, masks, W, H):
+    """The scorer's own masks as a transparent overlay: RED where the candidate put mass the truth has
+    none (`halluc`), BLUE where the truth has mass the candidate missed (`missing`). Nothing is
+    recomputed here — these are the arrays the px² numbers were counted from."""
+    ov = np.zeros((H, W, 4), np.uint8)
+    hal, mis = masks.get('halluc'), masks.get('missing')
+    if hal is not None:
+        ov[hal] = (224, 64, 48, 168)
+    if mis is not None:
+        ov[mis] = (56, 120, 232, 168)
+    png_rgba(path, ov)
+    return int(hal.sum()) if hal is not None else 0, int(mis.sum()) if mis is not None else 0
+
+
+def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False, sil='tau'):
     t, sc = SR.load_corpus(d)
     W, H, n = t['width'], t['height'], t['frames']
     base = float(t['base_fps'])
@@ -73,6 +99,8 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None):
     if os.path.exists(ap_):
         cuts = {r['mid'] for r in json.load(open(ap_, encoding='utf-8'))['rows']
                 if 'mid' in r and not r.get('pair_ok', True) and 'skipped' not in r and 'dup_of' not in r}
+    if overlay:
+        SR._worker_init(d, arm, sil)      # the scorer's own per-process state: corpus, scene, backdrop, exact phases
     last_real = ((n - 1) // K) * K
     lo, hi = max(0, start), min(last_real, start + count - 1 if count else last_real)
     frames = []
@@ -87,6 +115,12 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None):
                 continue
             cand = SR.arm_frame(t, sc, d, tr, arm)
         missing = (not real) and cand is None       # the live FG's --qdump SAMPLES: not every tick is dumped
+        mrec = None
+        if overlay and not real and not missing and i not in cuts:
+            kind, rr = SR._score_triple((K, trs[i], True))
+            if kind == 'row':
+                mrec = rr
+                truth = rr['_truth']                # the truth the scorer used: at the FG's OWN phase
         cpath = 'seq/f_%06d_c.png' % i
         tpath = cpath
         if missing:
@@ -100,6 +134,11 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None):
                 SR.png(os.path.join(out, tpath), SR.u8(truth))
         rec = {'i': i, 'real': real, 'c': cpath, 't': tpath, 'missing': missing, 'cut': i in cuts,
                'time_s': i / base}
+        if mrec is not None:
+            opath = 'seq/f_%06d_o.png' % i
+            hp, mp = overlay_png(os.path.join(out, opath), mrec['_masks'], W, H)
+            rec['o'] = opath
+            rec['ov'] = {'halluc_px': hp, 'missing_px': mp}
         if not real:
             tr = trs[i]
             rec.update({'phase': tr['phase'], 'N': tr['N'], 'N1': tr['N1']})
@@ -113,12 +152,24 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None):
         frames.append(rec)
         if (i - lo + 1) % 40 == 0:
             print('  %d/%d' % (i - lo + 1, hi - lo + 1))
-    write_html(out, frames, W, H, K, arm, os.path.basename(os.path.normpath(d)), rates)
-    print('%d frames (%d real, %d generated) -> %s' % (len(frames), sum(f['real'] for f in frames),
-                                                       sum(not f['real'] for f in frames), os.path.join(out, 'index.html')))
+    write_html(out, frames, W, H, K, arm, os.path.basename(os.path.normpath(d)), rates, overlay)
+    print('%d frames (%d real, %d generated%s) -> %s'
+          % (len(frames), sum(f['real'] for f in frames), sum(not f['real'] for f in frames),
+             ', %d with the scorer\'s masks' % sum('o' in f for f in frames) if overlay else '',
+             os.path.join(out, 'index.html')))
 
 
-def write_html(out, frames, W, H, K, arm, corpus, rates):
+def worst_lists(frames, n=10):
+    """The frames a reviewer should look at first, ranked by the terms that name an artefact: the most
+    hallucinated mass, and the largest position error. Scored generated frames only; a cut carries no score."""
+    scored = [(j, f) for j, f in enumerate(frames) if f.get('s')]
+    def top(key):
+        v = [(j, f['s'][key]) for j, f in scored if f['s'].get(key) is not None]
+        return [j for j, _ in sorted(v, key=lambda p: -p[1])[:n]]
+    return {'halluc': top('halluc'), 'pos': top('pos')}
+
+
+def write_html(out, frames, W, H, K, arm, corpus, rates, overlay=False):
     css = """
 :root{--bg:#f6f5f2;--ink:#1c1b19;--mut:#6b675f;--line:#dcd8d0;--real:#2f8f5e;--gen:#c98a1a;--red:#b03a2e}
 @media(prefers-color-scheme:dark){:root{--bg:#121210;--ink:#e8e4da;--mut:#9b968a;--line:#2d2b25;--real:#5fd39a;--gen:#f0b545;--red:#e0705f}}
@@ -138,6 +189,11 @@ canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
 #tl canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:auto}
 #help{padding:0 18px 10px;color:var(--mut);font-size:12px}
 #prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--gen);transform-origin:left;transform:scaleX(0)}
+#worst{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:0 18px 8px;font-size:12px}
+#worst .lab{color:var(--mut)} #worst .sep{width:14px}
+#worst button{font:inherit;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:5px;padding:2px 8px}
+#worst button:hover{border-color:var(--gen)} #worst button.on{background:var(--gen);color:#000;border-color:var(--gen)}
+.sw{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:baseline;margin-right:4px}
 """
     data = json.dumps(frames)
     m = rates.get('measured')
@@ -148,22 +204,41 @@ canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
     ratesline = ('<div class="sub" id="rates"><b>REAL %.1f fps</b> (every %d-th frame of a %.0f fps base, %.2f ms apart) → '
                  '<b>FG ×%d → %.0f fps presented</b> (%.2f ms apart)%s</div>'
                  % (rates['source_fps'], K, rates['base_fps'], rates['source_interval_ms'], K, rates['output_fps'], rates['output_interval_ms'], meas))
+    wl = worst_lists(frames)
+    if wl['halluc'] or wl['pos']:
+        chip = lambda j, val, dec: '<button data-j="%d">#%d <span class="k">%s</span></button>' % (
+            j, frames[j]['i'], ('%.*f' % (dec, val)) if val is not None else '—')
+        worstline = ('<div id="worst"><span class="lab">worst by hallucinated mass (px²)</span>'
+                     + ''.join(chip(j, frames[j]['s']['halluc'], 0) for j in wl['halluc'])
+                     + '<span class="sep"></span><span class="lab">worst by position error (px)</span>'
+                     + ''.join(chip(j, frames[j]['s']['pos'], 3) for j in wl['pos'])
+                     + (('<span class="sep"></span><span class="lab"><span class="sw" style="background:#e04030"></span>hallucinated'
+                         ' <span class="sw" style="background:#3878e8;margin-left:8px"></span>missing — the scorer\'s own masks (H)</span>')
+                        if overlay else '')
+                     + '</div>')
+    else:
+        worstline = ''
     parts = ['<!doctype html><meta charset="utf-8"><title>scene_truth step · %s k=%d %s</title><style>%s</style>' % (html.escape(corpus), K, html.escape(arm), css),
              '<div id="wrap"><header><div><h1>%s · k = %d · arm <code>%s</code></h1>%s</div>' % (html.escape(corpus), K, html.escape(arm), ratesline),
              '<span class="sub">%d frames · %d×%d · real every %d</span></header>' % (len(frames), W, H, K),
              '<div id="stage"><canvas id="cv" width="%d" height="%d"></canvas><div id="badge"></div><div id="idx"></div><div id="mode"></div><div id="prog"></div></div>' % (W, H),
              '<div id="panel"><div id="info"></div><div id="rate" class="k"></div></div>',
              '<div id="tl"><canvas id="tlc"></canvas></div>',
-             '<div id="help">← → step · <b>hold</b> to auto-advance · [ ] slower/faster · space play · L loop · T truth in place · D difference · Home/End · click the timeline</div></div>',
-             '<script>const F=%s;const W=%d,H=%d,K=%d;const RATES=%s;' % (data, W, H, K, json.dumps({k: v for k, v in rates.items() if k != 'measured'})),
+             worstline,
+             '<div id="help">← → step · <b>hold</b> to auto-advance · [ ] slower/faster · space play · L loop · T truth in place · D difference%s · Home/End · click the timeline</div></div>'
+             % (' · <b>H</b> hallucinated / missing mass · <b>W</b> jump to the worst frame' if overlay else ''),
+             '<script>const F=%s;const W=%d,H=%d,K=%d;const RATES=%s;const WORST=%s;const HASOV=%s;'
+             % (data, W, H, K, json.dumps({k: v for k, v in rates.items() if k != 'measured'}),
+                json.dumps(worst_lists(frames)), 'true' if overlay else 'false'),
              r"""
 const cv=document.getElementById('cv'),cx=cv.getContext('2d'),badge=document.getElementById('badge'),idx=document.getElementById('idx'),
  mode=document.getElementById('mode'),info=document.getElementById('info'),rate=document.getElementById('rate'),prog=document.getElementById('prog'),
  tl=document.getElementById('tl'),tlc=document.getElementById('tlc'),tx=tlc.getContext('2d');
 const IMG={};let loaded=0,total=0;
 function load(src){if(IMG[src])return IMG[src];const im=new Image();IMG[src]=im;total++;im.onload=()=>{loaded++;prog.style.transform='scaleX('+(loaded/total)+')';if(loaded===total)prog.style.display='none'};im.src=src;return im}
-F.forEach(f=>{load(f.c);if(f.t!==f.c)load(f.t)});
-let cur=0,showTruth=false,diff=false,fps=8,timer=null,playing=false,loop=true,hold=null;
+F.forEach(f=>{load(f.c);if(f.t!==f.c)load(f.t);if(f.o)load(f.o)});
+let cur=0,showTruth=false,diff=false,ovOn=false,fps=8,timer=null,playing=false,loop=true,hold=null;
+const WFLAT=[].concat(WORST.halluc||[],WORST.pos||[]).filter((v,i,a)=>a.indexOf(v)===i);let wi=-1;
 function fmt(v,d){return v==null?'—':Number(v).toFixed(d)}
 function draw(){const f=F[cur];const a=load(f.c),b=load(f.t);
  const useT=showTruth&&!f.real;const im=useT?b:a;
@@ -171,10 +246,11 @@ function draw(){const f=F[cur];const a=load(f.c),b=load(f.t);
  if(diff&&!f.real&&b.complete&&b.naturalWidth){cx.drawImage(a,0,0);const A=cx.getImageData(0,0,W,H);cx.drawImage(b,0,0);const B=cx.getImageData(0,0,W,H);
   const o=cx.createImageData(W,H);for(let p=0;p<A.data.length;p+=4){const d=Math.min(255,4*(Math.abs(A.data[p]-B.data[p])+Math.abs(A.data[p+1]-B.data[p+1])+Math.abs(A.data[p+2]-B.data[p+2]))/3);o.data[p]=d;o.data[p+1]=Math.max(0,d-60);o.data[p+2]=Math.max(0,d-120);o.data[p+3]=255}cx.putImageData(o,0,0)}
  else cx.drawImage(im,0,0);
+ if(ovOn&&f.o&&!useT){const ov=load(f.o);if(ov.complete&&ov.naturalWidth)cx.drawImage(ov,0,0)}
  badge.textContent=f.real?'REAL':(f.missing?'NOT CAPTURED — truth shown':(f.cut?'GENERATED ACROSS A CUT — not scored':'GENERATED'));badge.className=f.real?'real':'gen';
  cv.style.opacity=f.missing?'0.45':'1';
  idx.textContent='#'+f.i+'  t '+fmt(f.time_s,4)+' s'+(f.real?'':'  φ '+fmt(f.phase,2));
- mode.textContent=(diff&&!f.real?'|candidate − truth| ×4':useT?'TRUTH in place':'')+(playing?'  ▶':'');
+ mode.textContent=(diff&&!f.real?'|candidate − truth| ×4':useT?'TRUTH in place':'')+(ovOn&&f.o&&!useT?(diff?' + ':'')+'halluc / missing mask':'')+(playing?'  ▶':'');
  let h='';
  if(f.real)h='<b>real frame</b> <span class="k">source index '+f.i+' — the FG saw this one, '+RATES.source_interval_ms.toFixed(2)+' ms after the previous real</span>';
  else{h='<b>generated</b> between real <b>'+f.N+'</b> → <b>'+f.N1+'</b>, phase '+fmt(f.phase,3)+' <span class="k">('+(f.phase*RATES.source_interval_ms).toFixed(2)+' ms after real '+f.N+', presented '+RATES.output_interval_ms.toFixed(2)+' ms after the previous frame)</span>'+(f.cut?' — <span class="bad">the two real frames were not k apart (the loop seam): a CUT, no interpolation truth exists</span>':'');
@@ -194,12 +270,17 @@ document.addEventListener('keydown',e=>{
  if(e.key===' '){e.preventDefault();playing?stop():play();return}
  if(e.key==='t'||e.key==='T'){showTruth=!showTruth;draw()}
  if(e.key==='d'||e.key==='D'){diff=!diff;draw()}
+ if(e.key==='h'||e.key==='H'){if(HASOV){ovOn=!ovOn;draw()}}
+ if(e.key==='w'||e.key==='W'){if(WFLAT.length){wi=(wi+1)%WFLAT.length;go(WFLAT[wi])}}
  if(e.key==='l'||e.key==='L'){loop=!loop;draw()}
  if(e.key===']'){fps=Math.min(60,Math.round(fps*1.5));draw();if(timer)startAuto(hold||1)}
  if(e.key==='['){fps=Math.max(1,Math.round(fps/1.5));draw();if(timer)startAuto(hold||1)}
  if(e.key==='Home'){go(0)}if(e.key==='End'){go(F.length-1)}});
 document.addEventListener('keyup',e=>{if((e.key==='ArrowRight'||e.key==='ArrowLeft')&&!playing){stopAuto()}});
 tl.addEventListener('click',e=>{const r=tl.getBoundingClientRect();go(Math.floor((e.clientX-r.left)/r.width*F.length))});
+document.querySelectorAll('#worst button').forEach(b=>b.addEventListener('click',()=>{
+ const j=+b.dataset.j;if(HASOV)ovOn=true;go(j);
+ document.querySelectorAll('#worst button').forEach(x=>x.classList.toggle('on',+x.dataset.j===j))}));
 window.addEventListener('resize',drawTL);go(0);
 </script>"""]
     open(os.path.join(out, 'index.html'), 'w', encoding='utf-8', newline='\n').write('\n'.join(parts) + '\n')
@@ -215,8 +296,15 @@ def main():
     ap.add_argument('--start', type=int, default=0)
     ap.add_argument('--count', type=int, default=0, help='0 = to the last real frame')
     ap.add_argument('--fg-log', help='the raw FG stdout of this run, for the MEASURED present and capture rates')
+    ap.add_argument('--overlay', action='store_true',
+                    help="show what the SCORER saw: its own halluc / missing masks per generated frame (key H), and "
+                         "the truth rendered at the FG's OWN phase instead of the base-grid frame. Costs one truth "
+                         "render per generated frame, serially — the same work one arm of the scorer does")
+    ap.add_argument('--silhouette', choices=['tau', 'coverage'], default='tau',
+                    help='the silhouette operator the masks are taken with; must match the operator the --scores '
+                         'JSON was produced with, or the picture and the number disagree')
     a = ap.parse_args()
-    build(a.run, a.k, a.arm, a.out, a.scores, a.start, a.count, a.fg_log)
+    build(a.run, a.k, a.arm, a.out, a.scores, a.start, a.count, a.fg_log, a.overlay, a.silhouette)
 
 
 if __name__ == '__main__':

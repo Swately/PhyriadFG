@@ -207,8 +207,15 @@ def touches_border(m):
     return bool(m[0, :].any() or m[-1, :].any() or m[:, 0].any() or m[:, -1].any())
 
 
-def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=()):
+def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=(), masks=None):
     """All terms for one intermediate frame.
+
+    masks     an optional dict. When given, it is filled with the boolean masks the object terms are
+              computed FROM — `halluc` (candidate silhouette where the truth's is absent, the union over
+              objects) and `missing` (the truth's where the candidate's is absent) — so a viewer can show
+              the operator WHERE the mass the number counts actually sits. The masks are the scorer's own,
+              taken inside each object's window, never recomputed by an approximation elsewhere. Passing
+              nothing changes no behaviour and no output (`score_arm` never passes it).
 
     motion[k] = (unit direction, displacement per SOURCE pair in px) of object k.
     ids_near  = the exact id plane of the nearer REAL frame; with it each object also carries
@@ -247,6 +254,9 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=())
     row['sharp'] = float(gc[tband].mean() / max(gt[tband].mean(), 1e-9)) if tband.any() else float('nan')
     per = {}
     clipped = []
+    if masks is not None:
+        masks['halluc'] = np.zeros(ids.shape, bool)
+        masks['missing'] = np.zeros(ids.shape, bool)
     for k, (vn, disp) in motion.items():
         tm = ids == k
         if not tm.any():
@@ -274,8 +284,12 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=())
         o['pos_err'] = float(np.linalg.norm(centroid(csil) - centroid(tsil))) if csil.any() else float('nan')
         o['shape_err'] = chamfer(boundary_pts(csil), boundary_pts(tsil)) if csil.any() else float('nan')
         hal = csil & ~tsil
+        mis = tsil & ~csil
         o['halluc_px'] = int(hal.sum())
-        o['missing_px'] = int((tsil & ~csil).sum())
+        o['missing_px'] = int(mis.sum())
+        if masks is not None:
+            masks['halluc'] |= hal
+            masks['missing'] |= mis
         if hal.any():
             ys, xs = np.nonzero(hal)
             o['lead_px'] = float(((np.stack([xs + 0.5, ys + 0.5], axis=1) - centroid(tsil)) @ vn).mean())
@@ -466,8 +480,14 @@ def _worker_init(d, arm, sil='tau'):
 
 def _score_triple(args):
     """One triple of one arm -> ('row', r) | ('cut', None) | ('skip', None). The former loop body of score_arm,
-    verbatim; it reads only _W and its arguments, so the same triple gives the same row in any process."""
-    K, tr = args
+    verbatim; it reads only _W and its arguments, so the same triple gives the same row in any process.
+
+    args is (K, tr) or (K, tr, want_masks). With want_masks the row carries `_masks`, the scorer's own
+    halluc / missing boolean masks for that frame (see score_frame). `score_arm` always passes the 2-tuple,
+    so nothing it writes changes; only an in-process caller that asks for masks gets them, and `_masks`
+    holds arrays that are never serialised into a report."""
+    K, tr = args[0], args[1]
+    want_masks = len(args) > 2 and bool(args[2])
     d, arm, t, sc, W, H, bg, ex = (_W[k] for k in ('d', 'arm', 't', 'sc', 'W', 'H', 'bg', 'ex'))
     cand = arm_frame(t, sc, d, tr, arm)
     if cand is None:
@@ -513,9 +533,15 @@ def _score_triple(args):
         nA, nB = ex[tr['mid']]['N'], ex[tr['mid']]['N1']
     else:
         nA, nB = tr['N'], tr['N1']
+    mk = {} if want_masks else None
     r = score_frame(cand, truth, bg, ids, cls, motion, nearest, load_id(d, near_i, W, H),
-                    (load_id(d, nA, W, H), load_id(d, nB, W, H)))
+                    (load_id(d, nA, W, H), load_id(d, nB, W, H)), masks=mk)
     r.update({'mid': tr['mid'], 'near': near_i, 'phase': phase, 'k': K, 'exact_phase': tr['mid'] in ex})
+    if mk is not None:
+        # the truth this frame was actually scored against. For a LIVE arm it is rendered at the FG's own
+        # phase and is NOT the base-grid frame at that index (up to half a base frame of motion apart), so a
+        # viewer that draws the grid frame instead shows a difference the FG did not make.
+        r['_masks'], r['_truth'] = mk, truth
     return ('row', r)
 
 
