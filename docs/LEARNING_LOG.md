@@ -315,6 +315,38 @@
   box's damaged blocks the ratio is **2.28** against **0.98** on its sound ones — the signal is there and the
   curve sits above it: **81.4 % of the damaged pixels still receive w_s < 0.5** and take the warp nearly
   intact.
+
+  **The live A/B, after the offline one (2026-09-11, the operator released the screen).** Six captures
+  from ONE binary, every arm scored against exact truth at its own phase, matched frame-for-frame by base
+  index. Run-to-run spread of the default arm, two captures: **+-2 %** on every term. Against that floor,
+  `--st-hold-lo 1.0 --st-hold-hi 1.6`:
+
+  | corpus | px/pair | box pos | box halluc | sphere pos | static-panel pos | sharp |
+  |---|---|---|---|---|---|---|
+  | sc_live k=4 | 3.4 | -1.7 % | -13.0 % | +2.4 % | -50.7 % | +0.06 % |
+  | sc_live k=8 | 6.7 | **-13.6 / -13.8 %** | **-26.5 / -26.4 %** | **+5.4 / +5.3 %** | -84.8 / -84.0 % | +0.26 % |
+  | sc_v4 k=4 | 13.4 | **-21.2 %** | **-38.1 %** | **-22.9 %** | -93.3 % | +1.0 % |
+
+  The two k = 8 arms are two independent captures each and they agree to **0.4 percentage points** on every
+  term, so the effects are 7x to 40x the noise. Two things fall out. **The gain tracks DISPLACEMENT PER
+  PAIR, not k**: the same k = 4 gives -1.7 % on the box at 3.4 px/pair and -21.2 % at 13.4. And at the
+  highest displacement the sphere's position IMPROVES by 22.9 %, reversing the +5.4 % it costs at 6.7 --
+  so the one regression is a mid-displacement band, not a floor. The offline prediction through the CPU
+  reference was right to about one point on every k = 8 term (-14.5 predicted vs -13.6 measured on box pos,
+  -26.4 vs -26.5 on halluc), which is the reference earning its keep. The pacing did not move (last slot
+  43/45 % -> 44/44 %, double steps 6.3 -> 6.4 %): the gate does not touch the clock, as it should not.
+  New cost, small and real: the sphere's interior p99 +22 % at 13.4 px/pair (0.0193 -> 0.0236).
+
+  **The default was NOT flipped, and the reason is not the evidence.** Every recorded row in
+  `docs/evidence/` -- the canonical seeds, the twelve-corpus gate, the speed law -- was measured under
+  (1.2, 3.0). Flipping retires all of them at once, and re-measuring them is a larger job than this one.
+  That is the operator's call to make, and `--st-hold-lo 1.2 --st-hold-hi 3.0` reverses it either way.
+
+  One more thing this cost, worth its own line: the first build put the two flags in the main else-if
+  chain and MSVC answered `C1061: blocks nested too deeply` -- **P-004, for the third time**. They live in
+  `parse_extra` now. And the first version of the flag printed in `--help` and died at the parser, which
+  is this very entry's defect committed by the session that was writing it up; the LIVE RUN caught it,
+  `--help` did not.
 - **lesson:** a knob with a help string, a default, a parser entry and a push-block slot can still be
   disconnected from the output, and every one of those is evidence of intent rather than of effect. The
   sweep that found it was run to tune the gate, not to test whether it was connected; the flat result was

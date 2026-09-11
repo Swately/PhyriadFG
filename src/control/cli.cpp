@@ -312,6 +312,14 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--sg-barriers")){ c.sg_barriers=true; std::printf("[ra] --sg-barriers: the stage-5 output barriers are DERIVED by the seam graph (src/seam) instead of hand-written. Needs synchronization2; falls back automatically if unavailable.\n"); return 0; }
             if(!std::strcmp(arg,"--sg-dump")){ c.sg_dump=true; std::printf("[ra] --sg-dump: printing the compiled stage-5 seam graph once at first record.\n"); return 0; }
             if(!std::strcmp(arg,"--no-sync2")){ c.no_sync2=true; std::printf("[ra] --no-sync2: forcing the Vulkan 1.2 instance + hand-written barriers (the R2 A/B reference arm).\n"); return 0; }
+            // single_track.hold_lo / hold_hi: the two edges of the screen-static ramp, the ONLY warp-vs-hold
+            // decision the shipping composition still consults (select at COMPOSE rank 260 is the only
+            // consumer of ctx.warp_ok and two OVERRIDE rows discard it after). The VALUE is already stored by
+            // the registry shadow at :299 -- it peeks every token and fills c.layers.val, which is what
+            // layer_params_fill writes into the push block -- so these two only have to CONSUME the argument
+            // and stop the chain calling the token unknown. HERE and not in the main else-if chain: two more
+            // else-ifs overflowed MSVC C1061 on 2026-09-11, which is P-004 for the third time.
+            if(!std::strcmp(arg,"--st-hold-lo")||!std::strcmp(arg,"--st-hold-hi")){ if(!next(arg)) return 1; return 0; }
             if(!std::strcmp(arg,"--layer-dump")){ c.layer_dump=true; return 0; }
             if(!std::strcmp(arg,"--layer-model-json")){ c.layer_model_json=true; return 0; }
             if(!std::strcmp(arg,"--dump-config")){ c.dump_config_flag=true; return 0; }
