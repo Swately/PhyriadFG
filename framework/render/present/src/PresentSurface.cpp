@@ -172,8 +172,13 @@ void own_window_last_gasp() noexcept {
     // transitions, the 50 ms watchdog, one heartbeat store/tick) — seq_cst's cost is negligible vs the
     // CopyResource+Present they bracket, and it keeps the code off explicit memory-order annotations.
     if (HWND h = g_own_hwnd.load()) {
-        SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        ShowWindow(h, SW_HIDE);
+        // ASYNC, and here it matters most: this is a terminate handler and it runs on whatever thread is
+        // dying, which is usually NOT the window's owner. A blocking ShowWindow here would hang the
+        // last-gasp itself — the one path whose whole job is to give the panel back before the process
+        // goes (P-035; the twin of Impl::yield_plane above, kept in step with it).
+        SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+        ShowWindowAsync(h, SW_HIDE);
     }
     if (auto prev = g_prev_terminate.load()) prev();
 }
@@ -252,18 +257,28 @@ struct PresentSurface::Impl {
 
     // Drop the displayed plane so the desktop/game beneath is reachable. Win32-only,
     // allocation-free, reentrancy-safe (the crash last-gasp + the watchdog both call it).
+    // NON-BLOCKING BY CONTRACT (2026-09-11, P-035). Both of these act on a window OWNED BY THE PRESENT
+    // THREAD, and they are called from three different threads: the present thread itself (submit's
+    // foreground monitor, destroy), the watchdog thread, and — for the last-gasp twin below — whatever
+    // thread happens to be terminating. The plain ShowWindow/SetWindowPos are inter-thread SENDS: called
+    // from a non-owning thread they block until the owner dispatches its queue. That turned the give-back
+    // into the thing that held the panel: the watchdog fired during teardown, blocked inside here, and
+    // destroy() was already waiting on the watchdog. ShowWindowAsync and SWP_ASYNCWINDOWPOS post instead
+    // of sending, so no caller can ever block on the owner's message loop. The cost is honest and is the
+    // limit main.cpp:1050 already names: if the owner never pumps again, the plane is not hidden — but
+    // nothing deadlocks, and the process reaches DestroyWindow, which is the real give-back.
     void yield_plane() noexcept {
         if (!hwnd) return;
         SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        ShowWindow(hwnd, SW_HIDE);
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+        ShowWindowAsync(hwnd, SW_HIDE);
     }
     // Re-assert the displayed plane when the game returns to the foreground.
     void reassert_plane() noexcept {
         if (!hwnd) return;
-        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        ShowWindowAsync(hwnd, SW_SHOWNOACTIVATE);
         SetWindowPos(hwnd, HWND_TOPMOST, mon.left, mon.top,
-                     (int)W, (int)H, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                     (int)W, (int)H, SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS);
     }
 
     // Re-seat the flip swapchain after MODE_CHANGED/OCCLUDED. COLD PATH — releases + re-acquires the
@@ -305,14 +320,14 @@ struct PresentSurface::Impl {
         if (waitable_obj) { CloseHandle(waitable_obj); waitable_obj = nullptr; }
         // Stop the watchdog before tearing down the window it guards.
         wd_run.store(false);
-        // PUMP WHILE JOINING, AND DEADLINE IT (2026-09-11, P-035: this join wedged a shipping run and held the
-        // operator's panel until the process was killed). The watchdog calls yield_plane() from ITS thread on a
-        // window owned by THIS one, and SetWindowPos/ShowWindow across threads are inter-thread sends that block
-        // until the owner dispatches. main.cpp:1050 already wrote that hazard down for the TDR path; this is the
-        // same hazard on a NORMAL quit. A bare join here is therefore a deadlock whenever the watchdog fires
-        // during teardown — which it does whenever teardown outlives kWatchdogStallMs (250 ms) with the plane
-        // still DISPLAYED; a --gdump run draining its ring takes ~1 s. The pump below lets any in-flight
-        // yield_plane() complete; the deadline keeps a give-back that must never block from blocking forever.
+        // BACKSTOP, not the fix (2026-09-11, P-035). The wedge this guards against was a deadlock: the
+        // watchdog called yield_plane() from its own thread, that blocked on THIS thread's message loop, and
+        // this thread was already inside a bare join() waiting for the watchdog. The CAUSE is fixed at the
+        // source — yield_plane/reassert_plane now post instead of send, so the watchdog cannot block on us.
+        // This bounded, pumping wait stays because a give-back must not be able to hang even if some future
+        // caller reintroduces a blocking call up there, and because pumping here costs nothing on the quit
+        // path. The deadline is what turns any such regression from "the operator loses his panel until he
+        // kills the process" into "two seconds and a detached thread".
         if (wd_thread.joinable()) {
             MSG m;
             const int64_t wd_deadline = (int64_t)GetTickCount64() + 2000;

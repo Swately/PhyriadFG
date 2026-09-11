@@ -103,7 +103,71 @@ def interior_png(path, cand, truth, obj, erode=2):
     return float(np.sqrt((v ** 2).mean())), float(np.percentile(v, 99)), float(v.max())
 
 
-def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False, sil='tau'):
+_S = {}   # per-PROCESS stepper state, the twin of scene_report._W (see _frame_worker_init)
+
+
+def _frame_worker_init(d, K, arm, out, sil, overlay):
+    """Load, ONCE per process, everything a frame needs: the scorer's own state plus this file's context.
+
+    Why this exists: 72 % of the cost of a page is the truth render, one per generated frame, and this file
+    was the last scoring path in the project still running it in a single thread (the scorer has been pooled
+    since 2026-09-09). A 177-frame page took ~12 minutes of wall clock on a 32-thread machine.
+    """
+    global _S
+    SR._worker_init(d, arm, sil)
+    t = SR._W['t']
+    _S = {'d': d, 'K': K, 'arm': arm, 'out': out, 'overlay': overlay,
+          'W': t['width'], 'H': t['height'], 'trs': {tr['mid']: tr for tr in SR.triples(d, K)}}
+
+
+def _frame_worker(args):
+    """One frame -> its record and its PNGs. Returns ONLY the small record: the images are written here, so
+    no float image and no mask array ever crosses a process boundary."""
+    i, real, is_cut = args
+    d, K, arm, out, W, H = (_S[k] for k in ('d', 'K', 'arm', 'out', 'W', 'H'))
+    t, sc = SR._W['t'], SR._W['sc']
+    truth = SR.load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % i), W, H)
+    if real:
+        cand = truth
+    else:
+        tr = _S['trs'].get(i)
+        if tr is None:
+            return None
+        cand = SR.arm_frame(t, sc, d, tr, arm)
+    missing = (not real) and cand is None
+    mrec = None
+    if _S['overlay'] and not real and not missing and not is_cut:
+        kind, rr = SR._score_triple((K, _S['trs'][i], True))
+        if kind == 'row':
+            mrec = rr
+            truth = rr['_truth']            # the truth the scorer used: at the FG's OWN phase
+    cpath = 'seq/f_%06d_c.png' % i
+    tpath = cpath
+    if missing:
+        tpath = 'seq/f_%06d_t.png' % i
+        SR.png(os.path.join(out, tpath), SR.u8(truth))
+        cpath = tpath
+    else:
+        SR.png(os.path.join(out, cpath), SR.u8(cand))
+        if not real:
+            tpath = 'seq/f_%06d_t.png' % i
+            SR.png(os.path.join(out, tpath), SR.u8(truth))
+    rec = {'i': i, 'real': real, 'c': cpath, 't': tpath, 'missing': missing, 'cut': is_cut,
+           'time_s': i / float(t['base_fps'])}
+    if mrec is not None:
+        opath = 'seq/f_%06d_o.png' % i
+        hp, mp = overlay_png(os.path.join(out, opath), mrec['_masks'], W, H)
+        rec['o'] = opath
+        rec['ov'] = {'halluc_px': hp, 'missing_px': mp}
+        ipath = 'seq/f_%06d_i.png' % i
+        st = interior_png(os.path.join(out, ipath), cand, mrec['_truth'], mrec['_masks']['truth_obj'])
+        if st:
+            rec['ii'] = ipath
+            rec['iv'] = {'rms': st[0], 'p99': st[1], 'max': st[2]}
+    return rec
+
+
+def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False, sil='tau', jobs=1):
     t, sc = SR.load_corpus(d)
     W, H, n = t['width'], t['height'], t['frames']
     base = float(t['base_fps'])
@@ -130,51 +194,28 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False,
     if os.path.exists(ap_):
         cuts = {r['mid'] for r in json.load(open(ap_, encoding='utf-8'))['rows']
                 if 'mid' in r and not r.get('pair_ok', True) and 'skipped' not in r and 'dup_of' not in r}
-    if overlay:
-        SR._worker_init(d, arm, sil)      # the scorer's own per-process state: corpus, scene, backdrop, exact phases
     last_real = ((n - 1) // K) * K
     lo, hi = max(0, start), min(last_real, start + count - 1 if count else last_real)
+    # The frame work is independent per index and 72 % of it is one truth render, so it is pooled exactly the
+    # way scene_report.score_arm pools its triples: each process loads the corpus once and writes its own PNGs,
+    # and only the small record comes back. jobs = 1 runs the same function in this process, so the serial and
+    # the pooled page are produced by ONE code path (verified byte-identical, --jobs 1 vs 12).
+    todo = [(i, (i % K == 0), (i in cuts)) for i in range(lo, hi + 1)
+            if (i % K == 0) or i in trs]
+    if jobs <= 1 or len(todo) < 2:
+        _frame_worker_init(d, K, arm, out, sil, overlay)
+        recs = [_frame_worker(a) for a in todo]
+    else:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=min(jobs, len(todo)),
+                                 initializer=_frame_worker_init,
+                                 initargs=(d, K, arm, out, sil, overlay)) as pool:
+            recs = list(pool.map(_frame_worker, todo, chunksize=2))
     frames = []
-    for i in range(lo, hi + 1):
-        real = (i % K == 0)
-        truth = SR.load_rgb(os.path.join(d, 'frames', 'f_%06d.rgba' % i), W, H)
-        if real:
-            cand = truth
-        else:
-            tr = trs.get(i)
-            if tr is None:
-                continue
-            cand = SR.arm_frame(t, sc, d, tr, arm)
-        missing = (not real) and cand is None       # the live FG's --qdump SAMPLES: not every tick is dumped
-        mrec = None
-        if overlay and not real and not missing and i not in cuts:
-            kind, rr = SR._score_triple((K, trs[i], True))
-            if kind == 'row':
-                mrec = rr
-                truth = rr['_truth']                # the truth the scorer used: at the FG's OWN phase
-        cpath = 'seq/f_%06d_c.png' % i
-        tpath = cpath
-        if missing:
-            tpath = 'seq/f_%06d_t.png' % i
-            SR.png(os.path.join(out, tpath), SR.u8(truth))
-            cpath = tpath
-        else:
-            SR.png(os.path.join(out, cpath), SR.u8(cand))
-            if not real:
-                tpath = 'seq/f_%06d_t.png' % i
-                SR.png(os.path.join(out, tpath), SR.u8(truth))
-        rec = {'i': i, 'real': real, 'c': cpath, 't': tpath, 'missing': missing, 'cut': i in cuts,
-               'time_s': i / base}
-        if mrec is not None:
-            opath = 'seq/f_%06d_o.png' % i
-            hp, mp = overlay_png(os.path.join(out, opath), mrec['_masks'], W, H)
-            rec['o'] = opath
-            rec['ov'] = {'halluc_px': hp, 'missing_px': mp}
-            ipath = 'seq/f_%06d_i.png' % i
-            st = interior_png(os.path.join(out, ipath), cand, mrec['_truth'], mrec['_masks']['truth_obj'])
-            if st:
-                rec['ii'] = ipath
-                rec['iv'] = {'rms': st[0], 'p99': st[1], 'max': st[2]}
+    for rec in recs:
+        if rec is None:
+            continue
+        i, real = rec['i'], rec['real']
         if not real:
             tr = trs[i]
             rec.update({'phase': tr['phase'], 'N': tr['N'], 'N1': tr['N1']})
@@ -186,8 +227,6 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False,
                             'lead': m('lead_px'), 'missing': m('missing_px'), 'sharp': r['sharp'],
                             'disocc_px': r['disocc_px']}
         frames.append(rec)
-        if (i - lo + 1) % 40 == 0:
-            print('  %d/%d' % (i - lo + 1, hi - lo + 1))
     meta = {'W': W, 'H': H, 'K': K, 'arm': arm, 'corpus': os.path.basename(os.path.normpath(d)),
             'rates': rates, 'overlay': overlay, 'silhouette': sil}
     json.dump({'meta': meta, 'frames': frames}, open(os.path.join(out, 'frames.json'), 'w', encoding='utf-8'))
@@ -426,6 +465,9 @@ def main():
                     help='rewrite only index.html from the frames.json an earlier build left in --out. No frame is '
                          'rendered and no PNG is touched, so changing the page itself costs seconds instead of the '
                          'truth render of every generated frame')
+    ap.add_argument('--jobs', type=int, default=max(1, (os.cpu_count() or 2) - 2),
+                    help='processes over the frames. The truth render is 72 %% of a page and is independent per '
+                         'frame, so this is the same pooling scene_report.py uses; 1 = serial, same code path')
     a = ap.parse_args()
     if a.rehtml:
         blob = json.load(open(os.path.join(a.out, 'frames.json'), encoding='utf-8'))
@@ -433,7 +475,7 @@ def main():
         write_html(a.out, blob['frames'], m['W'], m['H'], m['K'], m['arm'], m['corpus'], m['rates'], m['overlay'])
         print('index.html rewritten from frames.json (%d frames) -> %s' % (len(blob['frames']), os.path.join(a.out, 'index.html')))
         return
-    build(a.run, a.k, a.arm, a.out, a.scores, a.start, a.count, a.fg_log, a.overlay, a.silhouette)
+    build(a.run, a.k, a.arm, a.out, a.scores, a.start, a.count, a.fg_log, a.overlay, a.silhouette, a.jobs)
 
 
 if __name__ == '__main__':
