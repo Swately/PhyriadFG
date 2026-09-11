@@ -200,6 +200,53 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-042 · The default moved, the design that was meant to replace it was refuted by its own test, and the regime that would have stopped it cannot be measured
+- **class:** premise refuted (twice: mine, then the measurement's own reliability) · **date:** 2026-09-11 · **recurrences:** 0 · **status:** SHIPPED — `single_track` hold_lo/hold_hi 1.2/3.0 -> 1.0/1.6
+- **evidence:** P-039 found the only live warp-vs-hold decision in the shipping path and exposed its two
+  edges. The operator ruled: *"si el cambio de default mejora el FG, se tiene que hacer"*. Twenty-eight live
+  captures later, five corpora spanning 1.7 to 13.4 px per source pair, every arm matched frame-for-frame
+  against exact truth at its own phase and the old value restored by flag from the SAME binary:
+
+  | corpus | px/pair | box pos | box halluc | sphere pos | sphere halluc | static panel | sharp |
+  |---|---|---|---|---|---|---|---|
+  | sc_v05 k=4 | 1.7 | -5.8 % | -10.6 % | -6.4 % | -21.3 % | - | 0.9665 -> 0.9696 |
+  | sc_live2 k=4 | 3.4 | +2.0 % | -8.0 % | +2.2 % | -41.6 % | -56 % | 0.9419 -> 0.9415 |
+  | sc_live k=8 | 6.7 | **-15.1 %** | -25.6 % | **+11.1 %** | -54.0 % | -85 % | 0.9279 -> 0.9296 |
+  | sc_v4 k=4 | 13.4 | **-24.9 %** | **-43.6 %** | **-27.1 %** | -46.0 % | -95 % | 0.8913 -> **0.9030** |
+
+  Reproduced across three independent measurement rounds: the box position at 6.7 px/pair
+  (-13.7 / -14.2 / -15.1 %), the hallucinated mass everywhere, the static panel (-50 to -95 %), and the
+  sphere position getting WORSE at 6.7 (+5.4 / +10.7 / +11.1 %). That last one is the price and it is real.
+
+  **What did NOT reproduce, and this is the entry's point.** At 1.7 px/pair the two rounds disagree in SIGN:
+  +7.8 % then -5.8 % on the box position, on absolute values of 0.16 px, in the x0.5 regime the project
+  already records as below the gate's own floor. The honest reading of that row is **not measured** — and
+  the first round's +7.8 % was the number that nearly stopped the flip. A single run at an operating point
+  whose absolute values sit at the floor is a coin, and it looks exactly like a finding until it is flipped
+  twice.
+
+  **The design meant to remove the trade-off, refuted by its own test.** The low-displacement loss looked
+  like a law: narrow the ramp where the scene moves far, keep it where it does not. So the edges were made
+  to slide with `length(ctx.mv_raw_fwd)` over a 2-6 px band, defaults inert. It measured WORSE THAN THE
+  CONSTANT EVERYWHERE — +15.5 % on sc_live k=4 against the constant's -1.7 %, and the large wins at 6.7
+  and 13.4 collapsed to a third. The reason is the design, not the band: **the spinning box barely
+  TRANSLATES in any corpus (~2 px/pair)**, so the object carrying the damage never crossed the threshold and
+  never got the benefit. Displacement magnitude does not predict the damage; the vector being WRONG does,
+  and a COMPOSE row cannot know that. Declaring `CH_MV_RAW_FWD` as a read of the row was not free either:
+  it moved the output with the slide disarmed (sc_v4 sharp 0.8938 -> 0.9032 at identical edges). The whole
+  thing was removed rather than left inert.
+- **lesson:** three separate things each looked like the answer and each was killed by the next measurement:
+  lowering `residual_ceil` (killed by an A/B that moved nothing at all — the gate was disconnected, P-039),
+  the sliding ramp (killed by being worse everywhere), and the low-displacement regression (killed by not
+  reproducing). The flip survived because it is the only one measured in three rounds that held. A tuning
+  session's real output is the list of things it stopped itself from shipping.
+- **corrective:** SHIPPED: `hold_lo` 1.0, `hold_hi` 1.6. `--st-hold-lo 1.2 --st-hold-hi 3.0` restores the old
+  value exactly, and the twelve `docs/evidence/B1_*.md` rows carry a banner saying every number on them
+  predates the change and how to reproduce it — re-running that record is its own job. **Owed:** the
+  canonical rows re-measured under the new default; a second run at 1.7 px/pair, or a statement that the
+  regime sits below the instrument and should stop being reported as a row; and the sphere's +11 % position
+  cost at 6.7 px/pair, which no setting of these two edges removes.
+
 ### P-041 · The ladder that places the phase slots has no upper bound, and nothing decides how many frames a pair gets
 - **class:** premise refuted (a debt of [P-037](#) / [P-038](#): "the answer is in the present loop") · **date:** 2026-09-11 · **recurrences:** 0 · **status:** read in the source, first-hand; the fix is not attempted
 - **evidence:** P-037 and P-038 measured the abandoned last slot (14 % at k=2, 26-35 % at k=4, 44 % at k=8)

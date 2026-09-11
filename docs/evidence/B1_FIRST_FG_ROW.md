@@ -1,5 +1,13 @@
 # B1 — the FG's first row against exact truth
 
+> **DEFAULT CHANGE, 2026-09-11 — every number below predates it.** `single_track`'s screen-static ramp
+> shipped as `smoothstep(1.2, 3.0, ...)` when these rows were measured; it now ships as
+> `smoothstep(1.0, 1.6, ...)` (`hold_lo` / `hold_hi`, P-042 in `docs/LEARNING_LOG.md`). Under the new
+> default the same corpora score BETTER on hallucinated mass everywhere (-8 % to -54 %), better on the
+> spinning box's position at 6.7 and 13.4 px/pair (-15 %, -25 %), and WORSE on the sphere's position at
+> 6.7 px/pair (+11 %). **To reproduce a row on this page exactly, pass `--st-hold-lo 1.2 --st-hold-hi 3.0`.**
+> These rows are not re-measured: re-running the twelve-corpus record is its own job.
+
 **Date:** 2026-09-08 · **Tools:** `tools/scene_truth/` (renderer `scene_zoo.py`, scorer `scene_report.py`,
 bridge `scene_live.ps1` + `scene_align.py`, stepper `scene_step.py`, review `scene_review.py`)
 **Binary:** `build-release/phyriad_fg.exe` at `f2e4a9a`, default kernel, `--fg-factor 4`, `--qdump`

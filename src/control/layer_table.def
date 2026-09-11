@@ -178,10 +178,10 @@ PFG_LAYER(SINGLE_TRACK, "single_track", COMPOSE, 290, F, true, true, 0u, false, 
   // agreeing to three significant figures) put (1.0, 1.6) at -14 % position and -26 % hallucinated mass on
   // the box and -40 % / -55 % on the sphere, against +9 % on the sphere position; the flip is the
   // operator's call.
-  PFG_PARAM(SINGLE_TRACK, hold_lo, F32, 1.2f, 0.f, 8.f, "--st-hold-lo", nullptr, PF_NONE, HIDDEN,
-            "Lower edge of the screen-static ramp: below this ratio the warp is taken whole (default 1.2).")
-  PFG_PARAM(SINGLE_TRACK, hold_hi, F32, 3.0f, 0.f, 16.f, "--st-hold-hi", nullptr, PF_NONE, HIDDEN,
-            "Upper edge of the ramp: above this ratio the unwarped current frame is held (default 3.0).")
+  PFG_PARAM(SINGLE_TRACK, hold_lo, F32, 1.0f, 0.f, 8.f, "--st-hold-lo", nullptr, PF_NONE, HIDDEN,
+            "Lower edge of the screen-static ramp: below this ratio the warp is taken whole (default 1.0; was 1.2 until the five-corpus A/B of 2026-09-11). --st-hold-lo 1.2 --st-hold-hi 3.0 restores it.")
+  PFG_PARAM(SINGLE_TRACK, hold_hi, F32, 1.6f, 0.f, 16.f, "--st-hold-hi", nullptr, PF_NONE, HIDDEN,
+            "Upper edge of the ramp: above this ratio the unwarped current frame is held (default 1.6; was 3.0).")
 PFG_LAYER_END(SINGLE_TRACK)
 
 // ── FLOW (stage 3, thread F) — R5 step 1: DECLARED (docs/planning/aap/FLOW_ROW_MAP.md §1). ────────
