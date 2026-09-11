@@ -246,6 +246,8 @@ struct PresentSurface::Impl {
     std::atomic<bool> yielded{false};       // we have hidden + dropped topmost → submit() is a no-op
     std::atomic<int64_t> heartbeat_ms{0};   // bumped each submit(); the watchdog reads it
     std::atomic<bool> wd_run{false};        // watchdog thread alive flag
+    std::atomic<bool> wd_done{false};       // the watchdog's loop has RETURNED (see destroy(): joining it
+                                            // without pumping deadlocks when it is inside yield_plane())
     std::thread       wd_thread;            // present-thread watchdog (own_window only)
 
     // Drop the displayed plane so the desktop/game beneath is reachable. Win32-only,
@@ -303,7 +305,29 @@ struct PresentSurface::Impl {
         if (waitable_obj) { CloseHandle(waitable_obj); waitable_obj = nullptr; }
         // Stop the watchdog before tearing down the window it guards.
         wd_run.store(false);
-        if (wd_thread.joinable()) wd_thread.join();
+        // PUMP WHILE JOINING, AND DEADLINE IT (2026-09-11, P-035: this join wedged a shipping run and held the
+        // operator's panel until the process was killed). The watchdog calls yield_plane() from ITS thread on a
+        // window owned by THIS one, and SetWindowPos/ShowWindow across threads are inter-thread sends that block
+        // until the owner dispatches. main.cpp:1050 already wrote that hazard down for the TDR path; this is the
+        // same hazard on a NORMAL quit. A bare join here is therefore a deadlock whenever the watchdog fires
+        // during teardown — which it does whenever teardown outlives kWatchdogStallMs (250 ms) with the plane
+        // still DISPLAYED; a --gdump run draining its ring takes ~1 s. The pump below lets any in-flight
+        // yield_plane() complete; the deadline keeps a give-back that must never block from blocking forever.
+        if (wd_thread.joinable()) {
+            MSG m;
+            const int64_t wd_deadline = (int64_t)GetTickCount64() + 2000;
+            while (!wd_done.load(std::memory_order_acquire) && (int64_t)GetTickCount64() < wd_deadline) {
+                while (PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&m); DispatchMessage(&m); }
+                Sleep(1);
+            }
+            if (wd_done.load(std::memory_order_acquire)) {
+                wd_thread.join();
+            } else {
+                // It is still stuck somewhere we do not own. Do not take the panel down with us: let it go and
+                // finish the give-back (DestroyWindow below is what actually returns the display).
+                wd_thread.detach();
+            }
+        }
         // Hide the displayed plane FIRST so the panel returns the instant we begin teardown
         // (best-effort; the DestroyWindow below is the real give-back). No-op for the overlay styles.
         if (own_window) {
@@ -548,6 +572,7 @@ PresentSurface::create(const PresentSurfaceDesc& desc) noexcept {
                     last_change_at = nowt;  // re-arm so we don't spin SetWindowPos every 50 ms
                 }
             }
+            impl->wd_done.store(true, std::memory_order_release);  // destroy() waits on THIS, not on join()
         });
     }
 

@@ -200,6 +200,46 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-035 · The give-back that holds the panel: the plane watchdog and the thread that joins it deadlock each other on a normal quit
+- **class:** premise refuted (a hazard the repo had written down was fixed on one path and left open on the other) · **date:** 2026-09-11 · **recurrences:** 1 (R4c, the TDR path) · **status:** fixed, unverified live
+- **evidence:** the operator reported the FG frozen with its window scaled to fullscreen while the process still
+  ran. It was blocked, not working: CPU pinned at 17.2 s for over two minutes, 852 handles, not responding, and
+  the panel held until it was killed. Its log ends on the every-tick tap's summary — `4494 captured / 4494
+  recorded ticks, 1195 pairs written, 3950.8 MB` — and never prints the `bounded-run clean exit` line that every
+  healthy run of that session printed next. So the wedge sits between those two.
+  **The mechanism, read first-hand.** `PresentSurface.cpp:305-306` was `wd_run.store(false); if
+  (wd_thread.joinable()) wd_thread.join();` — an unbounded join, with the message pump fifteen lines BELOW it at
+  `:321-323`. The watchdog it joins (`:537-551`) calls `yield_plane()` (`:253-258`), whose `SetWindowPos` and
+  `ShowWindow` act on a window owned by the present thread: across threads those are inter-thread sends that
+  block until the owner dispatches. The owner is the very thread sitting in the join. The watchdog arms whenever
+  the heartbeat stops for more than `kWatchdogStallMs = 250` (`:135`) **with the plane still displayed**
+  (`:539` `if (impl->yielded.load()) continue;`), and a `--gdump` teardown drains a multi-gigabyte ring, which
+  takes about a second. Both threads then wait on each other at zero CPU, the window is never hidden, and
+  `DestroyWindow` at `:319` is never reached.
+  **The repo already knew.** `src/core/main.cpp:1050-1052`, from the R4c hardening: "the pillar's OA-10 watchdog
+  cannot hide a window whose owning thread is wedged (ShowWindow/SetWindowPos from another thread wait on that
+  thread's message loop)". That pass gave the joins a 3 s deadline **only once the device is LOST**, and says so:
+  "On a normal quit (no loss) the joins are the unbounded ones they were — byte-identical." This wedge was a
+  normal quit, so none of that hardening applied, and the deadlock was in the pillar's own `destroy()` rather
+  than in the joins R4c fixed.
+  **The flag is a coincidence, checked rather than assumed.** The run carried `--no-mv-candsel` and the three
+  runs before it had exited cleanly, which made the flag look causal. `mv_candsel` is read at exactly two sites,
+  `src/flow/flow_init.cpp:40` and `:142`, both flow-pipeline construction; nothing in the present, instrument or
+  teardown paths reads it. What actually varies per run is whether the FG's plane was DISPLAYED or YIELDED when
+  the deadline hit — the watchdog's own guard at `:539`.
+- **lesson:** a give-back must not be able to block. The watchdog exists to return the operator's panel when the
+  present thread wedges, and it became the reason the panel was not returned. And a hazard fixed on the path
+  where it was DISCOVERED is not fixed: R4c found this exact interaction under forced TDR, bounded the joins it
+  was looking at, and wrote the mechanism down in a comment — while the same mechanism sat in the pillar's
+  ordinary teardown, one file away, reachable by any run whose shutdown outlives 250 ms.
+- **corrective:** `PresentSurface.cpp` `destroy()` now pumps this thread's message queue while waiting for the
+  watchdog, on a 2 s deadline, and detaches instead of joining if it does not come back, so the teardown always
+  reaches `DestroyWindow`. A `wd_done` flag published by the watchdog's own loop is what `destroy()` waits on.
+  Built clean, 51/51 tests pass. **NOT verified live:** reproducing the wedge needs a capture that ends with the
+  plane displayed, which is the operator's screen. Owed: that one run, and a decision on whether the watchdog
+  should post an asynchronous message instead of a blocking one, which would remove the hazard rather than
+  bound it.
+
 ### P-034 · The operator's eye found the phase law the instrument's own terms had already measured and nobody had read as one thing
 - **class:** re-derivation + attribution · **date:** 2026-09-10 · **recurrences:** 1 (the phase shape is M1_LOWPHASE, 2026-09-04) · **status:** attributed, the default flip is the operator's
 - **evidence:** the operator walked the every-tick page and reported, unprompted, that a checker deformation is
