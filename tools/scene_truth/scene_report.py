@@ -257,6 +257,10 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=(),
     if masks is not None:
         masks['halluc'] = np.zeros(ids.shape, bool)
         masks['missing'] = np.zeros(ids.shape, bool)
+        masks['truth_obj'] = np.zeros(ids.shape, bool)   # the truth silhouettes themselves, for an INTERIOR view:
+        # every object term is a silhouette term, so a warp that keeps the outline and scrambles what is inside it
+        # (a deformed checker, a smeared texture) scores at the floor. The mask is exported so a viewer can show
+        # that error where it lives; it enters no term and no verdict.
     for k, (vn, disp) in motion.items():
         tm = ids == k
         if not tm.any():
@@ -290,6 +294,7 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=(),
         if masks is not None:
             masks['halluc'] |= hal
             masks['missing'] |= mis
+            masks['truth_obj'] |= tsil
         if hal.any():
             ys, xs = np.nonzero(hal)
             o['lead_px'] = float(((np.stack([xs + 0.5, ys + 0.5], axis=1) - centroid(tsil)) @ vn).mean())

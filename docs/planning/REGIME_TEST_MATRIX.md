@@ -374,6 +374,15 @@ frame (key `H`), the truth rendered at the FG's own phase rather than the base-g
 hallucinated mass and by position error as clickable chips. The previous `tau`-era pages are kept beside them as
 `<run>\step_tau\`.
 
+**The every-tick corpus re-scored, and it removes a disagreement the record carried (2026-09-10, CPU, no screen).** `g5_live` — the `-Gdump` capture of the same scene, seed and speed as `sc_live`, 8 s of screen, every tick — was the only
+corpus never scored under `coverage`. Its arm now reads **0.230 px, ACCEPT, n = 177**. Under `tau` the same frames read
+0.240 px with verdict `pos` (a FAIL), and `GDUMP_GATE.md` G5 records that number beside B1's sampled 0.216 ACCEPT as "a
+different population and one run". Under the operator that passes the gate the two present paths no longer disagree on the
+verdict: synchronous sampler 0.204 ACCEPT (n = 133), asynchronous every-tick 0.230 ACCEPT (n = 177), 0.026 px apart. The
+every-tick tap also yields MORE scored frames from LESS screen — 177 from 8 s against 133 from 20 s of sampling — and its
+review page carries no gaps at all, where the sampler pages carry 43 to 113 uncaptured ticks each. Every future capture
+should therefore use `-Gdump`, which is what §8 already writes for family 0.
+
 **Cut scoring** (`sc_live2`, 9 cut triples captured 2026-09-08, arm `fg_k4_cuts`, `cuts_k4.md/.json`; review page
 `F:\Phyriad\scene_pages\sc_live2_cuts\index.html`): the FG blends across the seam — halluc vs the nearer real 86–88 px² but
 vs the farther real 183–402, missing 55–4244, sharp 0.29–0.83, graceful 0.016–0.062; the `hold` reference scores graceful

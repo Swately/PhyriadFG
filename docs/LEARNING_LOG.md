@@ -200,6 +200,38 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-033 · Every verdict term is a silhouette term, so a warp that keeps the outline and deforms the interior scores at the floor
+- **class:** premise refuted · **date:** 2026-09-10 · **recurrences:** 0 · **status:** a view exists; whether it becomes a term is the operator's
+- **evidence:** the operator, looking at the new frame-by-frame pages, pointed at the spinning box and asked whether
+  the session could see the checker deforming. It can be seen and the instrument does not count it. On `sc_live`
+  k = 4 frame 193, the frame with the WORST whole-frame image error of the arm (`l2_det` 0.0095), the box scores
+  `pos_err` **0.043 px** and `shape_err` **0.096 px** against a 0.5 px tolerance, `halluc` 46 px² and `missing`
+  19 px². It passes every object term by a factor of twenty while its interior lattice is visibly bent. The cause
+  is structural, not a bug: `pos_err` is a centroid, `shape_err` a chamfer between boundaries, `halluc` and
+  `missing` are silhouette set-differences, and `sharp` is edge strength on a one-pixel band around the truth's
+  own boundary (`scene_report.py` `tb = (ids>0) & ~erode4(ids>0)`). None of the six looks strictly inside the
+  silhouette. `bg_err` is backdrop-only. `l2_det` does see it, but over the whole determinable frame, never per
+  object, and by the identity's own text it is "reported beside the six and never folded into the verdict".
+  Measured on the same arm, the relation runs the wrong way: frames 193 and 197 carry the arm's LOWEST position
+  error (0.112 / 0.095 px) and its HIGHEST interior error (p99 0.0858 / 0.0865), while 191 and 195 are the
+  reverse. The verdict likes best the frames whose interiors are worst.
+- **lesson:** a decomposition is blind exactly where none of its terms is defined, and the gate cannot find that
+  blind spot because the gate's five synthetic arms are built from the corpus itself — `blend`, `blur`, `nearest`
+  and `oracle2` all produce artefacts on or across the boundary, so every predicted signature the gate checks is a
+  signature the terms already cover. An instrument validated only against the failures it was designed for will
+  pass while missing a whole artefact class. This one was found by a human looking at a picture, which is the
+  argument for the frame-by-frame view existing at all. Related: this is the `mixed` corpus, and the checker is a
+  repetitive pattern — the artefact class F2 was written to probe, arriving before F2 was ever captured.
+- **corrective:** `scene_step.py --overlay` now writes an interior map per generated frame (key `I`): the
+  luminance error on the truth's silhouette eroded by 2 px, which excludes the boundary band the terms do cover,
+  with its rms / p99 / max in the panel labelled as entering no term, a "worst by interior error" chip row, and
+  the value carried into the exported feedback line. `score_frame(masks=...)` exports `truth_obj` for it. **It is
+  a view and a reported-apart number, NOT a seventh verdict term:** the identity's priority order of the terms is
+  frozen, so adding one re-opens Phase 1 and that is the operator's deliberate act (KAP §7). What a term would
+  have to answer first: whether the right quantity is interior luminance error, or the chamfer between the
+  candidate's and the truth's INTERIOR edge maps, which measures how far the pattern moved rather than how much
+  it differs, and which would not fire on a legitimate shading difference.
+
 ### P-032 · The prior-art sweep never entered the field the object lives in, and six of its seven absences fall
 - **class:** premise refuted · **date:** 2026-09-10 · **recurrences:** 0 · **status:** recorded; re-opening Phase 1 is the operator's
 - **evidence:** the object under test is a REAL-TIME frame generator in a present pipeline — the DLSS-FG / FSR-FG

@@ -72,6 +72,37 @@ def overlay_png(path, masks, W, H):
     return int(hal.sum()) if hal is not None else 0, int(mis.sum()) if mis is not None else 0
 
 
+def interior_png(path, cand, truth, obj, erode=2):
+    """The error INSIDE the silhouette, where no object term looks.
+
+    Every one of the six verdict terms is a silhouette term: position, shape, hallucinated and missing mass are
+    all computed from where the outline is, and `sharp` is measured on a one-pixel band around the truth's own
+    boundary. So a warp that reproduces the outline and deforms what is inside it — a checker that bends, a
+    texture that slides — scores at the floor. `l2_det` sees it, but over the whole determinable frame and never
+    per object. This map is |candidate − truth| in luminance on the truth's silhouette eroded by `erode` px, so
+    the boundary band the terms DO cover is excluded and only the unwatched interior remains. It is a view, not
+    a term: nothing here enters a verdict (the operator decides whether it ever should).
+
+    Returns (rms, p99, max) over the interior, on the 0..1 luminance scale, or None when there is no interior.
+    """
+    m = obj
+    for _ in range(erode):
+        m = SR.erode4(m)
+    if not m.any():
+        return None
+    e = np.abs(SR.lum(cand) - SR.lum(truth))
+    v = e[m]
+    hot = np.clip(e / max(float(v.max()), 1e-6), 0, 1)
+    rgba = np.zeros(m.shape + (4,), np.uint8)
+    # a single-hue ramp: dark red where the interior is wrong a little, white-hot where it is wrong a lot
+    rgba[..., 0] = np.clip(60 + 195 * hot, 0, 255)
+    rgba[..., 1] = np.clip(255 * (hot ** 2.2), 0, 255)
+    rgba[..., 2] = np.clip(255 * (hot ** 4.0), 0, 255)
+    rgba[..., 3] = np.where(m, np.clip(40 + 215 * hot, 0, 255), 0)
+    png_rgba(path, rgba)
+    return float(np.sqrt((v ** 2).mean())), float(np.percentile(v, 99)), float(v.max())
+
+
 def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False, sil='tau'):
     t, sc = SR.load_corpus(d)
     W, H, n = t['width'], t['height'], t['frames']
@@ -139,6 +170,11 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False,
             hp, mp = overlay_png(os.path.join(out, opath), mrec['_masks'], W, H)
             rec['o'] = opath
             rec['ov'] = {'halluc_px': hp, 'missing_px': mp}
+            ipath = 'seq/f_%06d_i.png' % i
+            st = interior_png(os.path.join(out, ipath), cand, mrec['_truth'], mrec['_masks']['truth_obj'])
+            if st:
+                rec['ii'] = ipath
+                rec['iv'] = {'rms': st[0], 'p99': st[1], 'max': st[2]}
         if not real:
             tr = trs[i]
             rec.update({'phase': tr['phase'], 'N': tr['N'], 'N1': tr['N1']})
@@ -152,6 +188,9 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False,
         frames.append(rec)
         if (i - lo + 1) % 40 == 0:
             print('  %d/%d' % (i - lo + 1, hi - lo + 1))
+    meta = {'W': W, 'H': H, 'K': K, 'arm': arm, 'corpus': os.path.basename(os.path.normpath(d)),
+            'rates': rates, 'overlay': overlay, 'silhouette': sil}
+    json.dump({'meta': meta, 'frames': frames}, open(os.path.join(out, 'frames.json'), 'w', encoding='utf-8'))
     write_html(out, frames, W, H, K, arm, os.path.basename(os.path.normpath(d)), rates, overlay)
     print('%d frames (%d real, %d generated%s) -> %s'
           % (len(frames), sum(f['real'] for f in frames), sum(not f['real'] for f in frames),
@@ -159,14 +198,26 @@ def build(d, K, arm, out, scores_json, start, count, fg_log=None, overlay=False,
              os.path.join(out, 'index.html')))
 
 
+def worst_value(f, key):
+    """The number a chip ranks and shows. For hallucinated / missing mass that is the DRAWN total (the union
+    over objects, what the overlay puts on the screen) when the masks exist, so the ranking and the picture
+    agree; the per-object mean the report tables carry is a different quantity and is labelled as such in the
+    panel. pos has no union form and is always the per-object mean."""
+    if key in ('halluc', 'missing') and f.get('ov'):
+        return f['ov'][key + '_px']
+    if key == 'interior':
+        return (f.get('iv') or {}).get('p99')
+    return (f.get('s') or {}).get(key)
+
+
 def worst_lists(frames, n=10):
     """The frames a reviewer should look at first, ranked by the terms that name an artefact: the most
     hallucinated mass, and the largest position error. Scored generated frames only; a cut carries no score."""
     scored = [(j, f) for j, f in enumerate(frames) if f.get('s')]
     def top(key):
-        v = [(j, f['s'][key]) for j, f in scored if f['s'].get(key) is not None]
+        v = [(j, worst_value(f, key)) for j, f in scored if worst_value(f, key) is not None]
         return [j for j, _ in sorted(v, key=lambda p: -p[1])[:n]]
-    return {'halluc': top('halluc'), 'pos': top('pos')}
+    return {'halluc': top('halluc'), 'pos': top('pos'), 'interior': top('interior')}
 
 
 def write_html(out, frames, W, H, K, arm, corpus, rates, overlay=False):
@@ -194,6 +245,13 @@ canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
 #worst button{font:inherit;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:5px;padding:2px 8px}
 #worst button:hover{border-color:var(--gen)} #worst button.on{background:var(--gen);color:#000;border-color:var(--gen)}
 .sw{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:baseline;margin-right:4px}
+#fb{display:flex;gap:8px;align-items:center;padding:0 18px 10px;font-size:12px}
+#fb input{flex:1;font:inherit;padding:5px 9px;border:1px solid var(--line);border-radius:5px;background:transparent;color:var(--ink)}
+#fb input:focus{outline:none;border-color:var(--gen)}
+#fb button{font:inherit;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:5px;padding:4px 10px;white-space:nowrap}
+#fb button:hover{border-color:var(--gen)} #mk.on{background:var(--red);color:#fff;border-color:var(--red)}
+#fbn{color:var(--mut);white-space:nowrap}
+#flag{position:absolute;right:18px;bottom:12px;font-size:22px;color:var(--red);text-shadow:0 1px 3px #000;display:none}
 """
     data = json.dumps(frames)
     m = rates.get('measured')
@@ -205,13 +263,20 @@ canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
                  '<b>FG ×%d → %.0f fps presented</b> (%.2f ms apart)%s</div>'
                  % (rates['source_fps'], K, rates['base_fps'], rates['source_interval_ms'], K, rates['output_fps'], rates['output_interval_ms'], meas))
     wl = worst_lists(frames)
+    if wl.get('interior'):
+        inner = ('<span class="sep"></span><span class="lab">peores por error DENTRO de la silueta (p99, ningún término lo mide)</span>'
+                 + ''.join('<button data-j="%d">#%d <span class="k">%.3f</span></button>' % (j, frames[j]['i'], worst_value(frames[j], 'interior'))
+                           for j in wl['interior']))
+    else:
+        inner = ''
     if wl['halluc'] or wl['pos']:
         chip = lambda j, val, dec: '<button data-j="%d">#%d <span class="k">%s</span></button>' % (
             j, frames[j]['i'], ('%.*f' % (dec, val)) if val is not None else '—')
-        worstline = ('<div id="worst"><span class="lab">worst by hallucinated mass (px²)</span>'
-                     + ''.join(chip(j, frames[j]['s']['halluc'], 0) for j in wl['halluc'])
-                     + '<span class="sep"></span><span class="lab">worst by position error (px)</span>'
-                     + ''.join(chip(j, frames[j]['s']['pos'], 3) for j in wl['pos'])
+        worstline = ('<div id="worst"><span class="lab">peores por masa alucinada (px², la dibujada)</span>'
+                     + ''.join(chip(j, worst_value(frames[j], 'halluc'), 0) for j in wl['halluc'])
+                     + '<span class="sep"></span><span class="lab">peores por error de posición (px)</span>'
+                     + ''.join(chip(j, worst_value(frames[j], 'pos'), 3) for j in wl['pos'])
+                     + inner
                      + (('<span class="sep"></span><span class="lab"><span class="sw" style="background:#e04030"></span>hallucinated'
                          ' <span class="sw" style="background:#3878e8;margin-left:8px"></span>missing — the scorer\'s own masks (H)</span>')
                         if overlay else '')
@@ -221,24 +286,30 @@ canvas{max-width:100%;max-height:100%;image-rendering:pixelated}
     parts = ['<!doctype html><meta charset="utf-8"><title>scene_truth step · %s k=%d %s</title><style>%s</style>' % (html.escape(corpus), K, html.escape(arm), css),
              '<div id="wrap"><header><div><h1>%s · k = %d · arm <code>%s</code></h1>%s</div>' % (html.escape(corpus), K, html.escape(arm), ratesline),
              '<span class="sub">%d frames · %d×%d · real every %d</span></header>' % (len(frames), W, H, K),
-             '<div id="stage"><canvas id="cv" width="%d" height="%d"></canvas><div id="badge"></div><div id="idx"></div><div id="mode"></div><div id="prog"></div></div>' % (W, H),
+             '<div id="stage"><canvas id="cv" width="%d" height="%d"></canvas><div id="badge"></div><div id="idx"></div><div id="mode"></div><div id="flag">● marcado</div><div id="prog"></div></div>' % (W, H),
              '<div id="panel"><div id="info"></div><div id="rate" class="k"></div></div>',
              '<div id="tl"><canvas id="tlc"></canvas></div>',
              worstline,
-             '<div id="help">← → step · <b>hold</b> to auto-advance · [ ] slower/faster · space play · L loop · T truth in place · D difference%s · Home/End · click the timeline</div></div>'
-             % (' · <b>H</b> hallucinated / missing mass · <b>W</b> jump to the worst frame' if overlay else ''),
-             '<script>const F=%s;const W=%d,H=%d,K=%d;const RATES=%s;const WORST=%s;const HASOV=%s;'
+             '<div id="fb"><button id="mk" title="M">● marcar</button>'
+             '<input id="note" placeholder="qué ve en este cuadro (se guarda solo; N para escribir, Esc para salir)" autocomplete="off">'
+             '<span id="fbn"></span><button id="cp" title="C">copiar retroalimentación</button>'
+             '<button id="cl">borrar todo</button></div>',
+             '<div id="help">← → step · <b>hold</b> to auto-advance · [ ] slower/faster · space play · L loop · T truth in place · D difference%s · '
+             '<b>M</b> marcar · <b>N</b> nota · <b>C</b> copiar · Home/End · click the timeline</div></div>'
+             % (' · <b>H</b> masa alucinada / faltante · <b>I</b> error DENTRO de la silueta · <b>W</b> peor cuadro' if overlay else ''),
+             '<script>const F=%s;const W=%d,H=%d,K=%d;const RATES=%s;const WORST=%s;const HASOV=%s;const PAGE=%s;'
              % (data, W, H, K, json.dumps({k: v for k, v in rates.items() if k != 'measured'}),
-                json.dumps(worst_lists(frames)), 'true' if overlay else 'false'),
+                json.dumps(worst_lists(frames)), 'true' if overlay else 'false',
+                json.dumps('%s k=%d arm %s' % (corpus, K, arm))),
              r"""
 const cv=document.getElementById('cv'),cx=cv.getContext('2d'),badge=document.getElementById('badge'),idx=document.getElementById('idx'),
  mode=document.getElementById('mode'),info=document.getElementById('info'),rate=document.getElementById('rate'),prog=document.getElementById('prog'),
  tl=document.getElementById('tl'),tlc=document.getElementById('tlc'),tx=tlc.getContext('2d');
 const IMG={};let loaded=0,total=0;
 function load(src){if(IMG[src])return IMG[src];const im=new Image();IMG[src]=im;total++;im.onload=()=>{loaded++;prog.style.transform='scaleX('+(loaded/total)+')';if(loaded===total)prog.style.display='none'};im.src=src;return im}
-F.forEach(f=>{load(f.c);if(f.t!==f.c)load(f.t);if(f.o)load(f.o)});
-let cur=0,showTruth=false,diff=false,ovOn=false,fps=8,timer=null,playing=false,loop=true,hold=null;
-const WFLAT=[].concat(WORST.halluc||[],WORST.pos||[]).filter((v,i,a)=>a.indexOf(v)===i);let wi=-1;
+F.forEach(f=>{load(f.c);if(f.t!==f.c)load(f.t);if(f.o)load(f.o);if(f.ii)load(f.ii)});
+let cur=0,showTruth=false,diff=false,ovOn=false,inOn=false,fps=8,timer=null,playing=false,loop=true,hold=null;
+const WFLAT=[].concat(WORST.halluc||[],WORST.pos||[],WORST.interior||[]).filter((v,i,a)=>a.indexOf(v)===i);let wi=-1;
 function fmt(v,d){return v==null?'—':Number(v).toFixed(d)}
 function draw(){const f=F[cur];const a=load(f.c),b=load(f.t);
  const useT=showTruth&&!f.real;const im=useT?b:a;
@@ -246,31 +317,79 @@ function draw(){const f=F[cur];const a=load(f.c),b=load(f.t);
  if(diff&&!f.real&&b.complete&&b.naturalWidth){cx.drawImage(a,0,0);const A=cx.getImageData(0,0,W,H);cx.drawImage(b,0,0);const B=cx.getImageData(0,0,W,H);
   const o=cx.createImageData(W,H);for(let p=0;p<A.data.length;p+=4){const d=Math.min(255,4*(Math.abs(A.data[p]-B.data[p])+Math.abs(A.data[p+1]-B.data[p+1])+Math.abs(A.data[p+2]-B.data[p+2]))/3);o.data[p]=d;o.data[p+1]=Math.max(0,d-60);o.data[p+2]=Math.max(0,d-120);o.data[p+3]=255}cx.putImageData(o,0,0)}
  else cx.drawImage(im,0,0);
+ if(inOn&&f.ii&&!useT){const iv=load(f.ii);if(iv.complete&&iv.naturalWidth)cx.drawImage(iv,0,0)}
  if(ovOn&&f.o&&!useT){const ov=load(f.o);if(ov.complete&&ov.naturalWidth)cx.drawImage(ov,0,0)}
  badge.textContent=f.real?'REAL':(f.missing?'NOT CAPTURED — truth shown':(f.cut?'GENERATED ACROSS A CUT — not scored':'GENERATED'));badge.className=f.real?'real':'gen';
  cv.style.opacity=f.missing?'0.45':'1';
  idx.textContent='#'+f.i+'  t '+fmt(f.time_s,4)+' s'+(f.real?'':'  φ '+fmt(f.phase,2));
- mode.textContent=(diff&&!f.real?'|candidate − truth| ×4':useT?'TRUTH in place':'')+(ovOn&&f.o&&!useT?(diff?' + ':'')+'halluc / missing mask':'')+(playing?'  ▶':'');
+ mode.textContent=(diff&&!f.real?'|candidate − truth| ×4':useT?'TRUTH in place':'')+(inOn&&f.ii&&!useT?' + interior de la silueta':'')+(ovOn&&f.o&&!useT?' + halluc / missing':'')+(playing?'  ▶':'');
  let h='';
  if(f.real)h='<b>real frame</b> <span class="k">source index '+f.i+' — the FG saw this one, '+RATES.source_interval_ms.toFixed(2)+' ms after the previous real</span>';
  else{h='<b>generated</b> between real <b>'+f.N+'</b> → <b>'+f.N1+'</b>, phase '+fmt(f.phase,3)+' <span class="k">('+(f.phase*RATES.source_interval_ms).toFixed(2)+' ms after real '+f.N+', presented '+RATES.output_interval_ms.toFixed(2)+' ms after the previous frame)</span>'+(f.cut?' — <span class="bad">the two real frames were not k apart (the loop seam): a CUT, no interpolation truth exists</span>':'');
-  if(f.s){const s=f.s;h+='<br>pos <b>'+fmt(s.pos,3)+'</b> px · shape <b>'+fmt(s.shape,3)+'</b> px · halluc <b>'+fmt(s.halluc,0)+'</b> px² (lead '+fmt(s.lead,1)+') · missing <b>'+fmt(s.missing,0)+'</b> px² · sharp <b>'+fmt(s.sharp,3)+'</b>'+(s.sharp!=null&&s.sharp<0.9?' <span class="bad">BLUR</span>':'')+' · class-0 '+fmt(s.disocc_px,0)+' px'}}
- info.innerHTML=h;rate.textContent=fps+' fps auto · '+(loop?'loop':'stop at end');drawTL()}
+  if(f.s){const s=f.s;h+='<br><span class="k">media por objeto:</span> pos <b>'+fmt(s.pos,3)+'</b> px · shape <b>'+fmt(s.shape,3)+'</b> px · halluc <b>'+fmt(s.halluc,0)+'</b> px² (lead '+fmt(s.lead,1)+') · missing <b>'+fmt(s.missing,0)+'</b> px² · sharp <b>'+fmt(s.sharp,3)+'</b>'+(s.sharp!=null&&s.sharp<0.9?' <span class="bad">BLUR</span>':'')+' · class-0 '+fmt(s.disocc_px,0)+' px';
+   if(f.ov)h+='<br><span class="k">lo que está dibujado (unión de todos los objetos):</span> <span style="color:#e04030">halluc <b>'+f.ov.halluc_px+'</b> px²</span> · <span style="color:#3878e8">missing <b>'+f.ov.missing_px+'</b> px²</span>';
+   if(f.iv)h+=' <span class="k">· interior de la silueta (NO entra en ningún término): rms <b>'+fmt(f.iv.rms,4)+'</b> · p99 <b>'+fmt(f.iv.p99,4)+'</b> · máx <b>'+fmt(f.iv.max,3)+'</b> (tecla I)</span>'}}
+ info.innerHTML=h;rate.textContent=fps+' fps auto · '+(loop?'loop':'stop at end');fbSync()}
 function drawTL(){const w=tl.clientWidth,h=tl.clientHeight;if(tlc.width!==w||tlc.height!==h){tlc.width=w;tlc.height=h}
  tx.clearRect(0,0,w,h);const n=F.length;for(let i=0;i<n;i++){const x=(i+0.5)/n*w;const f=F[i];tx.fillStyle=f.real?getComputedStyle(document.documentElement).getPropertyValue('--real'):getComputedStyle(document.documentElement).getPropertyValue('--gen');
   const t=f.real?4:h*0.45;tx.fillRect(x-0.5,h-t,Math.max(1,w/n-0.5),t)}
+ if(typeof FB!=='undefined'){const red=getComputedStyle(document.documentElement).getPropertyValue('--red');
+  for(let i=0;i<n;i++){if(FB[F[i].i]){const x=(i+0.5)/n*w;tx.fillStyle=red;tx.fillRect(x-1,0,Math.max(2,w/n),h*0.4)}}}
  const x=(cur+0.5)/n*w;tx.fillStyle='#fff';tx.fillRect(x-1,0,2,h)}
 function go(i){if(i<0)i=loop?F.length-1:0;if(i>=F.length){if(!loop){stop();i=F.length-1}else i=0}cur=i;draw()}
 function step(d){go(cur+d)}
 function startAuto(d){stopAuto();hold=d;timer=setInterval(()=>step(d),1000/fps)}
 function stopAuto(){if(timer){clearInterval(timer);timer=null}hold=null}
 function play(){playing=true;startAuto(1)}function stop(){playing=false;stopAuto();draw()}
+/* ---- feedback: a mark and a note per frame, kept in this browser, exported as one anchored block ---- */
+const mk=document.getElementById('mk'),note=document.getElementById('note'),fbn=document.getElementById('fbn'),
+ cp=document.getElementById('cp'),cl=document.getElementById('cl'),flag=document.getElementById('flag');
+const FBKEY='scene_truth_fb::'+PAGE;
+let FB={};try{FB=JSON.parse(localStorage.getItem(FBKEY)||'{}')}catch(e){FB={}}
+function fbSave(){try{localStorage.setItem(FBKEY,JSON.stringify(FB))}catch(e){}}
+function fbEntry(i){return FB[i]||null}
+function fbCount(){return Object.keys(FB).length}
+function fbSync(full){const f=F[cur],e=fbEntry(f.i);
+ mk.classList.toggle('on',!!e);flag.style.display=e?'block':'none';
+ if(full!==false)note.value=(e&&e.n)||'';
+ fbn.textContent=fbCount()?fbCount()+' marcado(s)':'';drawTL()}
+function fbToggle(){const f=F[cur],e=fbEntry(f.i);
+ if(e){if((e.n||'').trim()&&!confirm('Este cuadro tiene una nota. ¿Quitar la marca y borrar la nota?'))return;delete FB[f.i]}
+ else FB[f.i]={m:1,n:''};
+ fbSave();fbSync()}
+function fbNote(){const f=F[cur];
+ FB[f.i]=Object.assign({m:1},FB[f.i]||{},{n:note.value});
+ fbSave();fbSync(false)}
+function fbText(){const ids=Object.keys(FB).map(Number).sort((a,b)=>a-b);if(!ids.length)return'';
+ const L=['# scene_truth — retroalimentación · '+PAGE+(HASOV?' · operador coverage':''),
+          '# pos/shape/sharp = media por objeto; halluc/missing = la masa DIBUJADA, unión de todos los objetos'];
+ ids.forEach(i=>{const f=F.find(x=>x.i===i);if(!f)return;const s=f.s;
+  let ln='#'+i+(f.real?'  REAL':'  φ '+fmt(f.phase,3));
+  if(s)ln+='  pos '+fmt(s.pos,3)+'  sharp '+fmt(s.sharp,3);
+  if(f.ov)ln+='  halluc '+f.ov.halluc_px+'  missing '+f.ov.missing_px;
+  else if(s)ln+='  halluc(media) '+fmt(s.halluc,0)+'  missing(media) '+fmt(s.missing,0);
+  if(f.iv)ln+='  interior_p99 '+fmt(f.iv.p99,4);
+  if(f.cut)ln+='  [CUT, sin verdad de interpolación]';
+  ln+='  → '+((FB[i].n||'').trim()||'(marcado, sin nota)');L.push(ln)});
+ return L.join('\n')}
+cp.addEventListener('click',()=>{const t=fbText();if(!t){fbn.textContent='nada marcado todavía';return}
+ navigator.clipboard.writeText(t).then(()=>{fbn.textContent='copiado: '+fbCount()+' cuadro(s)'},
+  ()=>{const w=window.open('','_blank');w.document.write('<pre>'+t.replace(/[&<]/g,c=>c==='&'?'&amp;':'&lt;')+'</pre>')})});
+cl.addEventListener('click',()=>{if(confirm('¿Borrar las '+fbCount()+' marcas de esta página?')){FB={};fbSave();fbSync()}});
+mk.addEventListener('click',fbToggle);
+note.addEventListener('input',fbNote);
+note.addEventListener('keydown',e=>{if(e.key==='Escape'){note.blur()}e.stopPropagation()});
 document.addEventListener('keydown',e=>{
+ if(e.target===note)return;
+ if(e.key==='m'||e.key==='M'){fbToggle();return}
+ if(e.key==='n'||e.key==='N'){e.preventDefault();note.focus();return}
+ if(e.key==='c'||e.key==='C'){cp.click();return}
  if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const d=e.key==='ArrowRight'?1:-1;if(e.repeat)return;step(d);if(!playing){hold=d;setTimeout(()=>{if(hold===d&&!timer)startAuto(d)},260)}return}
  if(e.key===' '){e.preventDefault();playing?stop():play();return}
  if(e.key==='t'||e.key==='T'){showTruth=!showTruth;draw()}
  if(e.key==='d'||e.key==='D'){diff=!diff;draw()}
  if(e.key==='h'||e.key==='H'){if(HASOV){ovOn=!ovOn;draw()}}
+ if(e.key==='i'||e.key==='I'){if(HASOV){inOn=!inOn;draw()}}
  if(e.key==='w'||e.key==='W'){if(WFLAT.length){wi=(wi+1)%WFLAT.length;go(WFLAT[wi])}}
  if(e.key==='l'||e.key==='L'){loop=!loop;draw()}
  if(e.key===']'){fps=Math.min(60,Math.round(fps*1.5));draw();if(timer)startAuto(hold||1)}
@@ -303,7 +422,17 @@ def main():
     ap.add_argument('--silhouette', choices=['tau', 'coverage'], default='tau',
                     help='the silhouette operator the masks are taken with; must match the operator the --scores '
                          'JSON was produced with, or the picture and the number disagree')
+    ap.add_argument('--rehtml', action='store_true',
+                    help='rewrite only index.html from the frames.json an earlier build left in --out. No frame is '
+                         'rendered and no PNG is touched, so changing the page itself costs seconds instead of the '
+                         'truth render of every generated frame')
     a = ap.parse_args()
+    if a.rehtml:
+        blob = json.load(open(os.path.join(a.out, 'frames.json'), encoding='utf-8'))
+        m = blob['meta']
+        write_html(a.out, blob['frames'], m['W'], m['H'], m['K'], m['arm'], m['corpus'], m['rates'], m['overlay'])
+        print('index.html rewritten from frames.json (%d frames) -> %s' % (len(blob['frames']), os.path.join(a.out, 'index.html')))
+        return
     build(a.run, a.k, a.arm, a.out, a.scores, a.start, a.count, a.fg_log, a.overlay, a.silhouette)
 
 
