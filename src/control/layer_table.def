@@ -165,6 +165,23 @@ PFG_LAYER(SINGLE_TRACK, "single_track", COMPOSE, 290, F, true, true, 0u, false, 
           "(d_pixel vs d_zero; the block-proven stasis saturates it). Off = the A/B blend world.")
   PFG_PARAM(SINGLE_TRACK, no_stasis, BOOL, 0.f, 0.f, 1.f, "--st-no-stasis", nullptr, PF_NONE, SWITCH,
             "Variant v3.0: pure B_samp at the pre-store site (no stasis/screen-static term).")
+  // The two edges of the screen-static ramp (wap_warp.comp:1326, the literals 1.2 and 3.0). They were
+  // constants until 2026-09-11, when the composition was read end to end: `select` (rank 260) is the only
+  // consumer of ctx.warp_ok, and `stasis` (280) and this row (290) are both declared OVERRIDE and discard
+  // it -- so Gate 1 and Gate 2, and with them --residual-ceil / --conf-improv / --agreement, reach nothing
+  // that the frame stores. This ramp is the ONLY surviving warp-vs-hold decision, and it is the one a
+  // periodic texture is built to fool: a wrong match on a repeating pattern makes the two displaced samples
+  // AGREE, so d_pixel stays small for exactly the wrong reason. Measured on sc_live k=8 (the spinning
+  // checker box): the ratio is 2.28 on blocks whose vector misses by >4 px and 0.98 on sound ones, and
+  // 81 % of the damaged pixels still take the warp nearly intact. THE DEFAULTS ARE THE SHIPPING LITERALS
+  // -- nothing moves unless a flag moves it. The offline sweep against exact truth (two disjoint laps,
+  // agreeing to three significant figures) put (1.0, 1.6) at -14 % position and -26 % hallucinated mass on
+  // the box and -40 % / -55 % on the sphere, against +9 % on the sphere position; the flip is the
+  // operator's call.
+  PFG_PARAM(SINGLE_TRACK, hold_lo, F32, 1.2f, 0.f, 8.f, "--st-hold-lo", nullptr, PF_NONE, HIDDEN,
+            "Lower edge of the screen-static ramp: below this ratio the warp is taken whole (default 1.2).")
+  PFG_PARAM(SINGLE_TRACK, hold_hi, F32, 3.0f, 0.f, 16.f, "--st-hold-hi", nullptr, PF_NONE, HIDDEN,
+            "Upper edge of the ramp: above this ratio the unwarped current frame is held (default 3.0).")
 PFG_LAYER_END(SINGLE_TRACK)
 
 // ── FLOW (stage 3, thread F) — R5 step 1: DECLARED (docs/planning/aap/FLOW_ROW_MAP.md §1). ────────

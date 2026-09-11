@@ -200,6 +200,135 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-041 · The ladder that places the phase slots has no upper bound, and nothing decides how many frames a pair gets
+- **class:** premise refuted (a debt of [P-037](#) / [P-038](#): "the answer is in the present loop") · **date:** 2026-09-11 · **recurrences:** 0 · **status:** read in the source, first-hand; the fix is not attempted
+- **evidence:** P-037 and P-038 measured the abandoned last slot (14 % at k=2, 26-35 % at k=4, 44 % at k=8)
+  and owed the cause. It is four lines of `src/present/present.cpp`. `pe_j` — the rung index inside a pair —
+  appears exactly four times in 3068 lines: declared `:1744`, reset `:2425` (`if(!pe_have || pair_c!=pe_pair)`),
+  read `:2429` (`double te = ((double)pe_j + 0.5) / N;`), incremented `:2433` (`++pe_j;`, unconditional).
+
+  **There is no `if (pe_j >= N)`.** No emit counter, no budget, no "pair complete" branch. The ladder is a
+  pure slave: it places whatever tick arrives, and a pair stops getting frames the instant `pair_c` changes.
+  `pair_c` is decided elsewhere — `clk.select()` at `:2218`, whose loop is `src/clock/phase_clock.cpp:209-214`
+  and whose condition is `if((double)cand_c >= content_clock)`. **The free-running content clock crossing the
+  pair's own content index is what abandons the last slot**, and nothing in the ladder knows it happened.
+
+  Two measured facts fall out of the same four lines:
+  - `N` is not k. It is `span * clk.T_robust_ms() / tick_period_ms` (`:2427`) — a MEASURED ratio of the
+    source period to the present period. That is why the discovered slot grid locks at 0.883 and not at 1.0
+    (P-038): N wobbles with the clock, so the rungs wobble with it.
+  - `te` is clamped (`if(te>1.0) te=1.0;`, `:2431`). A pair that receives MORE ticks than N has rungs
+    keeps climbing: `pe_j = 8` at `N = 8` gives `te = 8.5/8 = 1.0625`, clamped to **exactly 1.0** — a
+    generated frame placed ON the next real frame. The k = 8 capture holds **45 frames at phase >= 0.99**
+    and 15 pairs with nine frames; those are the same event seen from two sides.
+
+  A previous session already met the symptom from the clock's side without connecting it to the ladder:
+  `phase_clock.cpp:216-219` carries an anti-flap hysteresis whose comment names *"los saltos ±2.0 medidos en
+  el CSV de cadencia"*. The ±2.0 step was measured, mitigated inside the selector, and never traced to the
+  unbounded rung index it lands on.
+- **lesson:** a defect that every per-frame term is blind to (P-037) was also invisible to code reading,
+  because the thing to look for was an ABSENCE — a bound that is not there. Grepping a symbol and counting
+  its four occurrences found in minutes what the measurement took two sessions to corner.
+- **corrective:** none applied. The shipping pacing is the operator's call and the change is not a
+  one-liner: bounding `pe_j` at N would drop the extra rung but would NOT emit the missing one, because the
+  missing rung is a tick that never arrived. **Owed:** whether the clock can be made to hold a pair for its
+  full N ticks without adding latency, and what a bounded ladder does to the 45 phase-1.0 duplicates.
+
+### P-040 · The rotating object fails inside its own outline, the model that cannot represent it is named in the repo, and the pass that would fix it ships OFF
+- **class:** premise refuted (the instrument's worst object is its best-scoring one) · **date:** 2026-09-11 · **recurrences:** 0 · **status:** measured on one corpus; the remedy is identified and NOT applied
+- **evidence:** per-object interior error (|luminance| on the truth silhouette eroded 2 px, a view and not a
+  verdict term), over 1692 presented frames of `sc_live k=8 fg_k8_ph8` under `coverage`:
+
+  | object | what it does | pos px | shape px | halluc px² | **interior p99** |
+  |---|---|---|---|---|---|
+  | 1 sphere | translates 6.7 px/pair | 0.751 | 0.911 | 443 | 0.0063 |
+  | 2 quad | static | 0.008 | 0.011 | 5 | 0.0016 |
+  | **3 box** | **spins 90 °/s** | **0.323** | **0.270** | **145** | **0.1005** |
+
+  **The spinning box has the best silhouette score in the scene and the worst interior by 16×.** Nineteen
+  readers who were shown candidate / truth / difference panels with no numbers at all reproduced the
+  dissociation blind: the sphere's records are `silueta_desplazada` (47 of its 84), the box's worst group is
+  `patron_roto` (19 of 25) with **zero** silhouette classes, and the control group — the twelve frames with
+  the LOWEST interior error — came back `sin_defecto` 10 times out of 12, mean severity 0.42 against 3.00.
+
+  **Where it comes from, measured in three steps.**
+  1. *Not the field's resolution.* The exact offset field projected onto what an 80×45 bilinear field can
+     represent leaves a residual of 0.100 px rms / 0.415 px p99 on the box and 0.012 / 0.062 on the sphere.
+     Real, and two orders below what follows.
+  2. *The field itself is wrong, by more than the motion it measures.* Against the exact per-pair
+     displacement, over 195,502 blocks: the box's true displacement is **3.35 px** and its vector error is
+     **5.01 px mean, 15.03 p90**. 20.9 % of its blocks miss by more than 4 px, against 2.5 % of the sphere's,
+     whose displacement is twice as large. On one frame the field carries +8.9 px of downward motion across
+     the top half of the box where the truth has +0.95 (`mv1` block mean (−0.588, +8.946) vs exact
+     (−2.781, +0.951)); the bottom half is correct. That is where the checker visibly breaks.
+  3. *The model forecloses it.* `optical_flow_hier_match.comp:189` adds the SAME `mv` to all 64 pixels of a
+     tile and `:258` stores one `vec2` per tile: no divergence, no curl, no shear. The repo says so itself —
+     `framework/render/vulkan/shaders/optical_flow_affine_fit.comp:4-7`: *"the hierarchical block-match emits
+     ONE TRANSLATIONAL MV per 8×8 tile. On NON-translational motion (zoom / rotation / scale) a single MV
+     cannot represent the intra-tile divergence/curl → the warp samples wrong content"*. **That pass exists
+     and is armed `false` at both init sites** (`src/flow/flow_init.cpp:40` and `:142`,
+     `/*mv_affine*/false`), and `OpticalFlowPipeline.hpp:108` records that the in-pillar warp does not
+     consume it even when armed.
+
+  **And the delivery law decides how much of it reaches the eye.** Under the shipping default the store is
+  `mix(B_samp, cur0, w_s)` with `B_samp = texture(cur, uv + mv*(1-t))`, so a vector error e arrives scaled by
+  (1−t). The box's interior error falls monotonically across the discovered slots — 0.1547 at φ = 0.0625 to
+  **0.0518** at φ = 0.9375, correlation with (1−φ) = +0.590, a factor of three. **The slot the generator
+  abandons in 44 % of pairs (P-038) is φ = 0.9375: the cleanest frame it makes is the one it throws away.**
+- **lesson:** every verdict term is a silhouette term (P-033), so the object whose silhouette is easiest —
+  a box that spins in place and barely translates — scores best while looking worst. A per-object interior
+  view was needed to see it, and the blind readers agreeing with it is what makes it a finding rather than a
+  session's eye. Second lesson: the repository already contained both the diagnosis and the remedy, written
+  by an earlier session, switched off, and unread.
+- **corrective:** `masks['by_obj']` exported from `score_frame` (opt-in, output-identical: verified
+  byte-identical JSON) so interior error can be measured per object at all. **Owed and NOT done:** arming
+  `mv_affine` needs a consumer in the warp (the pipeline header says there is none), a build (MSVC `cl` is
+  not on PATH on this rig — only cmake and glslc are), and an A/B; it is a default-affecting change and the
+  operator's call.
+
+### P-039 · The confidence gate is computed on every pixel and thrown away: three CLI flags do nothing under the shipping default
+- **class:** premise refuted (a documented control is inert) · **date:** 2026-09-11 · **recurrences:** 0 · **status:** measured and read; nothing changed
+- **evidence:** `--residual-ceil` ("FG gate (a): max sad_best, default 32.0", `src/control/cli.cpp:60`),
+  `--conf-improv` ("FG gate (b)", `:58`) and `--agreement` build `ctx.warp_ok = cs.gate1 && tile_agrees`
+  (`shaders/fg_core.comp:94`). The generated compose chain — `build-release/gen/shaders/chain_compose.glsl`,
+  the code that compiles, not a comment — is three rows, all `default=1`:
+
+  ```glsl
+  vec4 c_out = core.color;
+  if (L_SELECT)       c_out = pfg_compose_select(c_out, ctx);        /* rank 260 */
+  if (L_STASIS)       c_out = pfg_compose_stasis(c_out, ctx);        /* rank 280 OVERRIDE */
+  if (L_SINGLE_TRACK) c_out = pfg_compose_single_track(c_out, ctx);  /* rank 290 OVERRIDE */
+  ```
+
+  `select` (rank 260) is the ONLY consumer of `warp_ok` in the whole layer set (`shaders/layers/select.glsl:10`,
+  `return ctx.warp_ok ? c_in : ctx.blend;`) and two rows declared OVERRIDE discard `c_in` after it.
+  **Two independent confirmations, neither of them a reading of the code:**
+  - Sweeping `residual_ceil` over 32 / 8 / 4 / 2 and `improvement_frac` over 0.20 / 0.50 through the
+    validated CPU reference, scored against exact truth on 433 frames across two disjoint laps, moved
+    **every term of every object by nothing at all** — identical to four decimals, both laps.
+  - `tools/ref_warp.py` does not implement Gate 1 anywhere (`residual_ceil` appears only in its push-name
+    list) and reproduces the GPU's own stored output at **99.47 % exact / 100.00 % within 1 LSB**. A
+    reproduction that omits the gate entirely could not match if the gate did anything.
+
+  What is left deciding warp-vs-hold is one scalar: `w_s = smoothstep(1.2, 3.0, (d_pixel+0.02)/(d_zero+0.02))`
+  (`shaders/layers/single_track.glsl:1326`), and it is the one a periodic texture is built to fool. On the
+  box's damaged blocks the ratio is **2.28** against **0.98** on its sound ones — the signal is there and the
+  curve sits above it: **81.4 % of the damaged pixels still receive w_s < 0.5** and take the warp nearly
+  intact.
+- **lesson:** a knob with a help string, a default, a parser entry and a push-block slot can still be
+  disconnected from the output, and every one of those is evidence of intent rather than of effect. The
+  sweep that found it was run to tune the gate, not to test whether it was connected; the flat result was
+  the finding. A tuning sweep whose every arm is identical is not a null — it is a wiring check that failed.
+- **corrective:** the one gate that IS connected is now tunable instead of hard-coded, at both ends. Offline:
+  `tools/ref_warp.py` gained `WS_EDGE0` / `WS_EDGE1` (defaults 1.2 / 3.0, parity re-verified at 99.45 % exact)
+  so it can be swept against exact truth without a build. In the product: `single_track.hold_lo` /
+  `hold_hi` are layer parameters with `--st-hold-lo` / `--st-hold-hi`, **defaulting to the shipping literals**
+  — the layer dump reads `hold_lo=1.200 hold_hi=3.000` and the expression is unchanged by construction (byte
+  identity on a rendered frame is NOT measured; that needs a live capture). The contract hash moves
+  0x9517AE73A530EAFE -> 0xC4D941C47BF7EE5B, which is the stamp doing its job. **Owed:** whether `select`
+  should run after the overrides, or `single_track` respect `warp_ok` — a change to the shipping composition
+  and the operator's call; and either the three dead flags get wired or their help text stops promising a gate.
+
 ### P-038 · The generator targets k phase slots, not k-1, and abandons the last one in every capture the project holds
 - **class:** premise refuted (twice: the slot count, and the reach of the finding) · **date:** 2026-09-11 · **recurrences:** 1 (P-037 is the same defect on one corpus) · **status:** measured on 16 every-tick captures; the cause in the present loop is still not read
 - **evidence:** P-037 measured the dropped last slot on ONE corpus at ONE multiplier and said so. The

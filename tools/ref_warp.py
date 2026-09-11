@@ -42,6 +42,8 @@ numpy + stdlib only. Made with my soul - Swately <3
 import argparse, json, os, struct, sys
 import numpy as np
 
+WS_EDGE0, WS_EDGE1 = 1.2, 3.0   # single_track.glsl:1326 smoothstep edges (the shipping values)
+
 PUSH_NAMES = """residual_ceil improvement_frac agreement_threshold t soft_gate commit_thresh commit_real
 occl_thresh div_eps rescue_on mv_guided gme_on gme_a gme_b gme_c gme_d gme_e gme_f matte_on matte_thresh
 stasis_thresh inertia_thresh crescent_on appear_on appear_band travel_on contour_on obj_crescent_on
@@ -313,7 +315,12 @@ def reference(triple, push, W, H, gw, gh, decisions=False):
     cur0 = s_cur(u, v)
     if p['single_track'] < 1.5:                       # v3.2 — the shipping default
         d_zero = length3(cur0 - s_prev(u, v))
-        w_s = smoothstep(1.2, 3.0, (d_pixel + 0.02) / (d_zero + 0.02))
+        # The two literals are single_track.glsl's (:1326) and they are the ONLY live gate left in the
+        # shipping path: Gate 1 and Gate 2 reach `select` at COMPOSE rank 260 and are then discarded by
+        # `stasis` (280) and `single_track` (290), both declared OVERRIDE. They are module constants here
+        # so the operating point can be swept offline against exact truth without a rebuild; the defaults
+        # ARE the shipping values, so nothing this file reproduces changes unless a caller sets them.
+        w_s = smoothstep(WS_EDGE0, WS_EDGE1, (d_pixel + 0.02) / (d_zero + 0.02))
         w_s = np.where(stasis, np.float32(1.0), w_s)
         result = mix(B_samp, cur0, w_s[..., None])
     else:                                             # v3.0 — pure B_samp

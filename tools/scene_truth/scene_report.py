@@ -257,6 +257,10 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=(),
     if masks is not None:
         masks['halluc'] = np.zeros(ids.shape, bool)
         masks['missing'] = np.zeros(ids.shape, bool)
+        # PER OBJECT as well as unioned. The union answers "where is this frame wrong"; only the per-object
+        # masks answer "which object", and the operator's question is about ONE of them -- the spinning
+        # checker box, whose pattern deforms inside an outline the silhouette terms score at the floor.
+        masks['by_obj'] = {}
         masks['truth_obj'] = np.zeros(ids.shape, bool)   # the truth silhouettes themselves, for an INTERIOR view:
         # every object term is a silhouette term, so a warp that keeps the outline and scrambles what is inside it
         # (a deformed checker, a smeared texture) scores at the floor. The mask is exported so a viewer can show
@@ -295,6 +299,7 @@ def score_frame(cand, truth, bg, ids, cls, motion, nearest, ids_near, ids_ab=(),
             masks['halluc'] |= hal
             masks['missing'] |= mis
             masks['truth_obj'] |= tsil
+            masks['by_obj'][int(k)] = {'truth': tsil, 'cand': csil, 'halluc': hal, 'missing': mis}
         if hal.any():
             ys, xs = np.nonzero(hal)
             o['lead_px'] = float(((np.stack([xs + 0.5, ys + 0.5], axis=1) - centroid(tsil)) @ vn).mean())
