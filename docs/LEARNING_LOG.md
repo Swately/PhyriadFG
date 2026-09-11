@@ -200,6 +200,50 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-034 · The operator's eye found the phase law the instrument's own terms had already measured and nobody had read as one thing
+- **class:** re-derivation + attribution · **date:** 2026-09-10 · **recurrences:** 1 (the phase shape is M1_LOWPHASE, 2026-09-04) · **status:** attributed, the default flip is the operator's
+- **evidence:** the operator walked the every-tick page and reported, unprompted, that a checker deformation is
+  "born" at certain frames, "lasts one extra frame" and "resolves" two frames later, naming 33/35, 37/39,
+  185, 189/191, 193/195, 197/199. Every frame he called a birth is ≡ 1 (mod 4) and every one he called resolved
+  is ≡ 3 (mod 4); of the 24 worst frames by interior error, 17 sit at ≡1, 7 at ≡2 and **none** at ≡3. Against
+  the generator's OWN reported phase (not the grid), interior p99 falls 0.0515 → 0.0447 → 0.0347 → 0.0286 across
+  t bins, Pearson −0.516 over 177 frames; position does the same, −0.462. **The "extra frame" is not the warp:**
+  the FG emitted frames 33 and 34 at t = 0.3746 and 0.3793, four thousandths apart, so it drew nearly the same
+  image while the scene moved (candidates differ by 0.004/255, truths by 0.146). 30 of 124 consecutive pairs are
+  under 0.05 of a pair apart in t. That is the clock, not the kernel.
+  **The cause, read first-hand in the shaders and then ablated live.** Under the shipping default there is no
+  A/B blend at all: `single_track_wa.glsl:7` returns 0.0 and `single_track.glsl:7-14` is a declared OVERRIDE that
+  discards the blended colour and rebuilds the pixel from `B_samp = texture(cur, uv + mv*(1-t)/out_size)`
+  (`fg_core_math.glsl:55,58`). The generated frame is the NEXT real frame resampled by `mv*(1-t)`, so every
+  motion-vector error reaches the screen multiplied by (1-t): maximal at t = 0, zero at t = 1. A least-squares
+  fit over the 177 frames gives interior p99 = 0.0226 + 0.0343·(1-t), which reproduces the bin means to within
+  0.002 — but the intercept is 40 % of the value at t = 0, so the law explains the trend, not everything, and
+  per-frame R² is only 0.267. Which field supplies `mv` is itself phase-switched:
+  `phase_anchor.glsl:11-14` mixes the forward and backward fields by `smoothstep(0.35, 0.65, t)`, so below
+  t = 0.35 the vector is the forward field after the guided pick and inertia, and above t = 0.65 it is the raw
+  backward field. **Paired live A/B, same corpus, same session, every tick, n = 177 each, one run per arm —
+  reliability not measured:**
+
+  | arm | pos px | shape px | halluc px² | missing px² | interior p99 | (1-t) slope |
+  |---|---|---|---|---|---|---|
+  | default | 0.226 | 0.148 | 53 | 26 | 0.0398 | 0.0357 |
+  | `--no-mv-guided` | **0.078** | **0.079** | 39 | **5** | 0.0345 | **0.0167** |
+
+  Turning the guided pick off costs 42 % of the position error and **halves the phase-dependent part of the
+  interior deformation** (the slope 0.0357 → 0.0167) while leaving the phase-independent floor alone
+  (0.0212 → 0.0256). At the same time it drops the position error BELOW the exact-flow oracle's 0.097 px.
+  The low-t bin moves 0.0520 → 0.0399 while the high-t bin does not move (0.0252 → 0.0267) — exactly what
+  `phase_anchor` predicts, since the guided pick only feeds the field that is used below t = 0.35.
+- **lesson:** the record already held this. `M1_LOWPHASE_FINDING.md` measured the same phase shape on position
+  in September and named the same layer, and `B1_FIRST_FG_ROW.md` §2 printed the per-phase table. What was
+  missing was not measurement but a VIEW: nobody had looked at a generated frame beside its truth, so a fact
+  the tables carried for days arrived instead from a human eye on a picture. A term reported per corpus and a
+  term reported per frame with the frame next to it are not the same instrument.
+- **corrective:** the interior view (P-033) and the six every-tick captures now on disk. Still the operator's:
+  `mv_guided` is default ON and its own project record now shows it costing a factor of 2.9 in position against
+  exact 3-D truth on the shipping async path. Owed before that becomes a recommendation: a second seed for each
+  arm of the A/B, and the same pair at ×2 and ×4, since both arms here are one run.
+
 ### P-033 · Every verdict term is a silhouette term, so a warp that keeps the outline and deforms the interior scores at the floor
 - **class:** premise refuted · **date:** 2026-09-10 · **recurrences:** 0 · **status:** a view exists; whether it becomes a term is the operator's
 - **evidence:** the operator, looking at the new frame-by-frame pages, pointed at the spinning box and asked whether
