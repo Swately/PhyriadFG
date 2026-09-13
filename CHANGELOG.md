@@ -4,6 +4,68 @@ PhyriadFG is student-built and LLM-assisted, and every release is tagged `-exper
 that is what it is. Numbers in this file are quoted from the run that produced them, or the entry
 says they were not measured.
 
+## [0.5.3-experimental] - 2026-09-13
+
+**A default moved, and the measurement that moved it is printed below including the case where it
+loses.** The one warp-vs-hold decision the shipping composition still consults now holds a pixel
+sooner. Everything else here is a teardown fix, two measurement flags, and one honest disclosure
+about three flags that have been doing nothing.
+
+### Changed
+
+- **`single_track`'s hold ramp ships at 1.0 / 1.6 (was 1.2 / 3.0).** Twenty-eight live captures
+  across five synthetic corpora spanning 1.7 to 13.4 px of motion per source pair, every generated
+  frame matched against an analytically exact rendering of the same scene at that frame's own phase,
+  and the old value restored BY FLAG from the same binary:
+
+  | corpus | px/pair | box position | box hallucinated mass | sphere position | static panel | sharpness |
+  |---|---|---|---|---|---|---|
+  | sc_v05 k=4 | 1.7 | -5.8 % | -10.6 % | -6.4 % | - | 0.9665 -> 0.9696 |
+  | sc_live2 k=4 | 3.4 | +2.0 % | -8.0 % | +2.2 % | -56.2 % | 0.9419 -> 0.9415 |
+  | sc_live k=8 | 6.7 | **-15.1 %** | -25.6 % | **+11.1 %** | -84.8 % | 0.9279 -> 0.9296 |
+  | sc_v4 k=4 | 13.4 | **-24.9 %** | **-43.6 %** | **-27.1 %** | -95.0 % | 0.8913 -> **0.9030** |
+
+  Negative is better everywhere except the last column. Three separate measurement rounds reproduce
+  the box's position at 6.7 px/pair (-13.7 / -14.2 / -15.1 %), the hallucinated mass everywhere, the
+  static panel, and **the sphere's position getting WORSE at 6.7 px/pair (+5.4 / +10.7 / +11.1 %)**.
+  That last one is the price of this change and it is real: holding a pixel helps a wrongly-matched
+  rotating surface and hurts a correctly-matched translating one. The 1.7 px/pair row reads **not
+  measured** -- two rounds disagree in SIGN there, on absolute values of 0.16 px.
+
+  These are offline numbers from a synthetic scene with exact ground truth, not from a game, and
+  they say nothing about how the change looks to an eye. **`--st-hold-lo 1.2 --st-hold-hi 3.0`
+  restores the previous behaviour exactly.**
+
+### Fixed
+
+- **Quitting could freeze the window with the display panel still held.** `destroy()` joined the
+  plane watchdog with no deadline while the message pump sat below the join, and the watchdog's own
+  `SetWindowPos` / `ShowWindow` block until the window's owning thread dispatches -- the thread
+  inside the join. Both waited on each other, `DestroyWindow` was never reached, and the panel was
+  never given back, which inverts the watchdog's entire purpose. The wait now pumps the queue on a
+  2 s deadline and detaches rather than joins if the watchdog does not return. NOT verified live:
+  reproducing it needs a run that ends with the plane displayed.
+
+### Added
+
+- **`--gdump <dir>`** -- the every-tick capture tap on the shipping asynchronous path. A writer
+  thread streams every recorded warp plus the pair planes once per pair and the present loop never
+  waits on it. A measurement instrument, off by default, refused together with
+  `--afill` / `--fps-overlay` / `--ts-smooth`.
+- **`--st-hold-lo` / `--st-hold-hi`** -- the two edges of the ramp above, so the previous default is
+  reachable from the same binary.
+
+### Known issues
+
+- **`--residual-ceil`, `--conf-improv` and `--agreement` do nothing under the shipping default.**
+  The per-pixel confidence they compute is consumed only by the `select` row at COMPOSE rank 260,
+  and the two rows after it -- `stasis` and `single_track` -- are both declared OVERRIDE and discard
+  it. Proven twice: an A/B across those flags moved zero pixels, and a CPU reference that omits the
+  gate entirely reproduces the GPU output at 99.47 %. The flags are left in place, and documented
+  here, rather than silently removed.
+- Numbers published in `docs/evidence/` before 2026-09-11 describe the previous default. Each of
+  those files now carries a banner saying so and how to reproduce the old value.
+
 ## [0.5.2-experimental] - 2026-09-06
 
 **Three regressions from 0.5.0/0.5.1, all found in the operator's own session log.** If you are on
