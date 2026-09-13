@@ -265,7 +265,7 @@ endforeach()
 #    that changes the chain fails this test, and updating the pin in the same commit is the point (touchpoints move
 #    together). The value below was read from this build's own `--layer-dump`.
 add_test(NAME layer_contract_hash COMMAND phyriad_fg --layer-dump)
-set_tests_properties(layer_contract_hash PROPERTIES PASS_REGULAR_EXPRESSION "contract=0x9517AE73A530EAFE")
+set_tests_properties(layer_contract_hash PROPERTIES PASS_REGULAR_EXPRESSION "contract=0xBF27BBBA9109A3E3")
 
 # 7. The CLI's exit codes (4.3's own fix): an unknown option and a missing value are ERRORS (2); --help is not.
 add_test(NAME cli_unknown_option_exits_2 COMMAND phyriad_fg --no-such-flag)

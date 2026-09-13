@@ -200,6 +200,32 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-043 · The gate built to catch exactly this was red for two commits, and the build script was already printing it
+- **class:** touchpoints did not move together (a shipping gate left red) · **date:** 2026-09-13 · **recurrences:** 0 · **status:** corrected
+- **evidence:** the first `build-release.bat` of this session ended `98% tests passed, 1 tests failed out of
+  51` — `44 - layer_contract_hash (Failed)`. `CMakeLists.txt:264-266` states the rule in its own comment:
+  *"any edit to layer_table.def / the ABI that changes the chain fails this test, and updating the pin in the
+  same commit is the point (touchpoints move together)"*. The pin read `0x9517AE73A530EAFE`; the binary prints
+  `contract=0xBF27BBBA9109A3E3`. `git log -S` finds the pin last written by `f9e9f83`, and exactly two commits
+  have touched `src/control/layer_table.def` since: `4f26dc6` (added `SINGLE_TRACK.hold_lo/hold_hi` at 1.2/3.0)
+  and `90c9ee8` (moved them to 1.0/1.6). Neither moved the pin.
+
+  **The gate has been red since `4f26dc6`, not since the default flip** — derived, not assumed:
+  `layer_contract_hash` (`src/control/layer_registry.cpp:292`) hashes the layer descriptors plus every
+  parameter VALUE, and the `4f26dc6` diff changed nothing in the table but those two rows, so running today's
+  binary at the old values reproduces that commit's exact inputs. It prints `contract=0xC4D941C47BF7EE5B` —
+  a third value, and not the pin. Adding the parameters broke the pin; the flip only moved it again.
+- **lesson:** `build-release.bat` already ran `ctest`, already printed `TESTS FAILED -- the binary was built,
+  but do not trust it`, and already exited 1. Nothing was missing from the tooling. What failed is that a
+  session ran a build to get a binary for a live A/B, took the binary, and never read the exit code — the
+  measurement it wanted was downstream of the build, so the build was treated as a means and not as a gate.
+  A gate at the end of a step that is only ever run for its side effect is a gate that will be walked past.
+- **corrective:** pin updated to `0xBF27BBBA9109A3E3`, the value read from this build's own `--layer-dump`;
+  `ctest` now reports `100% tests passed out of 51`. The three hashes are recorded above so the next change to
+  the table can tell "the pin is stale" from "the chain changed by accident". **Owed:** nothing here blocks,
+  but any A/B measured between 2026-09-11 and today was taken from a binary whose suite was red — the failure
+  was the pin alone (the other 50 cases passed on that same binary), so the numbers stand.
+
 ### P-042 · The default moved, the design that was meant to replace it was refuted by its own test, and the regime that would have stopped it cannot be measured
 - **class:** premise refuted (twice: mine, then the measurement's own reliability) · **date:** 2026-09-11 · **recurrences:** 0 · **status:** SHIPPED — `single_track` hold_lo/hold_hi 1.2/3.0 -> 1.0/1.6
 - **evidence:** P-039 found the only live warp-vs-hold decision in the shipping path and exposed its two
