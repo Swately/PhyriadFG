@@ -200,6 +200,54 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-047 · The code an optimization pass would touch is under 1 % of the tick, and the one optimization already built cannot arm
+- **class:** premise tested before it steered work (the operator asked, and the instruments were already in the binary) · **date:** 2026-09-15 · **recurrences:** 0 · **status:** measured
+- **evidence:** the operator asked whether optimizing the code would move performance enough to pause the
+  11.16 hunt for it. The FG already carries the instrument that answers it (`--wsub`, which splits the
+  per-tick warp lambda). Eight runs, two per arm, on `sc_live/source_k4` at 640x360, the FG driven against
+  the player window with **no capture tap** — profiling through `--qdump` would have measured the dump,
+  which stalls its own tick by design (`present.cpp:830`, "three full-frame copies + a fence").
+
+  | arm | fps | tick | up | rec | gpu | prs | lat | util A |
+  |---|---|---|---|---|---|---|---|---|
+  | idle, default | 240.0 | 4.41 ms | 7.5 % | 0.5 % | **0.6 %** | **91.4 %** | 13.2 ms | 18 % |
+  | saturated, default | 110.9 | 11.55 ms | **31.3 %** | 0.2 % | **0.3 %** | 68.3 % | 103.8 ms | 100 % |
+
+  `rec` is the CPU command record and `gpu` is the submit plus the blocking `vkWaitForFences` around the
+  warp dispatch. **Together they are 1.1 % of the tick idle and 0.5 % saturated** — 0.02 and 0.03 ms. That
+  is the surface a kernel-level optimization pass acts on, and it is not where the time is.
+
+  Where the time is, and both are specific: **(1) `prs`, `bridge_present()`, tracks the frame period** —
+  4.03 ms against a 4.17 ms period at 240 fps, 7.88 ms against a 9.02 ms period at 110.9 fps. Two points,
+  but that is the signature of a blocking present, not of computation. **(2) `up`, the pair-advance upload,
+  goes 0.332 -> 3.616 ms under contention, x10.9**, and it is the one term that explodes: run-to-run spread
+  0.3 % idle and 2.1 % saturated, so the factor is far outside its own noise. Saturation was E0's own
+  competitor (`tools/gpu_load.exe --gpu 0 --load 99 --heavy 4`), nvidia-smi-confirmed at 100 % util.
+
+  **The one optimization already in the tree cannot arm on what ships.** `--fg-prebake` pre-bakes the
+  matcher/warp descriptor sets so the per-pair `vkUpdateDescriptorSets` burst disappears; its instrument has
+  printed a lifetime count on every run this project has ever made, asking to be read. Armed, the FG answers:
+  `INERT (eligibility not met) (fg_variant_active=0, use_ambig=1)`. Its own help text states the condition
+  (`fg_variant active + --no-ambig + no affine`) and the shipping default violates two thirds of it. The four
+  arms that tested it therefore compared the baseline against itself, and every delta landed inside the noise
+  band, which is exactly what an inert flag predicts.
+- **lesson:** this is the THIRD member of one family in this project, and naming the family is the point:
+  P-039 (the confidence gate computed per pixel and discarded by two OVERRIDE rows), 11.10
+  (`optical_flow_affine_fit.comp`, the only real fix for rotation, `mv_affine` false at both init sites and
+  no consumer even when armed), and now `--fg-prebake` (eligible only on a configuration that is not the
+  default). Each was built, each ships OFF, each reaches nothing, and each has a flag or an instrument that
+  makes it LOOK reachable. A capability that is present in the tree is not a capability that is present in
+  the product, and the difference is invisible unless someone arms it and reads what the binary says back.
+- **corrective:** nothing to revert — this was a measurement, and it answered the scheduling question
+  before any code moved. Recorded as data in `docs/evidence/E0B_FG_TICK_PROFILE.md`. **Deliberately NOT
+  framed as an OAP O0:** that protocol's first O0 on this project is the operator's to define (tier,
+  instrument, corpus), and this page is input for it, not a claim on its vocabulary. **Two things owed, both
+  small and both specific:** `up` under contention, which is one submit and not a codebase; and a decision on
+  `--fg-prebake`, which today is a flag that cannot fire on the path it was written for.
+- **the limit of this profile, stated:** 640x360. A real 1920x1080 source is nine times the pixels, and the
+  0.6 % GPU slice does NOT transfer — it is the one number here that is resolution-bound. The conclusion
+  that kernel optimization is not where the time is holds for this corpus and has not been tested at 1080p.
+
 ### P-046 · I went from a score delta to a mechanism to code, and the planes I already had say the ramp barely touches the object I blamed
 - **class:** premise refuted (mine), by a measurement that was available before any of the work · **date:** 2026-09-15 · **recurrences:** 0 · **status:** REVERTED
 - **evidence:** 11.16 and 11.9 first collapsed into one defect. The displacement axis, measured from this
