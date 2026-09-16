@@ -200,6 +200,61 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-046 · I went from a score delta to a mechanism to code, and the planes I already had say the ramp barely touches the object I blamed
+- **class:** premise refuted (mine), by a measurement that was available before any of the work · **date:** 2026-09-15 · **recurrences:** 0 · **status:** REVERTED
+- **evidence:** 11.16 and 11.9 first collapsed into one defect. The displacement axis, measured from this
+  session's own rows: `sc_v2` k=4 is **6.71 px per source pair** and `sc_live` k=8 is **6.72** — the same
+  displacement reached by two different routes (speed x2 at fixed k, k x2 at fixed speed), so the sphere's
+  regression is one finding reproduced on two corpora, not two findings.
+
+  I then attributed it to the narrowed ramp newly HOLDING the sphere's sound pixels, and built
+  `--st-conf-keep`: scale `w_s` by `smoothstep(0, k, sad_best)` so a confidently-matched block keeps its
+  warp. The threshold sat in a measured gap (the sphere's good blocks p90 = 0.283, its bad blocks p10 =
+  0.800, no overlap over 600 sampled frames). It built, the flag reached the table, the contract pin moved,
+  51/51 passed, and twenty captures went through the A/B under a rule written before the numbers:
+
+  | corpus | term | disarmed | armed | delta | noise band |
+  |---|---|---|---|---|---|
+  | sc_v2 k=4 (6.71) | sphere pos | 0.5732 | 0.5686 | -0.8 % | 11.3 % |
+  | sc_live k=8 (6.72) | sphere pos | 0.6366 | 0.6363 | -0.0 % | 3.1 % |
+  | sc_v2 k=4 | box pos | 0.2772 | 0.2635 | -4.9 % | 4.8 % |
+  | sc_live k=8 | box pos | 0.2800 | 0.2856 | **+2.0 %** | 1.1 % |
+
+  Nothing on the object it targeted, contradictory signs on the object it was designed not to touch.
+
+  **Then the mechanism, measured** — 216 frames of one complete lap, both ramps computed from the same
+  per-pixel ratio, split by whether that pixel's block matched within 4 px:
+
+  | object | match | px/frame | w_s at 1.2/3.0 | w_s at 1.0/1.6 | added | newly held |
+  |---|---|---|---|---|---|---|
+  | sphere | good | 12,815 | 0.0036 | 0.0061 | +0.0025 | 0.3 % |
+  | sphere | bad | 319 | 0.0217 | 0.0312 | +0.0095 | 1.4 % |
+  | box | good | 15,432 | 0.0323 | 0.0550 | +0.0227 | 1.6 % |
+  | box | bad | 4,752 | 0.1871 | 0.2306 | +0.0435 | 2.5 % |
+
+  **The sphere's hold weight is about 0.006 out of 1.0 under EITHER setting.** Narrowing the edges adds a
+  quarter of one percent of hold to a third of one percent of its pixels. That cannot be an 8-11 % position
+  change, and a multiplicative gate on a weight of 0.006 cannot be a fix for it. The design was dead on the
+  other object too, for a reason already sitting in the same probe: on the box `sad_best` does not separate
+  bad blocks from good ones at all (p10 2.427 < p90 3.593).
+- **lesson:** the score told me WHICH OBJECT moved. I read it as telling me WHICH TERM moved it, and that
+  step was never measured — it was inferred, then built on. The measurement that kills the design reads the
+  planes this project already dumps, with a probe already sitting in the scratchpad, over a capture already
+  on disk; it cost one script. It ran AFTER a code change, a contract-pin move, a rebuild and twenty live
+  captures. A per-object score is an observation about an object, never about a mechanism; the cheap
+  discriminating measurement goes BEFORE the expensive commitment, and when the instrument for it already
+  exists there is no excuse at all.
+- **corrective:** `--st-conf-keep`, its `CH_SAD` read and its parser branch are REMOVED rather than left
+  inert — the project's own precedent (P-042's sliding ramp). The tree is back at the shipping expression;
+  same contract `0xBF27BBBA9109A3E3`, 23 params, 51/51. **One fact is worth keeping from the attempt:**
+  adding `CH_SAD` to a COMPOSE row's read mask was FREE on sharpness (0.9038 disarmed vs 0.9037 shipping,
+  band 0.2 %), where declaring `CH_MV_RAW_FWD` had moved that same term +1.1 % with its feature disarmed.
+  Declaring a channel is not uniformly costly; it has to be measured per channel.
+  **Owed — 11.16 stays open with a corrected question:** the sphere's regression is real and reproduced on
+  two corpora, and it is NOT the ramp acting on the sphere's own pixels. The next candidate is what the ramp
+  does at and around its BOUNDARY, which a silhouette centroid would feel and an interior mean would not.
+  That measurement has not been run.
+
 ### P-045 · The control caught the instrument moving, and the delta it was hiding pointed the other way
 - **class:** confound found by a control that was already printed in the table · **date:** 2026-09-15 · **recurrences:** 0 · **status:** measured, and one regression opened
 - **evidence:** re-measuring the seven canonical B1 rows under the shipping default, the cross-session
