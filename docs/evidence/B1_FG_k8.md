@@ -1,14 +1,33 @@
 # scene_truth report
 
-> **DEFAULT CHANGE, 2026-09-11 — every number below predates it.** `single_track`'s screen-static ramp
-> shipped as `smoothstep(1.2, 3.0, ...)` when these rows were measured; it now ships as
-> `smoothstep(1.0, 1.6, ...)` (`hold_lo` / `hold_hi`, P-042 in `docs/LEARNING_LOG.md`). Under the new
-> default the same corpora score BETTER on hallucinated mass everywhere (-8 % to -54 %), better on the
-> spinning box's position at 6.7 and 13.4 px/pair (-15 %, -25 %), and WORSE on the sphere's position at
-> 6.7 px/pair (+11 %). **To reproduce a row on this page exactly, pass `--st-hold-lo 1.2 --st-hold-hi 3.0`.**
-> These rows are not re-measured: re-running the twelve-corpus record is its own job.
+> **RE-MEASURED 2026-09-15 under the shipping default.** The table directly below is the current
+> record: `single_track` at `hold_lo` 1.0 / `hold_hi` 1.6, **two independent live runs** (DI-3), the
+> binary at `ca51f86`. Run-to-run spread on this corpus: **0.3 % on position**; `missing` is the
+> weakest term across the set (up to 10.5 %) and should carry that when it is cited.
+>
+> **The second table is kept and is NOT comparable term by term.** It was measured under the retired
+> default (1.2 / 3.0) AND by an earlier scorer: `d7fc6e0` (2026-09-10) rewrote 315 lines of
+> `scene_report.py` under the title *"the scorer's high-speed corrections"*. The control says how much
+> that matters here: `nearest` and `oracle2` never see the FG, so their drift between the two tables is
+> the instrument moving, not the FG — and on this corpus it is **1.9 %**, so the two tables
+> may be read against each other with that band in mind. The controlled comparison is in **P-045**.
 
 ## sc_live · k = 8
+
+| arm | n | pos_err px | shape_err px | halluc px² | lead px | missing px² | bg_err | sharp | l2_det | disocc (apart) | graceful | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `truth` | 203 | 0.000 | 0.000 | 0 | +0.00 | 0 | 0.0000 | 1.000 | 0.0000 | 0.0000 | 0.0704 | ACCEPT |
+| `nearest` | 203 | 0.569 | 0.284 | 96 | -9.34 | 75 | 0.0001 | 0.872 | 0.0093 | 0.0704 | 0.0000 | BLUR / halluc / pos / shape |
+| `oracle2` | 203 | 0.105 | 0.183 | 30 | -23.60 | 64 | 0.0001 | 1.011 | 0.0035 | 0.0704 | 0.0000 | ACCEPT |
+| `fg_k8_n1` | 137 | 0.311 | 0.190 | 82 | +8.28 | 36 | 0.0008 | 0.930 | 0.0073 | 0.0530 | 0.0706 | pos |
+| `fg_k8_n2` | 169 | 0.310 | 0.194 | 82 | +7.62 | 36 | 0.0008 | 0.929 | 0.0073 | 0.0559 | 0.0700 | pos |
+
+## As published 2026-09-08/09 · retired default 1.2 / 3.0, scorer before `d7fc6e0`
+
+*Kept as the record of what was measured then. It has no `n` column because the column did not
+exist yet (P-044); the FG row of the k = 2 page is the one that rested on five frames.*
+
+### sc_live · k = 8
 
 | arm | pos_err px | shape_err px | halluc px² | lead px | missing px² | bg_err | sharp | l2_det | disocc (apart) | graceful | verdict |
 |---|---|---|---|---|---|---|---|---|---|---|---|

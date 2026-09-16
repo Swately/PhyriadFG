@@ -689,16 +689,16 @@ def verdict(S, floor):
 
 def table(d_label, K, arms, results, floor):
     L = ['## %s · k = %d' % (d_label, K), '',
-         '| arm | pos_err px | shape_err px | halluc px² | lead px | missing px² | bg_err | sharp | l2_det | disocc (apart) | graceful | verdict |',
-         '|---|---|---|---|---|---|---|---|---|---|---|---|']
+         '| arm | n | pos_err px | shape_err px | halluc px² | lead px | missing px² | bg_err | sharp | l2_det | disocc (apart) | graceful | verdict |',
+         '|---|---|---|---|---|---|---|---|---|---|---|---|---|']
     for a in arms:
         S = results[a]
         if S is None:
             L.append('| `%s` | (no frames) |' % a); continue
         po = S['objects']
         m = lambda key: float(np.nanmean([po[k][key] for k in po])) if po else float('nan')
-        L.append('| `%s` | %.3f | %.3f | %.0f | %+.2f | %.0f | %.4f | %.3f | %.4f | %.4f | %.4f | %s |'
-                 % (a, m('pos_err'), m('shape_err'), m('halluc_px'), m('lead_px'), m('missing_px'),
+        L.append('| `%s` | %d | %.3f | %.3f | %.0f | %+.2f | %.0f | %.4f | %.3f | %.4f | %.4f | %.4f | %s |'
+                 % (a, S['n'], m('pos_err'), m('shape_err'), m('halluc_px'), m('lead_px'), m('missing_px'),
                     S['bg_err'], S['sharp'], S['l2_det'], S['disocc'], S['graceful'], verdict(S, floor)))
     return L
 

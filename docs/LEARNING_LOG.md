@@ -200,6 +200,81 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-045 · The control caught the instrument moving, and the delta it was hiding pointed the other way
+- **class:** confound found by a control that was already printed in the table · **date:** 2026-09-15 · **recurrences:** 0 · **status:** measured, and one regression opened
+- **evidence:** re-measuring the seven canonical B1 rows under the shipping default, the cross-session
+  comparison said `sc_v4` had got WORSE: object-mean position 0.410 -> 0.462, **+12.7 %**. That is the
+  opposite of P-042, which measured the box at **-24.9 %** on that same corpus.
+
+  **The control settled it before a word was written.** `nearest` and `oracle2` are pure functions of the
+  corpus and never see the FG, so any movement in them is the instrument, not the subject. Across six
+  corpora they reproduce within **2.0 %**. On `sc_v4` they do not: `nearest` position **+7.9 %**, `nearest`
+  shape **-17.4 %**, `oracle2` shape **-18.1 %**. The page's numbers were measured at `d475809`
+  (2026-09-09 02:33) and `d7fc6e0` (2026-09-10 04:16) rewrote 315 lines of `scene_report.py` under the
+  title *"the scorer's high-speed corrections"*. A second drift runs through EVERY corpus: object 2, the
+  near-static one (0.003 to 0.022 px), moved **-65 % to -78 %** in every control. It is far too small to
+  shift an object-mean, but every cross-session per-object claim about it is void.
+
+  **The controlled test, run in both directions** — same session, same scorer, same `--qdump` path, the
+  retired values restored BY FLAG (`--st-hold-lo 1.2 --st-hold-hi 3.0`) from the shipping binary, two
+  independent runs per arm:
+
+  | corpus | term | 1.2 / 3.0 | 1.0 / 1.6 | delta | run-to-run spread old / new |
+  |---|---|---|---|---|---|
+  | sc_v4 (13.4 px/pair) | mean pos | 0.4988 | 0.4622 | **-7.3 %** | 5.7 % / 0.4 % |
+  | sc_v4 | sharp | 0.8969 | 0.9075 | **+1.2 %** | 0.0 % / 0.1 % |
+  | sc_v4 | mean halluc | 95.41 | 90.97 | -4.7 % | 3.1 % / 1.4 % |
+  | sc_v2 | mean pos | 0.2784 | 0.2983 | **+7.2 %** | 2.3 % / 1.7 % |
+  | sc_v2 | sharp | 0.9363 | 0.9363 | -0.0 % | 0.2 % / 0.3 % |
+
+  At `sc_v4` the VERDICT changes with it: both retired-default arms read `BLUR / pos`, both shipping-default
+  arms read `pos`. So the cross-session +12.7 % was the scorer; the controlled answer on that corpus is
+  **-7.3 %**, and it agrees in sign with P-042 even though P-042 measured a different thing (per-object, on
+  the `-Gdump` async path) and reported a much larger number. **`sc_v2`'s regression, by contrast, is real:**
+  it reproduces under both methods (+9.3 % cross-session against a clean 2.0 % control, +7.2 % controlled),
+  and sharpness does not pay for it. Its displacement per pair was not measured in this pass.
+- **lesson:** the banner written on 2026-09-11 said every number on those pages predated the DEFAULT change.
+  It did not say they also predated an INSTRUMENT change that landed four commits earlier — and on the one
+  corpus where it mattered, the instrument was the larger effect by a factor of two. Staleness has as many
+  axes as the measurement has moving parts, and naming one of them reads to a later reader as having named
+  them all. The only reason this surfaced is that the scorer prints, in the same table as the arm under
+  test, two arms that structurally cannot respond to it.
+- **corrective:** every re-measured page now states **its own corpus's control drift**, and the pages whose
+  drift exceeds 5 % say outright that the two tables cannot be read term by term. The reference arms stay in
+  every table: they are not decoration, they are the only thing inside the artifact that can fail
+  independently of the subject. **Owed:** `sc_v2`'s +7.2 % position regression. The price of the flip is not
+  only the sphere at 6.7 px/pair — there is a displacement band where the object-mean position is worse
+  and nothing else improves to pay for it.
+
+### P-044 · A published row rested on five frames, the table had no column that could say so, and no capture length fixes it
+- **class:** recurrence of P-031 (a verdict delivered on n = 2 and n = 4) + an instrument limit measured · **date:** 2026-09-15 · **recurrences:** 1 · **status:** corrected (the table) and routed around (the tap)
+- **evidence:** `docs/evidence/B1_FG_k2.md` publishes an `fg_k2` row beside the three synthetic arms.
+  The scores file behind it says, verbatim: `summary.truth.n = 119`, `summary.nearest.n = 119`,
+  `summary.oracle2.n = 119`, **`summary.fg_k2.n = 5`**. The page never says so, and the report table had no
+  `n` column — so nothing distinguishes a row built on 133 frames from one built on five.
+
+  **Re-capturing does not fix it.** At k=2 the `--qdump` coverage sampler returns exactly **12 triples**,
+  measured three times: two 20 s runs and one 120 s run. The 120 s run presented 27,214 frames of which
+  12,794 were interpolated, and still wrote 12. It is not a rate — it SATURATES. The same 20 s returns
+  253 to 400 triples at k=4 and k=8. The mechanism is the sampler's own design (`present.cpp:829`): it
+  dumps the least-covered phase bin *that the ladder has actually produced*, gated further by the least-
+  covered generation ring slot. At k=2 the ladder produces almost one phase, so the eligible (bin, slot)
+  set is tiny and exhausts. The comment block calls the coverage rule the fix for a stride that pinned to
+  two bins; at k=2 the coverage rule pins just as hard, for the opposite reason.
+
+  **The every-tick tap has no sampler and no such limit.** `-Gdump` at k=2, same corpus, same 20 s:
+  3,106 triples, **119 aligned** — exactly the synthetic arms' n. Two independent runs agree to 0.9 % on
+  position (0.114 / 0.113 px), to the unit on hallucinated mass (26 / 26 px2) and to 0.001 on sharpness.
+- **lesson:** a sampler can starve in one regime and still hand back a table that looks like every other
+  table. The sample size is not a line in the protocol paragraph; it is a COLUMN. P-031 already recorded
+  this class and the record did not bind, because the number lived outside the artifact — in a paragraph a
+  reader of the table never reaches.
+- **corrective (stronger than another note — METACOGNITION §7):** `scene_report.py`'s table now prints **`n`
+  for every arm**, immediately after the arm name, so the count travels INSIDE the artifact and cannot be
+  dropped in transit. The k=2 row is re-measured through `-Gdump` at n = 119 and the page states the
+  protocol difference. `--qdump` at k=2 is recorded here as **unusable**, not as slow: a run ten times
+  longer buys nothing.
+
 ### P-043 · The gate built to catch exactly this was red for two commits, and the build script was already printing it
 - **class:** touchpoints did not move together (a shipping gate left red) · **date:** 2026-09-13 · **recurrences:** 0 · **status:** corrected
 - **evidence:** the first `build-release.bat` of this session ended `98% tests passed, 1 tests failed out of

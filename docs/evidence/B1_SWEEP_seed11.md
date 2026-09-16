@@ -7,6 +7,10 @@
 > spinning box's position at 6.7 and 13.4 px/pair (-15 %, -25 %), and WORSE on the sphere's position at
 > 6.7 px/pair (+11 %). **To reproduce a row on this page exactly, pass `--st-hold-lo 1.2 --st-hold-hi 3.0`.**
 > These rows are not re-measured: re-running the twelve-corpus record is its own job.
+>
+> **2026-09-15 — not re-measured.** Every arm on this page is a knob sweep under the retired default
+> AND under a scorer that changed at `d7fc6e0` (P-045). Both axes are stale, not just the one the
+> 2026-09-11 banner named.
 
 ## sc_full2 · k = 2
 

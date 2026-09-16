@@ -1,12 +1,5 @@
 # A1 — the anti-aliasing instrument, and its own acceptance
 
-> **DEFAULT CHANGE, 2026-09-11 — every number below predates it.** `single_track`'s screen-static ramp
-> shipped as `smoothstep(1.2, 3.0, ...)` when these rows were measured; it now ships as
-> `smoothstep(1.0, 1.6, ...)` (`hold_lo` / `hold_hi`, P-042 in `docs/LEARNING_LOG.md`). Under the new
-> default the same corpora score BETTER on hallucinated mass everywhere (-8 % to -54 %), better on the
-> spinning box's position at 6.7 and 13.4 px/pair (-15 %, -25 %), and WORSE on the sphere's position at
-> 6.7 px/pair (+11 %). **To reproduce a row on this page exactly, pass `--st-hold-lo 1.2 --st-hold-hi 3.0`.**
-> These rows are not re-measured: re-running the twelve-corpus record is its own job.
 
 **Date:** 2026-09-07 · **Tool:** `tools/aa_truth/aa_report.py` · **Corpus:** `tools/aa_truth/aa_zoo.py`
 **Status:** the instrument exists, verifies itself against a closed form, and its central claim is

@@ -7,6 +7,11 @@
 > spinning box's position at 6.7 and 13.4 px/pair (-15 %, -25 %), and WORSE on the sphere's position at
 > 6.7 px/pair (+11 %). **To reproduce a row on this page exactly, pass `--st-hold-lo 1.2 --st-hold-hi 3.0`.**
 > These rows are not re-measured: re-running the twelve-corpus record is its own job.
+>
+> **2026-09-15:** the k = 4 row this page narrates has been re-measured under the shipping default and
+> lives in `B1_FG_k4.md` (two independent runs, 0.214 / 0.218 px against the 0.216 here). The prose,
+> the protocol and the reasoning on this page stand; only the row moved, and by less than its own
+> run-to-run spread.
 
 **Date:** 2026-09-08 · **Tools:** `tools/scene_truth/` (renderer `scene_zoo.py`, scorer `scene_report.py`,
 bridge `scene_live.ps1` + `scene_align.py`, stepper `scene_step.py`, review `scene_review.py`)

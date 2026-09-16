@@ -7,6 +7,11 @@
 > spinning box's position at 6.7 and 13.4 px/pair (-15 %, -25 %), and WORSE on the sphere's position at
 > 6.7 px/pair (+11 %). **To reproduce a row on this page exactly, pass `--st-hold-lo 1.2 --st-hold-hi 3.0`.**
 > These rows are not re-measured: re-running the twelve-corpus record is its own job.
+>
+> **2026-09-15 — the speed law on this page is NOT re-fitted.** Its three input corpora have new rows
+> under the shipping default (`B1_FG_k4_speed05/2/4.md`), and `sc_v4`'s old numbers additionally came
+> from a scorer that has since changed (control drift 18.1 %, P-045). The exponent quoted here therefore
+> rests on points that no longer all exist as measured. Re-fitting it is its own job and has not been done.
 
 **Date:** 2026-09-09 · **Tools:** `tools/scene_truth/` (`--speed`, `scene_speed.py`), `tools/ref_warp.py --decisions`
 **Binary:** `build-release/phyriad_fg.exe` at `f2e4a9a`, default kernel · **Scene:** `mixed`, 640×360, base
