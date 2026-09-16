@@ -200,6 +200,58 @@
   version stamp in `trajectories.json` would make this mechanical; it is not written here because the file
   is an input to a bit-parity chain and changing its shape is its own change.
 
+### P-048 · The regression was the cost side of a trade, and the way to see it was to stop capturing and start recomputing
+- **class:** a defect re-characterised once the instrument stopped fighting the noise · **date:** 2026-09-15 · **recurrences:** 0 · **status:** CHARACTERISED — 11.16 is no longer an open defect
+- **evidence:** four live A/B rounds across two sessions could report the sphere's position regression at
+  ~6.7 px per source pair, reproduce its sign, and never isolate it: the run-to-run band there is 3-11 % and
+  the effect is the same size. The fix built on it was refuted (P-046) partly for that reason.
+
+  **The instrument that resolves it does not capture at all.** `tools/ref_warp.py` reproduces the shipping
+  composite on the CPU and exposes the ramp edges as module constants, so the same triple — same two real
+  frames, same motion vectors, same everything one live run produced — can be composed TWICE, once per
+  edge pair. Every source of run-to-run variation is removed by construction. 216 frames, one complete lap:
+
+  | object | term | 1.2 / 3.0 | 1.0 / 1.6 | delta |
+  |---|---|---|---|---|
+  | sphere (translates) | pos_err | 0.6814 | 0.7687 | **+12.8 %** |
+  | sphere | halluc | 391.0 | 186.2 | **-52.4 %** |
+  | sphere | lead px | 19.16 | 38.72 | +19.56 |
+  | box (spins) | pos_err | 0.2904 | 0.2641 | **-9.0 %** |
+  | static panel | pos_err | 0.0064 | 0.0009 | -86 % |
+
+  **It is ONE exchange: the sphere's hallucinated mass halves and its position degrades.** Not two
+  findings, and not a regression to be removed without giving back the other half.
+
+  **Where, and it is not the contour.** Per pixel — the totals mislead, the far field is 97 % of the frame
+  — the ring 1-8 px from the silhouette changes 3.1x to 4.5x more than the far field, and the ramp's own
+  output there goes 0.0479 -> 0.1670 (x3.49) at 2-4 px and 0.0823 -> 0.1957 (x2.38) at 4-8 px, against
+  x1.01 beyond 8 px where `stasis` already holds everything near 0.85. **At 6.72 px per pair that ring IS
+  the band the sphere sweeps between A and B.** My own framing said "boundary" and meant the contour; the
+  0-1 px band holds no pixels at all here, and the action is in the swept band.
+
+  **The mechanism, closed.** In the swept band the two displaced samples disagree by construction — one
+  carries sphere, the other backdrop — so `d_pixel` is large and `w_s` is what decides. Raising the hold
+  there means presenting `cur0`, the UNWARPED current frame: the sphere where it is at B. That one action
+  does both things at once — it suppresses the trailing ghost at the A position (halluc -52 %) and biases
+  the silhouette toward B (position +12.8 %, and the hallucinated mass moves from straddling the object to
+  sitting ahead of it: lead 19.2 -> 38.7 px). A box that spins in place sweeps no band, so the same hold
+  removes interior damage and costs it no position.
+- **lesson:** I spent two sessions raising the sample size against a noise floor that the protocol could not
+  beat, when the corpus is DETERMINISTIC and the reference implementation takes the operating point as an
+  argument. Recomputing the same frame under both settings is not an approximation of the A/B — it is a
+  strictly stronger experiment, because it holds constant everything a capture cannot. When an effect is the
+  size of the run-to-run band, more runs is the expensive answer and the wrong one; removing the variation
+  is the cheap answer, and here it was one flag on a tool that already existed.
+- **corrective:** `docs/evidence/B1_BOUNDARY_TRADE.md` carries the measurement and its four stated limits.
+  11.16 moves from **open defect** to **characterised trade**, and what remains is not an engineering
+  question but the operator's: -52 % hallucinated mass against +12.8 % centroid on a translating object is
+  an exchange, and which side is worth more is about what a viewer sees.
+  **Fixed on the way:** `tools/ref_warp.py:45` still carried `1.2, 3.0` and a comment claiming those were
+  "the shipping values". It was last touched at `4f26dc6`, FIVE HOURS before the flip landed at `90c9ee8`,
+  so the CPU reference oracle silently stopped reproducing the shipping path and said it did not. Corrected
+  to 1.0 / 1.6. The 99.47 % parity that file claims was measured at the old edges and has NOT been re-run
+  — that is now stated in the file itself and is owed.
+
 ### P-047 · The code an optimization pass would touch is under 1 % of the tick, and the one optimization already built cannot arm
 - **class:** premise tested before it steered work (the operator asked, and the instruments were already in the binary) · **date:** 2026-09-15 · **recurrences:** 0 · **status:** measured
 - **evidence:** the operator asked whether optimizing the code would move performance enough to pause the

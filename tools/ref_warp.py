@@ -42,7 +42,12 @@ numpy + stdlib only. Made with my soul - Swately <3
 import argparse, json, os, struct, sys
 import numpy as np
 
-WS_EDGE0, WS_EDGE1 = 1.2, 3.0   # single_track.glsl:1326 smoothstep edges (the shipping values)
+WS_EDGE0, WS_EDGE1 = 1.0, 1.6   # single_track.glsl smoothstep edges -- THE SHIPPING VALUES.
+# They were 1.2 / 3.0 until 2026-09-11 (P-042) and this file kept the retired pair for four days:
+# last touched at 4f26dc6, five hours before the flip landed at 90c9ee8, so the CPU reference
+# silently stopped reproducing the shipping path while its own comment said it did. Corrected
+# 2026-09-15. NOTE: the 99.47 % GPU parity this file claims was measured at 1.2 / 3.0 and has NOT
+# been re-run at these values.
 
 PUSH_NAMES = """residual_ceil improvement_frac agreement_threshold t soft_gate commit_thresh commit_real
 occl_thresh div_eps rescue_on mv_guided gme_on gme_a gme_b gme_c gme_d gme_e gme_f matte_on matte_thresh
@@ -319,7 +324,8 @@ def reference(triple, push, W, H, gw, gh, decisions=False):
         # shipping path: Gate 1 and Gate 2 reach `select` at COMPOSE rank 260 and are then discarded by
         # `stasis` (280) and `single_track` (290), both declared OVERRIDE. They are module constants here
         # so the operating point can be swept offline against exact truth without a rebuild; the defaults
-        # ARE the shipping values, so nothing this file reproduces changes unless a caller sets them.
+        # ARE the shipping values (re-checked 2026-09-15 against layer_table.def, after four days
+        # when they were NOT), so nothing this file reproduces changes unless a caller sets them.
         w_s = smoothstep(WS_EDGE0, WS_EDGE1, (d_pixel + 0.02) / (d_zero + 0.02))
         w_s = np.where(stasis, np.float32(1.0), w_s)
         result = mix(B_samp, cur0, w_s[..., None])
