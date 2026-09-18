@@ -916,6 +916,8 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
         vkCmdDispatch(cmd, gx, gy, 1u);
         compute_membar(cmd);   // level i+1 reads level i
     }
+    if (mark_pool_ != VK_NULL_HANDLE)   // set_phase_marks: the pyramid is built (off = nothing recorded)
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, mark_pool_, mark_first_);
 
     // ── 2. coarse-to-fine match (coarsest → finest) ──
     // The confidence gate in the warp handles static tiles, so there is no per-tile static lock here.
@@ -955,6 +957,8 @@ bool OpticalFlowPipeline::record_optical_flow(VkCommandBuffer cmd,
         vkCmdDispatch(cmd, gx, gy, 1u);
         compute_membar(cmd);   // MV(i) and SAD field writes visible to next level / warp
     }
+    if (mark_pool_ != VK_NULL_HANDLE)   // set_phase_marks: the match is done (off = nothing recorded)
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, mark_pool_, mark_first_ + 1u);
 
     // ── 3. MV + SAD field: GENERAL → SHADER_READ_ONLY for the warp samplers. ──
     image_barrier(cmd, mv_image_, GEN, RO, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,

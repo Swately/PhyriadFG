@@ -10,6 +10,7 @@
 #include "control/cli.hpp"
 #include "control/layer_config.hpp"
 #include "instrument/instrument.hpp"
+#include "instrument/site_timing.hpp"   // --site-timing: the B lane (the bwd record on cmdB_bwd)
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -239,6 +240,9 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                 // allow_bwd folds in the pipeline's bwd-off rule (single ofp / 2 Bframe slots). tier-5 ALSO
                 // forces it off (skip the bwd pyramid + bwd gme entirely).
                 const bool do_bwd = row_bidir;
+                // --site-timing (null = off, byte-identical): the B lane, armed only on the serial path (main.cpp).
+                pfg::instrument::SiteTiming* const st_bt = pfg::instrument::site_timing();
+                const bool st_bl = st_bt && st_bt->on(pfg::instrument::Lane::B) && allow_bwd && !use_nvofa;
                 if(do_bwd){
                     // --nvofa: the bwd direction (cur→prv). Run the OFA provider FIRST (it writes
                     // ofp.motion_image()=bwd MV, RO, via its own submits), THEN cmdB_bwd records the copy-out +
@@ -253,6 +257,7 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                     }
                     vkResetCommandBuffer(cmdB_bwd,0);
                     VkCommandBufferBeginInfo bib{}; bib.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdB_bwd,&bib);
+                    if(st_bl) st_bt->begin(pfg::instrument::Lane::B,cmdB_bwd);
                     // bwd direction is cur→prv. At flow_div>1 downsample (Bflow reused — the bwd record runs on
                     // its OWN cmd buffer cmdB_bwd, submitted+fenced (fB2) independently of the fwd cmdF, so
                     // reusing Bflow[0/1] is safe: the fwd match already consumed the fwd Bflow contents on cmdF
@@ -260,7 +265,9 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                     VkImageView ba=Bframe[cur_f].view, bb=Bframe[prv_f].view;
                     if(!use_nvofa){
                         if(flow_div>1u) flow_downsample(cmdB_bwd,cur_f,prv_f,ba,bb);
+                        if(st_bl){ st_bt->mark(pfg::instrument::Lane::B,cmdB_bwd,1u); ofp.set_phase_marks(st_bt->pool(pfg::instrument::Lane::B),2u); }   // B.downsample ends; marks 2/3 = pyramid / match
                         (void)ofp.record_optical_flow(cmdB_bwd,ba,bb,Cinterp.view,0.5f);
+                        if(st_bl){ ofp.set_phase_marks(VK_NULL_HANDLE,0u); st_bt->mark(pfg::instrument::Lane::B,cmdB_bwd,4u); }   // B.warp_discard ends
                     } else { (void)ba;(void)bb; }
                     img_barrier(cmdB_bwd,ofp.motion_image(),VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_READ_BIT,VK_ACCESS_TRANSFER_READ_BIT);
                     { VkBufferImageCopy cp=full_bic(mvw,mvh); vkCmdCopyImageToBuffer(cmdB_bwd,ofp.motion_image(),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hMVB_b[f_gen].buf,1,&cp); }
@@ -279,6 +286,7 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                                    hDISB_b[f_gen].buf,(VkDeviceSize)mvw*mvh,hGmeMB_b[f_gen].buf,
                                    cfg.gme_irls2?2:3);
                     }
+                    if(st_bl) st_bt->mark(pfg::instrument::Lane::B,cmdB_bwd,5u);   // B.copyout ends (MV_bwd in the host bridge, + the bwd GPU gme when on)
                     vkEndCommandBuffer(cmdB_bwd);
                     // the bidir bwd-flow submit. Routes to A.q2 under single_gpu (no-wait, fenced by fB2).
                     flow_submit_nowait(cmdB_bwd, fB2);
@@ -446,7 +454,10 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                 f_pair_bwd_valid_a[f_gen] = do_bwd ? 1 : 0;
                 if(use_bidir && !do_bwd && have_prev_f) stat_bwd_skips.fetch_add(1);
                 if(do_bwd){
+                    const double st_bw0 = st_bl ? now_ms() : 0.0;   // --site-timing: B.wait (what is left of the bwd flow when F gets here)
                     vk_wait_live(FD.dev,fB2);   // catch a TDR on the bwd flow — the consume-side wait, FD.dev (B.dev null under single_gpu would crash)
+                    if(st_bl){ const double tn=now_ms(); st_bt->host(pfg::instrument::Site::B_WAIT,tn-st_bw0,tn); st_bt->f_pair_wait(tn-st_bw0);
+                               st_bt->read(pfg::instrument::Lane::B,tn); }   // fB2 was waited: a non-blocking read
                     if(row_gme_bwd){
                         const double gb0=now_ms();
                         float mb6[6]={};

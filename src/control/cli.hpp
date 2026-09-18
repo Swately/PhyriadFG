@@ -1043,6 +1043,10 @@ struct Config {
     bool  warp_timing=false;        // --warp-timing (R4b, INSTRUMENT): GPU timestamps around the warp batch + the submit->fence latency,
                                     // per fresh present in the CSV (phyriadfg_warp_gpu_ms / _lat_ms) and as EMAs in the stats line. Default off
                                     // (two vkCmdWriteTimestamp per tick when on; nothing when off -> byte-identical).
+    bool  site_timing=false;        // --site-timing (INSTRUMENT, OAP spec a-f): GPU timestamps at the named sites of one source frame's
+                                    // path (convert, fwd/bwd flow, bridge upload) + host walls, reported as distributions at teardown
+                                    // (src/instrument/site_timing.hpp). Implies --warp-timing (the P.warp site). Default off: no query
+                                    // pool, no recorded command, no output -> byte-identical.
     int   tdr_test_s=0;             // --tdr-test N (R4/G-R4): after N s, record a never-terminating compute dispatch into the
                                     // present-stage command buffer to force a GPU timeout (TDR) and prove the device-loss exit
                                     // path (VK_ERROR_DEVICE_LOST -> vk_live -> g_quit -> clean teardown). 0 = off (default;

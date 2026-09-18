@@ -77,6 +77,7 @@
 #include <cstring>
 #include <functional>   // std::ref for std::thread(run_capture, std::ref(ctx))
 #include <malloc.h>
+#include <memory>       // std::unique_ptr (--site-timing)
 #include <mutex>
 #include <string>
 #include <thread>
@@ -100,6 +101,7 @@
 #include "generate/warp_blend.hpp" // WapPipe/FieldPipe/FillPipe factories + matte_mass_count/gme_dispct_from_mask CPU stat helpers
 #include "present/present.hpp"      // present-side UpPipe upscale (bilinear/lanczos) factory
 #include "instrument/instrument.hpp" // dump_bmp/dump_rgba diagnostic frame-dump helpers
+#include "instrument/site_timing.hpp" // --site-timing: the per-site cost profile (armed before the workers, reported after they join)
 // FgContext - the shared cross-thread state as references to main()'s locals;
 // run_capture/F/P alias them so the bodies stay identical.
 #include "core/fg_context.hpp"
@@ -1028,6 +1030,31 @@ int main(int argc, char** argv) {
             .fBridge = fBridge,
             .ra_fgprotect_demote_p = ra_fgprotect_demote_p,
         };
+        // --site-timing (INSTRUMENT, off by default): armed HERE, before the workers exist, so the thread creation
+        // orders the pointer for every reader. Each lane is armed only on the path its marks were written for.
+        std::unique_ptr<pfg::instrument::SiteTiming> site_t;
+        if(cfg.site_timing){
+            using pfg::instrument::Lane;
+            site_t = std::make_unique<pfg::instrument::SiteTiming>(now_ms());
+            if(use_igpu_convert) site_t->disarm(Lane::C,"the convert runs on the iGPU device (G): its marks are written for the Vulkan-primary convert only");
+            else site_t->arm(Lane::C,A,"timestamps unsupported on the convert device");
+            const char* why_f = !use_wap ? "the grid (non-WAP) path: the marks are written for the WAP flow"
+                              : cfg.fwd_pipeline ? "--fwd-pipeline: ping-pong command buffers + a deferred consume; the marks are written for the serial flow"
+                              : use_nvofa ? "--nvofa replaces the classical matcher the marks split" : nullptr;
+            if(why_f){ site_t->disarm(Lane::F,why_f); site_t->disarm(Lane::B,why_f); }
+            else {
+                site_t->arm(Lane::F,FD,"timestamps unsupported on the flow device");
+                if(use_bidir) site_t->arm(Lane::B,FD,"timestamps unsupported on the flow device");
+                else site_t->disarm(Lane::B,"bidir is off: there is no backward flow");
+            }
+            if(!use_wap) site_t->disarm(Lane::P,"the grid (non-WAP) path has no bridge upload");
+            else if(xfer_on) site_t->disarm(Lane::P,"--upload-xfer: the upload is submitted without a fence to read after");
+            else site_t->arm(Lane::P,A,"timestamps unsupported on the present device");
+            pfg::instrument::site_timing_set(site_t.get());
+            std::printf("[ra] --site-timing: armed (lanes C/F/B/P = %s/%s/%s/%s); samples kept after a %.0f s warm-up; the report prints after the workers join\n",
+                site_t->on(Lane::C)?"on":"off", site_t->on(Lane::F)?"on":"off", site_t->on(Lane::B)?"on":"off", site_t->on(Lane::P)?"on":"off",
+                pfg::instrument::SiteTiming::kWarmupMs/1000.0);
+        }
         std::thread thr_c(run_capture, std::ref(ctx));
         std::thread thr_f(run_flow, std::ref(ctx));
         std::thread thr_p(run_present, std::ref(ctx));
@@ -1073,6 +1100,7 @@ int main(int argc, char** argv) {
         const uint64_t total_interp=(total_frames.load()>total_real.load())?(total_frames.load()-total_real.load()):0;
         std::printf("[ra] done (real=%llu interp=%llu total_presents=%llu)\n",
             (unsigned long long)total_real.load(),(unsigned long long)total_interp,(unsigned long long)total_frames.load());
+        if(site_t){ site_t->report_and_destroy(); pfg::instrument::site_timing_set(nullptr); site_t.reset(); }   // --site-timing: every writer joined above; the device is still alive
         // The host-side measurement instrument. descriptor_update_calls() is the LIFETIME count of
         // vkUpdateDescriptorSets issued by record_optical_flow. Read it as the OFF-vs-ON DELTA: run the SAME
         // workload once without --fg-prebake (the per-pair burst counts ~41/record) and once WITH it

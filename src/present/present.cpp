@@ -15,6 +15,7 @@
 #include "core/telemetry_csv.hpp"    // phyriadfg::TelemetryCsv (the P-thread-local tcsv)
 #include "instrument/instrument.hpp" // dump_bmp / dump_rgba (P-thread diagnostic dumps)
 #include "instrument/gdump.hpp"      // --gdump: the every-tick capture tap (GDUMP_PLAN.md S5: the five P-side sites in this file)
+#include "instrument/site_timing.hpp" // --site-timing: the P lane (the fenced bridge upload + consensus)
 #include <phyriad/render/present/PresentSurface.hpp>  // pp::PresentSurface (the present pillar)
 #include "overlay_fps_spv.hpp"       // kOverlayFpsSpv (the --fps-overlay compute module)
 #include <timeapi.h>                  // timeBeginPeriod/timeEndPeriod (paced sleeps)
@@ -672,6 +673,7 @@ void run_present(FgContext& ctx){
             // (split-queue) would be valid but a split-FAMILY A.q2 is the family trap (a qfam cmd
             // buffer can't submit to qfam2) AND would need an image ownership transfer for the WAP
             // images — not worth it for a ~30/s upload. A.q only.
+            pfg::instrument::SiteTiming* const st_pt = pfg::instrument::site_timing();   // --site-timing: the P lane (null = off, byte-identical)
             auto wap_upload=[&](int prev_slot,int cur_slot,int gen,int target_gen){
                 // --upload-xfer: when xfer_on, record into a PING-PONG cmdUpload[] buffer and
                 // submit to A.qT (the transfer/async-compute engine) with NO host wait — the copies overlap the
@@ -697,6 +699,8 @@ void run_present(FgContext& ctx){
                 VkCommandBuffer cmdBridge = ucmd;   // shadow: keep the large record body below textually unchanged
                 vkResetCommandBuffer(cmdBridge,0);
                 VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdBridge,&bi);
+                const bool st_pl = st_pt && !up_xfer && st_pt->on(pfg::instrument::Lane::P);   // the fenced path only
+                if(st_pl) st_pt->begin(pfg::instrument::Lane::P,cmdBridge);
                 auto up_imgA=[&](Img& dst,VkBuffer src,uint32_t w,uint32_t h){
                     img_barrier(cmdBridge,dst.img,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_ACCESS_SHADER_READ_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);
                     { VkBufferImageCopy cp=full_bic(w,h); vkCmdCopyBufferToImage(cmdBridge,src,dst.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
@@ -727,6 +731,7 @@ void run_present(FgContext& ctx){
                     { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyBufferToImage(cmdBridge,hFIELD_a[cur_slot].buf,wapFIELDA.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
                     img_barrier(cmdBridge,wapFIELDA.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                 }
+                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,1u);   // P.upload_frames ends (prev + cur, + the field when on)
                 up_imgA(wapMVA,  hMV_a[gen].buf,  wap_mvw,wap_mvh);
                 // --vblend: upload the NEXT pair's forward MV grid into wapMVTA (binding 12) — the
                 // velocity-continuity TARGET. Sourced from the SAME hMV_a forward-MV bridge as wapMVA, just at
@@ -751,6 +756,7 @@ void run_present(FgContext& ctx){
                 // on use_inertia; off-inertia wapPERA stays in its initial RO state and is never sampled
                 // (inertia_thresh=0). Same DST→RO per-pair upload contract as the dissidence masks.
                 if(up_per) up_imgA(wapPERA, hPER_a[gen].buf, wap_mvw,wap_mvh);
+                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,2u);   // P.upload_fields ends (MV, SAD, MV_bwd, candidates, masks)
                 // ── in-cmdBridge 3x3 consensus on the just-uploaded MV image(s) ─────
                 // The MV image is RO after up_imgA (the pass samples it); cur_real (wapCurA) was uploaded
                 // above too (RO) — the consensus pass reads it for color membership. Dispatch
@@ -783,6 +789,7 @@ void run_present(FgContext& ctx){
                     median_filter(medPipe.set_mv,wapMVA);
                     if(use_bidir) median_filter(medPipe.set_mvb,wapMVBA);
                 }
+                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,3u);   // P.consensus ends
                 vkEndCommandBuffer(cmdBridge);
                 if(up_xfer){
                     // --upload-xfer: submit to A.qT — WAIT semWarpTL>=xfer_W (the WAR back-edge:
@@ -806,7 +813,9 @@ void run_present(FgContext& ctx){
                 } else {
                     vkResetFences(A.dev,1,&fBridge);
                     VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount=1; si.pCommandBuffers=&cmdBridge;
+                    const double st_ps0 = st_pl ? now_ms() : 0.0;   // --site-timing: P.submit_wait
                     vkQueueSubmit(A.q,1,&si,fBridge); vk_wait_live(A.dev,fBridge);   // catch a TDR on the saturated 4090 present/warp -> g_quit -> graceful exit
+                    if(st_pl){ const double tn=now_ms(); st_pt->host(pfg::instrument::Site::P_SUBMIT_WAIT,tn-st_ps0,tn); st_pt->read(pfg::instrument::Lane::P,tn); }   // the fence was waited: a non-blocking read
                 }
             };
             // Per tick (WAP-on-A) warp at the exact phase t into wapOutA, blit → bridge

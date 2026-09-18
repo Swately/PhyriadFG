@@ -187,6 +187,14 @@ public:
     void set_temporal_prior(bool on) noexcept { temporal_prior_ = on; }
     [[nodiscard]] bool temporal_prior() const noexcept { return temporal_prior_; }
 
+    // ── set_phase_marks (INSTRUMENT, PhyriadFG --site-timing) ──────────
+    // When `pool` is not null, the NEXT record_optical_flow writes two bottom-of-pipe timestamps into it: query
+    // `first` after the pyramid build, `first + 1` after the coarse-to-fine match. The caller brackets the call
+    // with its own marks and reads the pool after its fence. Null (the default) records nothing, so the command
+    // buffer is byte-identical to a build without this function. Set per call: the fwd and bwd records use
+    // different query indices.
+    void set_phase_marks(VkQueryPool pool, uint32_t first) noexcept { mark_pool_ = pool; mark_first_ = first; }
+
     // ── record_optical_flow ───────────────────────────────────────────
     // Records both compute dispatches into `cmd`. The caller is
     // responsible for image-layout transitions of a_view, b_view, c_view.
@@ -447,6 +455,10 @@ private:
     // to seed from (false on the first armed pair → zero-clear fallback).
     bool                  temporal_prior_      {false};
     bool                  have_prev_mv_        {false};
+
+    // set_phase_marks: the instrument's timestamp pool (null = off) and the first of its two query indices.
+    VkQueryPool           mark_pool_           {VK_NULL_HANDLE};
+    uint32_t              mark_first_          {0u};
 
     // Sampler shared across pipelines (linear filter, clamp edge).
     VkSampler             sampler_             {VK_NULL_HANDLE};

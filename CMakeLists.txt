@@ -127,6 +127,8 @@ add_executable(phyriad_fg
     src/instrument/instrument.cpp              # the dump_bmp/dump_rgba diagnostic frame-dump helpers
     src/instrument/gdump_book.cpp              # --gdump: the CPU bookkeeping of the every-tick capture tap (GDUMP_PLAN.md S6)
     src/instrument/gdump.cpp                   # --gdump: the Vulkan + writer-thread glue of the tap
+    src/instrument/site_timing_book.cpp        # --site-timing: the CPU bookkeeping (samples, statistics, the report)
+    src/instrument/site_timing.cpp             # --site-timing: the Vulkan glue (one timestamp pool per lane, the reads)
     src/core/ra_simd.cpp                       # F16C batch — /arch:AVX2 below; main.cpp stays portable
     src/core/core_init.cpp                     # E1: core-side init sections (cmd buffers + fences), verbatim from main.cpp
     "${_rv}/src/OpticalFlowPipeline.cpp"       # render/vulkan optical-flow pipeline
@@ -168,6 +170,13 @@ target_compile_features(pfg_gdump_test PRIVATE cxx_std_23)
 target_include_directories(pfg_gdump_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${_fw}/ipc/include" "${_fw}/hal/include")
 target_link_libraries(pfg_gdump_test PRIVATE Vulkan::Vulkan)
 
+# --site-timing: the CPU half (the statistics, the warm-up and capacity accounting, the report and its parseable
+# done-line) tested without a GPU. Vulkan headers only; nothing is called.
+add_executable(pfg_site_test tests/instrument/test_site_book.cpp src/instrument/site_timing_book.cpp)
+target_compile_features(pfg_site_test PRIVATE cxx_std_23)
+target_include_directories(pfg_site_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(pfg_site_test PRIVATE Vulkan::Vulkan)
+
 # R3: the row bodies are inputs of the generator (it checks them) and of fg_core.spv (it includes them).
 file(GLOB _layer_bodies CONFIGURE_DEPENDS "${_sh}/layers/*.glsl")
 add_executable(pfg_layer_gen tools/layer_gen.cpp)
@@ -205,6 +214,10 @@ set_tests_properties(clock_replay_oracle PROPERTIES PASS_REGULAR_EXPRESSION "rep
 # --gdump (GDUMP_PLAN.md RR1/RR2): the tap's CPU bookkeeping — slot reuse from the ring cursor, the pair state
 # machine, the reconciliation identity, the index/summary formats. Exit code + the [OK] lines are the pass.
 add_test(NAME gdump_book COMMAND pfg_gdump_test)
+# --site-timing: every number the instrument prints passes through SiteBook. Exit code + the OK line are the pass;
+# T6 shows a wrong expectation printing [FAIL] (the gate seen red) before it is excluded from the count.
+add_test(NAME site_book COMMAND pfg_site_test)
+set_tests_properties(site_book PROPERTIES PASS_REGULAR_EXPRESSION "OK: site_book -- all checks passed")
 
 # 2b. The same oracle over the two dimensions the first fixture cannot reach (4.3's honesty ledger named this gap):
 #     a different SOURCE RATE (120 fps -> a per-pair budget of 8.3 ms instead of 16.7) and a run under real GPU

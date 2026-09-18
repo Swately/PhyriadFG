@@ -11,6 +11,7 @@
 #include <vector>      // std::vector<WndCand> (the window finder accumulates every match)
 #include "core/compat_reason.hpp" // ra::compat::emit (the named-reason SOURCE_RESIZED bail on a DDA mode change)
 #include "core/fg_context.hpp"   // FgContext (the C-thread's shared main()-locals as refs)
+#include "instrument/site_timing.hpp"   // --site-timing: C.cap_copy, the CPU readback of the mapped staging slot
 #include <cstdio>                 // std::printf (C-thread body)
 #include <cmath>                  // std::sqrt (igpu-field-verify CPU oracle)
 #include <chrono>                 // std::chrono::milliseconds (the convert-worker wait_for timeout)
@@ -342,6 +343,7 @@ static uint64_t frame_sample_hash(const uint8_t* p, size_t n){
 //    the exact local NAMES the body uses, so the body reads against plain locals. --
 void run_capture(FgContext& ctx){
     auto& cfg = ctx.cfg;
+    pfg::instrument::SiteTiming* const st_cap = pfg::instrument::site_timing();   // --site-timing; null = off (byte-identical)
     auto& ra_core_c = ctx.ra_core_c;
     auto& c_seq = ctx.c_seq;
     auto& cap_slots = ctx.cap_slots;
@@ -492,9 +494,11 @@ void run_capture(FgContext& ctx){
                             if(mhr==S_OK){
                                 uint8_t* dst=(uint8_t*)raw_astage_a[rk].mapped;
                                 const size_t nat_row=size_t(NAT_W)*nat_bpp;
+                                const double _st_mc0 = st_cap ? now_ms() : 0.0;
                                 if(mr.RowPitch==nat_row) std::memcpy(dst,mr.pData,size_t(NAT_H)*nat_row);
                                 else for(uint32_t y=0;y<NAT_H;++y)
                                     std::memcpy(dst+size_t(y)*nat_row,(const uint8_t*)mr.pData+size_t(y)*mr.RowPitch,nat_row);
+                                if(st_cap){ const double tn=now_ms(); st_cap->host(pfg::instrument::Site::C_CAP_COPY,tn-_st_mc0,tn); }
                                 d.ctx->Unmap(ddst[prev_db],0);
                                 _mp_ms=now_ms()-_t_mp0;          // MEDICIÓN: Map+memcpy+Unmap (el readback CPU)
                                 // El frame prev ya está en CPU (dst). dd_uniq cuenta únicos reales SIEMPRE
@@ -670,10 +674,12 @@ void run_capture(FgContext& ctx){
                         }
                         const size_t nat_row=size_t(NAT_W)*nat_bpp;
                         const double _w_t_mc0 = cfg.latency_trace ? now_ms() : 0.0;
+                        const double _st_mc0 = st_cap ? now_ms() : 0.0;
                         { uint8_t* dst=(uint8_t*)raw_astage_a[rk].mapped;
                           if(mr.RowPitch==nat_row) std::memcpy(dst,mr.pData,size_t(NAT_H)*nat_row);
                           else for(uint32_t y=0;y<NAT_H;++y)
                               std::memcpy(dst+size_t(y)*nat_row,(const uint8_t*)mr.pData+size_t(y)*mr.RowPitch,nat_row); }
+                        if(st_cap){ const double tn=now_ms(); st_cap->host(pfg::instrument::Site::C_CAP_COPY,tn-_st_mc0,tn); }
                         if(cfg.latency_trace) _wmc_ms=now_ms()-_w_t_mc0;
                         cap_ctx->Unmap(wgc_ctx->ring[(use_cnt-1u)%WgcCtx::RING_N],0); wgc_ctx->ring_read.store(use_cnt);
                         arr_ts=now_ms();   // WGC consume instant (la referencia PLL — mismo instante que el serial)
@@ -706,9 +712,11 @@ void run_capture(FgContext& ctx){
                     }
                     const size_t nat_row=size_t(NAT_W)*nat_bpp;
                     const double _w_t_mc0 = cfg.latency_trace ? now_ms() : 0.0;   // [ra-acq] (wgc) memcpy: pure CPU readback of the mapped slot
+                    const double _st_mc0 = st_cap ? now_ms() : 0.0;
                     if(mr.RowPitch==nat_row) std::memcpy(Astage.mapped,mr.pData,size_t(NAT_H)*nat_row);
                     else for(uint32_t y=0;y<NAT_H;++y)
                         std::memcpy((uint8_t*)Astage.mapped+size_t(y)*nat_row,(const uint8_t*)mr.pData+size_t(y)*mr.RowPitch,nat_row);
+                    if(st_cap){ const double tn=now_ms(); st_cap->host(pfg::instrument::Site::C_CAP_COPY,tn-_st_mc0,tn); }
                     if(cfg.latency_trace) _wmc_ms=now_ms()-_w_t_mc0;
                     cap_ctx->Unmap(wgc_ctx->ring[(use_cnt-1u)%WgcCtx::RING_N],0); wgc_ctx->ring_read.store(use_cnt);
                     arr_ts=now_ms();   // WGC consume instant (≈ delivery + copy; el jitter lo absorbe la EMA+banda)
@@ -768,6 +776,7 @@ void run_capture(FgContext& ctx){
                         for(uint32_t y=0;y<NAT_H;++y)
                             std::memcpy((uint8_t*)Astage.mapped+size_t(y)*NAT_W*nat_bpp,(const uint8_t*)mr.pData+size_t(y)*mr.RowPitch,size_t(NAT_W)*nat_bpp);
                         _smc_ms=now_ms()-_s_t_mc0;
+                        if(st_cap){ const double tn=now_ms(); st_cap->host(pfg::instrument::Site::C_CAP_COPY,tn-_s_t_mc0,tn); }
                         d.ctx->Unmap(dxgi_stage,0); mapped=true; }
                     d.dup->ReleaseFrame(); if(!mapped) continue;
                     // MEDICIÓN serial (etiqueta "(serial)" = async NO armado). 4-way: acquire(espera del frame) |

@@ -7,6 +7,7 @@
 #include "control/layer_config.hpp"   // R5 step 3b: layer_arm_mask / LayerId — the FLOW rows decide on F
 #include "core/ra_simd.hpp"        // ra::decode_f16 — the F16C batch decode for gme_fit_affine
 #include "instrument/instrument.hpp"  // dump_bmp (the F-thread objdump grids)
+#include "instrument/site_timing.hpp"  // --site-timing: the F lane (fwd record) + the F-thread pair accounting
 #include <cstdint>
 #include <cstdio>                   // std::printf (the nvofa auto-disable diagnostics)
 #include <cstring>                  // std::memcpy (run_flow body)
@@ -475,6 +476,10 @@ void med_destroy(VDev& d,MedianPipe& p){ if(p.pool)vkDestroyDescriptorPool(d.dev
 //    local NAMES the thread body uses. NS + kMvCut are flow-local constants. --
 void run_flow(FgContext& ctx){
     static constexpr int NS=kGenRing;
+    // --site-timing (null = off, byte-identical). The F lane is armed only for the serial WAP flow with the classical
+    // matcher (main.cpp); st_f_on also gates the F-thread pair accounting, which is defined for that path alone.
+    pfg::instrument::SiteTiming* const st_ft = pfg::instrument::site_timing();
+    const bool st_f_on = st_ft && st_ft->on(pfg::instrument::Lane::F);
     static constexpr float kMvCut=6.0f;   // |dmv|>cut px -> bypass EMA (reversal/cut guard)
     auto& cfg = ctx.cfg;
     auto& c_seq = ctx.c_seq;
@@ -995,6 +1000,7 @@ void run_flow(FgContext& ctx){
                                      ? last_c_seen+1 : newest_c;   // in-order drain cap, DECOUPLED from the deep ring (real persistence)
                 last_c_seen=cur_c;
                 const int s=(int)((cur_c-1)%(uint64_t)cap_slots);
+                if(st_f_on) st_ft->f_pair_begin(now_ms());   // --site-timing: F.iter starts at the pickup
                 // --latency-trace: tcap→F-pickup = the convert+ingest+backlog wait. now − the picked slot's
                 // tcap. EMA µs. Off → no work. ALSO capture the pickup wall time → the submit-wait sites
                 // compute pre_flow = tf0 − pickup = the F per-pair NON-compute window (upload+unpack+flow-
@@ -1037,6 +1043,7 @@ void run_flow(FgContext& ctx){
                   static constexpr int kRingGuardSpinMax=64;   // ~64ms ceiling (≈4 source frames at 60fps)
                   int guard_spins=0;
                   const double lt_spin0 = cfg.latency_trace ? now_ms() : 0.0;   // measure the ring-guard spin wall-time (F throttled to P's gen-consume rate)
+                  const double st_rg0 = st_f_on ? now_ms() : 0.0;   // --site-timing: F.ring_wait
                   while(!g_quit&&!g_quit_threads.load()&&
                         p_presenting.load()==fs+1u-(uint64_t)kGenRing){
                       if(++guard_spins>kRingGuardSpinMax){
@@ -1050,6 +1057,7 @@ void run_flow(FgContext& ctx){
                       }
                       Sleep(1);
                   }
+                  if(st_f_on){ const double tn=now_ms(); st_ft->host(pfg::instrument::Site::F_RING_WAIT,tn-st_rg0,tn); st_ft->f_pair_wait(tn-st_rg0); }
                   if(cfg.latency_trace && lt_spin0>0.0){ const double sp=(now_ms()-lt_spin0)*1000.0;   // ring-guard spin wall-time → splits preflow into spin (F waits for P) vs record/upload
                       if(sp>=0.0&&sp<2000000.0){ const uint64_t pv=lt_spin_us.load(); lt_spin_us.store(pv?(uint64_t)((double)pv*0.8+sp*0.2):(uint64_t)sp); } } }
                 const int prv_f=(cur_f+1)&1;
@@ -1080,6 +1088,8 @@ void run_flow(FgContext& ctx){
                 }
                 vkResetCommandBuffer(cmdF,0);
                 VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdF,&bi);
+                const bool st_fl = st_f_on && use_wap && have_prev_f;   // --site-timing: this cmdF carries the whole F lane
+                if(st_fl) st_ft->begin(pfg::instrument::Lane::F,cmdF);
                 if(use_igpu_convert){
                     if(!do_prestage){VkBufferCopy bc{0,0,VkDeviceSize(WW)*WH*3u}; vkCmdCopyBuffer(cmdF,hRP_b[s].buf,hRP_b_dev[s].buf,1,&bc);}   // prestaged → copy already submitted on cmdF_pre (A.q2, ahead of cmdF); OFF → inline
                     {VkBufferMemoryBarrier bmb{}; bmb.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER; bmb.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; bmb.dstAccessMask=VK_ACCESS_SHADER_READ_BIT; bmb.buffer=hRP_b_dev[s].buf; bmb.offset=0; bmb.size=VK_WHOLE_SIZE; vkCmdPipelineBarrier(cmdF,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,nullptr,1,&bmb,0,nullptr);}
@@ -1094,6 +1104,7 @@ void run_flow(FgContext& ctx){
                     { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyBufferToImage(cmdF,hR_b[s].buf,Bframe[cur_f].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
                     img_barrier(cmdF,Bframe[cur_f].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                 }
+                if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,1u);   // F.upload ends (the capture frame is on the flow device)
                 // per-set N — auto uses the F-owned live_n (degrades by measured capacity); explicit uses the
                 // cap. Built AND published with THIS set's N so P paces it self-consistently. span = source
                 // frames this pair covers.
@@ -1144,7 +1155,9 @@ void run_flow(FgContext& ctx){
                             VkCommandBufferBeginInfo bnv{}; bnv.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdF,&bnv);
                         } else {
                         if(flow_div>1u) flow_downsample(cmdF,prv_f,cur_f,fa,fb);
+                        if(st_fl){ st_ft->mark(pfg::instrument::Lane::F,cmdF,2u); ofp.set_phase_marks(st_ft->pool(pfg::instrument::Lane::F),3u); }   // F.downsample ends; marks 3/4 = pyramid / match
                         (void)ofp.record_optical_flow(cmdF,fa,fb,Cinterp.view,0.5f);
+                        if(st_fl){ ofp.set_phase_marks(VK_NULL_HANDLE,0u); st_ft->mark(pfg::instrument::Lane::F,cmdF,5u); }   // F.warp_discard ends (the k=0.5 warp WAP never reads)
                         }
                         if(use_mv_smooth){
                             // Smooth the MV in place before shipping (same pass the warp path uses;
@@ -1175,6 +1188,7 @@ void run_flow(FgContext& ctx){
                                        hDIS_b[f_gen].buf,(VkDeviceSize)mvw*mvh,hGmeM_b[f_gen].buf,
                                        fwd_gme_iters);
                         }
+                        if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,6u);   // F.post ends (mv_smooth + the GPU gme fit, when on)
                         // MV + SAD are in SHADER_READ_ONLY after the match → TRANSFER_SRC → copy
                         // out to the per-gen host bridges → back to SHADER_READ_ONLY (the next
                         // match leaves them RO again; restoring keeps the layout contract clean).
@@ -1195,6 +1209,7 @@ void run_flow(FgContext& ctx){
                             { VkBufferImageCopy cp=full_bic(mvw,mvh); vkCmdCopyImageToBuffer(cmdF,ofp.cand_image(),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hC2_b[f_gen].buf,1,&cp); }
                             img_barrier(cmdF,ofp.cand_image(),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_READ_BIT);
                         }
+                        if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,7u);   // F.copyout ends: MV, SAD (+ candidates) are in the host bridges
                     }
                     // ── snapshot this pair's context (the deferred consume must NOT read the live loop locals,
                     // which advance to the next pair before it runs). ──────────────────────────────────────
@@ -1209,11 +1224,15 @@ void run_flow(FgContext& ctx){
                         cur_pc.tf0=now_ms();                     // pre-submit_wait anchor
                         if(cfg.latency_trace && lt_pickup_now>0.0){ const double pf=(cur_pc.tf0-lt_pickup_now)*1000.0;   // the WAP-serial pre_flow = pickup→flow-submit (upload+unpack+flow-record+ring-guard spin)
                             if(pf>0.0&&pf<2000000.0){ const uint64_t pv=lt_preflow_us.load(); lt_preflow_us.store(pv?(uint64_t)((double)pv*0.8+pf*0.2):(uint64_t)pf); } }
+                        const double st_sw0 = st_f_on ? now_ms() : 0.0;   // --site-timing: F.submit_wait (the a_q2_mtx lock + the GPU)
                         flow_submit_wait(cmdF,fF);   // route the WAP-serial flow submit to A.q2 under single_gpu
+                        if(st_f_on){ const double tn=now_ms(); st_ft->host(pfg::instrument::Site::F_SUBMIT_WAIT,tn-st_sw0,tn); st_ft->f_pair_wait(tn-st_sw0);
+                                     if(st_fl) st_ft->read(pfg::instrument::Lane::F,tn); }   // the fence was waited: a non-blocking read
                         cur_pc.fwd_fence=VK_NULL_HANDLE;          // already waited → consume_wap skips the wait (uses pc.tf0)
                         // toggle loop-progression BEFORE the consume publishes.
                         cur_f=prv_f; have_prev_f=true; prev_ingest_cseq=cur_c; ++g_seq;
                         consume_wap(cur_pc, /*allow_bwd=*/true);
+                        if(st_f_on) st_ft->f_pair_end(now_ms());   // --site-timing: F.iter / F.cpu for this pair
                     } else {
                         // ── PIPELINED (--fwd-pipeline): submit NO-WAIT (cur's GPU match runs on B.q), then
                         // consume the PENDING pair (N-1) — its CPU tail overlaps cur's GPU. cur is held in

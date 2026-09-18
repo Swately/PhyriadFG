@@ -9,6 +9,7 @@
 #include "core/vk_util.hpp"
 #include "core/globals.hpp"
 #include "control/cli.hpp"
+#include "instrument/site_timing.hpp"   // --site-timing: the C lane (upload / convert / download on the A-path convert)
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -56,17 +57,23 @@ static void convert_record_submit(FgContext& ctx, uint32_t cap_rot180, int s,
     auto& hostFIELD = ctx.hostFIELD;
     auto& hostR = ctx.hostR;
                 if(!use_igpu_convert){
+                    using pfg::instrument::Lane;
+                    pfg::instrument::SiteTiming* const st = pfg::instrument::site_timing();   // --site-timing; null = off (byte-identical)
                     vkResetCommandBuffer(cmdA,0);
                     VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdA,&bi);
+                    if(st) st->begin(Lane::C,cmdA);
                     img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
                     { VkBufferImageCopy cp=full_bic(NAT_W,NAT_H); vkCmdCopyBufferToImage(cmdA,a_src,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
                     img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
+                    if(st) st->mark(Lane::C,cmdA,1u);   // C.upload ends: the host frame is on the device
                     img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT);
                     vkCmdBindPipeline(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvPipe); vkCmdBindDescriptorSets(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvLayout,0,1,&cvSet,0,nullptr);
                     struct{uint32_t is_hdr;float exposure;uint32_t rot180;}pcv{IS_HDR?1u:0u,1.f,cap_rot180}; vkCmdPushConstants(cmdA,cvLayout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcv),&pcv);
                     vkCmdDispatch(cmdA,(WW+7)/8,(WH+7)/8,1);
+                    if(st) st->mark(Lane::C,cmdA,2u);   // C.convert ends
                     img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
                     { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyImageToBuffer(cmdA,Awork.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hR_a[s].buf,1,&cp); }
+                    if(st) st->mark(Lane::C,cmdA,3u);   // C.download ends: the converted frame is back in host memory
                     // Crash safety: when convert runs on the PRIMARY (--convert-gpu primary → use_igpu_convert
                     // false, so we are in THIS branch) route C's convert submit off A.q (P-exclusive) to A.q2
                     // (same-family, lock-free; cmdA is A.pool-bound). Default (--convert-gpu igpu) never enters
@@ -80,6 +87,7 @@ static void convert_record_submit(FgContext& ctx, uint32_t cap_rot180, int s,
                         if(single_gpu){ std::lock_guard<std::mutex> lk(a_q2_mtx); submit_wait_q2(A,cmdA,fA); }
                         else submit_wait_q2(A,cmdA,fA);
                     } else submit_wait(A,cmdA,fA);
+                    if(st){ const double tn=now_ms(); st->host(pfg::instrument::Site::C_SUBMIT_WAIT,tn-tcv0,tn); st->read(Lane::C,tn); }   // the fence was waited above
                     { const double dt=now_ms()-tcv0;
                       const uint64_t prev=c_conv_us.load();
                       c_conv_us.store(prev?(uint64_t)((double)prev*0.8+dt*1000.0*0.2):(uint64_t)(dt*1000.0)); }

@@ -11,6 +11,7 @@
 // tree uses.
 // Made with my soul - Swately <3
 #include "present/present_stage.hpp"
+#include "instrument/site_timing.hpp"   // --site-timing: P.warp is this stage's --warp-timing interval
 #include "control/cli.hpp"                // Config (cfg.async_present / pace_hard / shallow_queue / present_* …)
 #include "core/globals.hpp"           // g_quit / g_quit_threads / g_device_lost / vk_live
 #include "core/compat_reason.hpp"     // ra::compat::emit (the named-reason present-init bail)
@@ -320,6 +321,7 @@ void PresentStage::timing_read(int slot) {
         last_lat_ms_ = now_ms() - submit_ms_[slot];
         gpu_ema_ = gpu_ema_ > 0.0 ? gpu_ema_ * 0.9 + last_gpu_ms_ * 0.1 : last_gpu_ms_;
         lat_ema_ = lat_ema_ > 0.0 ? lat_ema_ * 0.9 + last_lat_ms_ * 0.1 : last_lat_ms_;
+        if(auto* st = pfg::instrument::site_timing()) st->host(pfg::instrument::Site::P_WARP, last_gpu_ms_, now_ms());   // --site-timing (null = off)
     } else { last_gpu_ms_ = -1.0; last_lat_ms_ = -1.0; }   // NOT_READY / DEVICE_LOST → NA (vk_live is the fence poll's business)
 }
 
