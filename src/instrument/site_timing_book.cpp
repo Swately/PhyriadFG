@@ -93,11 +93,14 @@ std::string SiteBook::report(const char* const lane_note[4]) const {
 
     uint64_t warm_total = 0;
     for (uint64_t w : warm_) warm_total += w;
-    appendf(o, "[site] window %.2f s after a %.1f s warm-up (%llu warm-up samples not kept) | F pairs %.1f/s | percentiles are "
-               "nearest-rank | GPU sites are "
-               "ELAPSED time between timestamps on a GPU the other queue shares (A.q present vs A.q2 flow+convert): overlap is "
-               "counted in both, so a sum can exceed the device's busy time\n",
-            W, warmup_ms_ / 1000.0, (unsigned long long)warm_total, fpairs);
+    double last = 0.0;
+    for (double t : last_t_) last = std::max(last, t);
+    const double t0_epoch = epoch_off_s_ + warm_end_ / 1000.0, t1_epoch = epoch_off_s_ + std::max(last, warm_end_) / 1000.0;
+    appendf(o, "[site] window %.2f s after a %.1f s warm-up (%llu warm-up samples not kept), unix %.3f .. %.3f | F pairs "
+               "%.1f/s | percentiles are nearest-rank | GPU sites are ELAPSED time between timestamps; each lane's mark 0 is "
+               "bottom-of-pipe, so work queued on that queue before the lane is outside it; the other queue runs beside it "
+               "(A.q present vs A.q2 flow+convert) and overlap is counted in both, so a sum can exceed the device's busy time\n",
+            W, warmup_ms_ / 1000.0, (unsigned long long)warm_total, t0_epoch, t1_epoch, fpairs);
     static const char* const kLaneName[4] = {"C (convert, A.q2)", "F (fwd flow, A.q2)", "B (bwd flow, A.q2)", "P (bridge upload, A.q)"};
     for (int l = 0; l < 4; ++l)
         if (lane_note[l] && lane_note[l][0]) appendf(o, "[site] lane %s: NOT ARMED -- %s\n", kLaneName[l], lane_note[l]);
@@ -151,7 +154,7 @@ std::string SiteBook::report(const char* const lane_note[4]) const {
     if (!ld.empty()) appendf(o, "[site] not kept:%s\n", ld.c_str());
 
     // The one parseable line (spec (e)).
-    appendf(o, "[site] done (window_s=%.3f f_pairs_per_s=%.3f", W, fpairs);
+    appendf(o, "[site] done (window_s=%.3f t0_epoch=%.3f t1_epoch=%.3f f_pairs_per_s=%.3f", W, t0_epoch, t1_epoch, fpairs);
     for (int i = 0; i < kSiteCount; ++i) {
         if (S[i].n == 0) continue;
         appendf(o, " %s=%.4f,%.4f,%llu,%.3f", kInfo[i].name, S[i].mean, S[i].p99, (unsigned long long)S[i].n, per_s(S[i]));

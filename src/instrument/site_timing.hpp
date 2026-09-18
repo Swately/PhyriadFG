@@ -78,10 +78,14 @@ public:
     // parseable line: `[site] done (window_s=W f_pairs_per_s=R <site>=mean,p99,n,ms_per_s ...)`.
     // lane_note[i] (i = C,F,B,P) is printed verbatim when a lane was not armed ("" = armed).
     std::string report(const char* const lane_note[4]) const;
+    // unix seconds = this offset + a now_ms() stamp / 1000; set once at arming so the report can print the window
+    // in absolute time (another instrument's capture is then matched by clock, not by guess). 0 = not set.
+    void set_epoch_offset(double s) { epoch_off_s_ = s; }
 
 private:
     uint32_t cap_;
     double warmup_ms_, warm_end_;
+    double epoch_off_s_ = 0.0;
     std::vector<float> v_[kSiteCount];
     uint64_t warm_[kSiteCount] = {}, drop_[kSiteCount] = {}, lost_[kSiteCount] = {};
     double last_t_[kSiteCount] = {};
@@ -106,8 +110,11 @@ public:
     bool on(Lane l) const { return pool_[(int)l] != VK_NULL_HANDLE && note_[(int)l].empty(); }
     VkQueryPool pool(Lane l) const { return pool_[(int)l]; }
 
-    // Recording (the lane owner's thread, inside its command buffer). begin = reset the lane's queries + the
-    // top-of-pipe mark 0; mark = a bottom-of-pipe mark (every command recorded before it has completed).
+    // Recording (the lane owner's thread, inside its command buffer). begin = reset the lane's queries + mark 0;
+    // mark = a bottom-of-pipe mark (every command submitted before it on that queue has completed). Mark 0 is
+    // bottom-of-pipe too (was top-of-pipe until the OV1 judgement of 2026-09-18): a top-of-pipe mark 0 put the wait for
+    // work ALREADY queued (the in-flight async warp on A.q, reached by the first ALL_COMMANDS barrier) inside the
+    // lane's first site, and made that first interval the only TOP->BOTTOM one.
     void begin(Lane l, VkCommandBuffer cmd);
     void mark(Lane l, VkCommandBuffer cmd, uint32_t idx);
     // After the lane's fence was waited: one non-blocking read; the intervals go to the book. false = lost.

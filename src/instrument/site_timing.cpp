@@ -2,6 +2,7 @@
 // query pool per lane, the marks, the non-blocking reads after the lane's fence). Contract: site_timing.hpp.
 // Made with my soul - Swately <3
 #include "instrument/site_timing.hpp"
+#include <chrono>
 #include <cstdio>
 #include <vector>
 
@@ -24,7 +25,11 @@ constexpr Site kSpan[4] = { Site::C_SPAN, Site::F_SPAN, Site::B_SPAN, Site::P_SP
 SiteTiming* site_timing() { return g_site_timing; }
 void site_timing_set(SiteTiming* st) { g_site_timing = st; }
 
-SiteTiming::SiteTiming(double t_arm_ms) : book_(kCapSamples, t_arm_ms, kWarmupMs) {}
+SiteTiming::SiteTiming(double t_arm_ms) : book_(kCapSamples, t_arm_ms, kWarmupMs) {
+    // the offset from the steady clock the samples carry to unix time, taken once here (the report's absolute window)
+    const double unix_s = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    book_.set_epoch_offset(unix_s - t_arm_ms / 1000.0);
+}
 
 // The owner (main.cpp) lives in the block that also owns the worker threads, which closes before the device is
 // destroyed at `done:` — so this runs while every dev_[i] is still valid. After report_and_destroy it is a no-op.
@@ -59,7 +64,7 @@ void SiteTiming::begin(Lane l, VkCommandBuffer cmd) {
     if (!on(l)) return;
     const int i = (int)l;
     vkCmdResetQueryPool(cmd, pool_[i], 0u, kLaneMarks[i]);   // every mark unavailable until this submission writes it
-    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, pool_[i], 0u);
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, pool_[i], 0u);   // after everything queued before the lane
 }
 
 void SiteTiming::mark(Lane l, VkCommandBuffer cmd, uint32_t idx) {

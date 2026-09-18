@@ -134,6 +134,21 @@ int main() {
               "the done-line is ONE line and the last one");
     }
 
+    // ── T7 — the absolute window (added after the OV1 judgement, 2026-09-18): unix = offset + stamp/1000. t_arm 1000,
+    //    warm-up 5000 -> the window starts at stamp 6000 (unix 1006.000 with offset 1000) and ends at the last kept
+    //    sample, stamp 9000 (unix 1009.000); both appear in the header and in the done-line.
+    std::printf("T7 the absolute window\n");
+    {
+        SiteBook b(16u, 1000.0, 5000.0);
+        b.set_epoch_offset(1000.0);
+        b.record(Site::F_MATCH, 1.0, 7000.0); b.record(Site::F_MATCH, 1.0, 9000.0);
+        const std::string rep = b.report(kNoNotes);
+        check(rep.find("t0_epoch=1006.000 t1_epoch=1009.000") != std::string::npos, "done-line carries t0_epoch / t1_epoch");
+        check(rep.find("unix 1006.000 .. 1009.000") != std::string::npos, "the header carries the same window");
+        double mean = 0, p99 = 0, n = 0, msps = 0;
+        check(parse_done(rep, "F.match", mean, p99, n, msps) && approx(n, 2.0), "the site fields still parse after the new fields");
+    }
+
     // ── T6 — a check can fail: a wrong expectation, seen red, then not counted.
     std::printf("T6 the checks can fail (one deliberate red, excluded from the count)\n");
     {
