@@ -27,7 +27,16 @@ PresentStage::PresentStage(VDev& A, const Config& cfg, uint32_t& bridge_w, uint3
     : A_(A), cfg_(cfg), bridge_w_(bridge_w), bridge_h_(bridge_h), bridge_use_km_(bridge_use_km),
       bridge_nt_(bridge_nt), hostMassPtr_(hostMassPtr), total_frames_(total_frames), g_quit_threads_(g_quit_threads) {}
 
-PresentStage::~PresentStage() { tdr_destroy(); }
+PresentStage::~PresentStage() {
+    // --warp-timing: the last async warp batch can still be in flight, and it wrote ts_pool_. The validation layer
+    // caught the destroy under it (2026-09-18, `--validation --warp-timing` alone, 20 s: one "vkDestroyQueryPool():
+    // can't be called on VkQueryPool ... that is currently in use by VkCommandBuffer ..."; zero without the flag).
+    // Wait that one fence first. Off (no pool) -> nothing is waited, byte-identical. vk_wait_live abandons 2 s past
+    // the quit and returns at once on a lost device, so this cannot hang the teardown.
+    if(ts_pool_ != VK_NULL_HANDLE && async_inflight >= 0 && bslot[async_inflight].fence != VK_NULL_HANDLE)
+        vk_wait_live(A_.dev, bslot[async_inflight].fence);
+    tdr_destroy();
+}
 
 // ── init: the PresentSurface, created ON THIS THREAD (legacy present.cpp:406-447) ────────────────────────
 // TRANSFORMS: the two `return;` of the enclosing thread body → `return false;` (the caller returns).
