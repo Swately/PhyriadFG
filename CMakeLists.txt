@@ -177,6 +177,14 @@ target_compile_features(pfg_site_test PRIVATE cxx_std_23)
 target_include_directories(pfg_site_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(pfg_site_test PRIVATE Vulkan::Vulkan)
 
+# --site-timing's D3D11 bracket (D3d11StampRing), tested on copies of KNOWN sizes with a deliberately wrong bracket as
+# its red (OV1 on SITE_TIMING_GATE section 9). It creates a D3D11 device on the GPU, so it is NOT a ctest case: every
+# run is a GPU run (SAFETY 5). Exit 0 = the bracket encloses its copy AND the checks catch one that does not.
+add_executable(pfg_d3d_bracket_test tools/d3d_bracket_test/d3d_bracket_test.cpp)
+target_compile_features(pfg_d3d_bracket_test PRIVATE cxx_std_23)
+target_include_directories(pfg_d3d_bracket_test PRIVATE "${_fw}/render/present/include")
+target_link_libraries(pfg_d3d_bracket_test PRIVATE d3d11 dxgi)
+
 # R3: the row bodies are inputs of the generator (it checks them) and of fg_core.spv (it includes them).
 file(GLOB _layer_bodies CONFIGURE_DEPENDS "${_sh}/layers/*.glsl")
 add_executable(pfg_layer_gen tools/layer_gen.cpp)

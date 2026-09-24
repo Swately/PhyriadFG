@@ -14,12 +14,17 @@ SiteTiming* g_site_timing = nullptr;
 
 struct Interval { Site site; uint32_t a, b; };
 // The named intervals of each lane, between the marks documented beside kLaneMarks (site_timing.hpp).
-constexpr Interval kC[] = { {Site::C_UPLOAD, 0, 1}, {Site::C_CONVERT, 1, 2}, {Site::C_DOWNLOAD, 2, 3} };
-constexpr Interval kF[] = { {Site::F_UPLOAD, 0, 1}, {Site::F_DOWNSAMPLE, 1, 2}, {Site::F_PYRAMID, 2, 3}, {Site::F_MATCH, 3, 4},
-                            {Site::F_WARP_DISCARD, 4, 5}, {Site::F_POST, 5, 6}, {Site::F_COPYOUT, 6, 7} };
+// A site listed more than once is the SUM of its segments (the X.transitions sites, P.upload_frames' two copies).
+constexpr Interval kC[] = { {Site::C_TRANSITIONS, 0, 1}, {Site::C_UPLOAD, 1, 2}, {Site::C_CONVERT, 2, 3},
+                            {Site::C_TRANSITIONS, 3, 4}, {Site::C_DOWNLOAD, 4, 5} };
+constexpr Interval kF[] = { {Site::F_TRANSITIONS, 0, 1}, {Site::F_UPLOAD, 1, 2}, {Site::F_TRANSITIONS, 2, 3},
+                            {Site::F_DOWNSAMPLE, 3, 4}, {Site::F_PYRAMID, 4, 5}, {Site::F_MATCH, 5, 6},
+                            {Site::F_WARP_DISCARD, 6, 7}, {Site::F_POST, 7, 8}, {Site::F_COPYOUT, 8, 9} };
 constexpr Interval kB[] = { {Site::B_DOWNSAMPLE, 0, 1}, {Site::B_PYRAMID, 1, 2}, {Site::B_MATCH, 2, 3},
                             {Site::B_WARP_DISCARD, 3, 4}, {Site::B_COPYOUT, 4, 5} };
-constexpr Interval kP[] = { {Site::P_UPLOAD_FRAMES, 0, 1}, {Site::P_UPLOAD_FIELDS, 1, 2}, {Site::P_CONSENSUS, 2, 3} };
+constexpr Interval kP[] = { {Site::P_TRANSITIONS, 0, 1}, {Site::P_UPLOAD_FRAMES, 1, 2}, {Site::P_TRANSITIONS, 2, 3},
+                            {Site::P_UPLOAD_FRAMES, 3, 4}, {Site::P_TRANSITIONS, 4, 5}, {Site::P_UPLOAD_FIELDS, 5, 6},
+                            {Site::P_CONSENSUS, 6, 7} };
 constexpr Site kSpan[4] = { Site::C_SPAN, Site::F_SPAN, Site::B_SPAN, Site::P_SPAN };
 }  // namespace
 
@@ -77,7 +82,7 @@ bool SiteTiming::read(Lane l, double t_now_ms) {
     if (!on(l)) return false;
     const int i = (int)l;
     const uint32_t n = kLaneMarks[i];
-    uint64_t ts[8] = {};
+    uint64_t ts[16] = {};
     // No WAIT bit: the caller already waited the lane's fence, so every mark it recorded is available; a mark the
     // path did not write (or a device loss) returns VK_NOT_READY and the whole sample is counted as lost.
     const VkResult r = vkGetQueryPoolResults(dev_[i], pool_[i], 0u, n, sizeof ts, ts, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
@@ -97,11 +102,12 @@ bool SiteTiming::read(Lane l, double t_now_ms) {
         default: return false;
     }
     bool ok = true;
-    double v[8] = {};
-    for (size_t k = 0; k < niv; ++k) v[k] = ms(iv[k].a, iv[k].b, ok);
+    double acc[kSiteCount] = {};
+    bool   seen[kSiteCount] = {};
+    for (size_t k = 0; k < niv; ++k) { acc[(int)iv[k].site] += ms(iv[k].a, iv[k].b, ok); seen[(int)iv[k].site] = true; }
     const double span = ms(0u, n - 1u, ok);
     if (!ok) { book_.lost(kSpan[i]); return false; }
-    for (size_t k = 0; k < niv; ++k) book_.record(iv[k].site, v[k], t_now_ms);
+    for (int s = 0; s < kSiteCount; ++s) if (seen[s]) book_.record((Site)s, acc[s], t_now_ms);   // one sample per site
     book_.record(kSpan[i], span, t_now_ms);
     return true;
 }

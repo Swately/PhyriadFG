@@ -1043,6 +1043,10 @@ struct Config {
     bool  warp_timing=false;        // --warp-timing (R4b, INSTRUMENT): GPU timestamps around the warp batch + the submit->fence latency,
                                     // per fresh present in the CSV (phyriadfg_warp_gpu_ms / _lat_ms) and as EMAs in the stats line. Default off
                                     // (two vkCmdWriteTimestamp per tick when on; nothing when off -> byte-identical).
+    bool  gme_sub2_force=false;     // --gme-sub2-force (DIAGNOSTIC, P-054): start with the gme fit's step-2 sub-sample latched, the
+                                    // state flow_consume.cpp's one-way latch (fit CPU EMA > 2.0 ms) reaches mid-run in almost
+                                    // every run. For equivalence runs, so the planes downstream of the fit do not depend on
+                                    // WHEN the latch fired. Default off: the latch behaves exactly as before.
     bool  site_timing=false;        // --site-timing (INSTRUMENT, OAP spec a-f): GPU timestamps at the named sites of one source frame's
                                     // path (convert, fwd/bwd flow, bridge upload) + host walls, reported as distributions at teardown
                                     // (src/instrument/site_timing.hpp). Implies --warp-timing (the P.warp site). Default off: no query

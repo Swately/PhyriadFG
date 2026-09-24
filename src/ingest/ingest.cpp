@@ -63,17 +63,19 @@ static void convert_record_submit(FgContext& ctx, uint32_t cap_rot180, int s,
                     VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdA,&bi);
                     if(st) st->begin(Lane::C,cmdA);
                     img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
+                    if(st) st->mark(Lane::C,cmdA,1u);   // C.upload starts: the opening barrier is done (it goes to C.transitions)
                     { VkBufferImageCopy cp=full_bic(NAT_W,NAT_H); vkCmdCopyBufferToImage(cmdA,a_src,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
+                    if(st) st->mark(Lane::C,cmdA,2u);   // C.upload ends: the host frame is on the device (the copy alone)
                     img_barrier(cmdA,Anative.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
-                    if(st) st->mark(Lane::C,cmdA,1u);   // C.upload ends: the host frame is on the device
                     img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT);
                     vkCmdBindPipeline(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvPipe); vkCmdBindDescriptorSets(cmdA,VK_PIPELINE_BIND_POINT_COMPUTE,cvLayout,0,1,&cvSet,0,nullptr);
                     struct{uint32_t is_hdr;float exposure;uint32_t rot180;}pcv{IS_HDR?1u:0u,1.f,cap_rot180}; vkCmdPushConstants(cmdA,cvLayout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcv),&pcv);
                     vkCmdDispatch(cmdA,(WW+7)/8,(WH+7)/8,1);
-                    if(st) st->mark(Lane::C,cmdA,2u);   // C.convert ends
+                    if(st) st->mark(Lane::C,cmdA,3u);   // C.convert ends (its two barriers included)
                     img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+                    if(st) st->mark(Lane::C,cmdA,4u);   // C.download starts (the barrier above goes to C.transitions)
                     { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyImageToBuffer(cmdA,Awork.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hR_a[s].buf,1,&cp); }
-                    if(st) st->mark(Lane::C,cmdA,3u);   // C.download ends: the converted frame is back in host memory
+                    if(st) st->mark(Lane::C,cmdA,5u);   // C.download ends: the converted frame is back in host memory
                     // Crash safety: when convert runs on the PRIMARY (--convert-gpu primary → use_igpu_convert
                     // false, so we are in THIS branch) route C's convert submit off A.q (P-exclusive) to A.q2
                     // (same-family, lock-free; cmdA is A.pool-bound). Default (--convert-gpu igpu) never enters

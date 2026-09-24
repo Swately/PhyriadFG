@@ -647,7 +647,7 @@ void run_flow(FgContext& ctx){
             // count (for the first-3-fits sanity print + the startup EMA print); gme_sub2 = sub-sample the
             // grid every 2nd block once the fit cost exceeds the <2ms budget. gme_fit_printed latches the
             // one-time startup print.
-            double gme_fit_ema=0.0; uint64_t gme_fits=0; bool gme_sub2=false; bool gme_fit_printed=false;
+            double gme_fit_ema=0.0; uint64_t gme_fits=0; bool gme_sub2=cfg.gme_sub2_force; bool gme_fit_printed=false;   // --gme-sub2-force (P-054): latched from pair 0
             // gme-gpu: F-local verify-mode scratch (--gme-gpu-verify only). The CPU gme_fit_affine is re-run
             // into these on each pair and compared to the GPU model + mask; gme_vfy_n latches the count for
             // the periodic print. Zero-alloc steady state (sized once).
@@ -1091,6 +1091,7 @@ void run_flow(FgContext& ctx){
                 const bool st_fl = st_f_on && use_wap && have_prev_f;   // --site-timing: this cmdF carries the whole F lane
                 if(st_fl) st_ft->begin(pfg::instrument::Lane::F,cmdF);
                 if(use_igpu_convert){
+                    if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,1u);   // iGPU path: marks 1-2 bracket the whole unpack
                     if(!do_prestage){VkBufferCopy bc{0,0,VkDeviceSize(WW)*WH*3u}; vkCmdCopyBuffer(cmdF,hRP_b[s].buf,hRP_b_dev[s].buf,1,&bc);}   // prestaged → copy already submitted on cmdF_pre (A.q2, ahead of cmdF); OFF → inline
                     {VkBufferMemoryBarrier bmb{}; bmb.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER; bmb.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; bmb.dstAccessMask=VK_ACCESS_SHADER_READ_BIT; bmb.buffer=hRP_b_dev[s].buf; bmb.offset=0; bmb.size=VK_WHOLE_SIZE; vkCmdPipelineBarrier(cmdF,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,nullptr,1,&bmb,0,nullptr);}
                     img_barrier(cmdF,Bframe[cur_f].img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT);
@@ -1099,12 +1100,15 @@ void run_flow(FgContext& ctx){
                     struct{uint32_t W;uint32_t H;}pcub{WW,WH}; vkCmdPushConstants(cmdF,ubPipe[s].layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(pcub),&pcub);
                     vkCmdDispatch(cmdF,(WW+7)/8,(WH+7)/8,1);
                     img_barrier(cmdF,Bframe[cur_f].img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
+                    if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,2u);
                 } else {
                     img_barrier(cmdF,Bframe[cur_f].img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
+                    if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,1u);   // F.upload starts (the opening barrier goes to F.transitions)
                     { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyBufferToImage(cmdF,hR_b[s].buf,Bframe[cur_f].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
+                    if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,2u);   // F.upload ends (the copy alone)
                     img_barrier(cmdF,Bframe[cur_f].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                 }
-                if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,1u);   // F.upload ends (the capture frame is on the flow device)
+                if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,3u);   // the upload stage ends (its closing barrier goes to F.transitions)
                 // per-set N — auto uses the F-owned live_n (degrades by measured capacity); explicit uses the
                 // cap. Built AND published with THIS set's N so P paces it self-consistently. span = source
                 // frames this pair covers.
@@ -1155,9 +1159,9 @@ void run_flow(FgContext& ctx){
                             VkCommandBufferBeginInfo bnv{}; bnv.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdF,&bnv);
                         } else {
                         if(flow_div>1u) flow_downsample(cmdF,prv_f,cur_f,fa,fb);
-                        if(st_fl){ st_ft->mark(pfg::instrument::Lane::F,cmdF,2u); ofp.set_phase_marks(st_ft->pool(pfg::instrument::Lane::F),3u); }   // F.downsample ends; marks 3/4 = pyramid / match
+                        if(st_fl){ st_ft->mark(pfg::instrument::Lane::F,cmdF,4u); ofp.set_phase_marks(st_ft->pool(pfg::instrument::Lane::F),5u); }   // F.downsample ends; marks 5/6 = pyramid / match
                         (void)ofp.record_optical_flow(cmdF,fa,fb,Cinterp.view,0.5f);
-                        if(st_fl){ ofp.set_phase_marks(VK_NULL_HANDLE,0u); st_ft->mark(pfg::instrument::Lane::F,cmdF,5u); }   // F.warp_discard ends (the k=0.5 warp WAP never reads)
+                        if(st_fl){ ofp.set_phase_marks(VK_NULL_HANDLE,0u); st_ft->mark(pfg::instrument::Lane::F,cmdF,7u); }   // F.warp_discard ends (the k=0.5 warp WAP never reads)
                         }
                         if(use_mv_smooth){
                             // Smooth the MV in place before shipping (same pass the warp path uses;
@@ -1188,7 +1192,7 @@ void run_flow(FgContext& ctx){
                                        hDIS_b[f_gen].buf,(VkDeviceSize)mvw*mvh,hGmeM_b[f_gen].buf,
                                        fwd_gme_iters);
                         }
-                        if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,6u);   // F.post ends (mv_smooth + the GPU gme fit, when on)
+                        if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,8u);   // F.post ends (mv_smooth + the GPU gme fit, when on)
                         // MV + SAD are in SHADER_READ_ONLY after the match → TRANSFER_SRC → copy
                         // out to the per-gen host bridges → back to SHADER_READ_ONLY (the next
                         // match leaves them RO again; restoring keeps the layout contract clean).
@@ -1209,7 +1213,7 @@ void run_flow(FgContext& ctx){
                             { VkBufferImageCopy cp=full_bic(mvw,mvh); vkCmdCopyImageToBuffer(cmdF,ofp.cand_image(),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hC2_b[f_gen].buf,1,&cp); }
                             img_barrier(cmdF,ofp.cand_image(),VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_READ_BIT);
                         }
-                        if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,7u);   // F.copyout ends: MV, SAD (+ candidates) are in the host bridges
+                        if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,9u);   // F.copyout ends: MV, SAD (+ candidates) are in the host bridges
                     }
                     // ── snapshot this pair's context (the deferred consume must NOT read the live loop locals,
                     // which advance to the next pair before it runs). ──────────────────────────────────────

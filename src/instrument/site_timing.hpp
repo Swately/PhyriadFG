@@ -43,10 +43,10 @@ namespace pfg::instrument {
 
 // The sites, in the order the report prints them (the chain a source frame travels).
 enum class Site : uint8_t {
-    C_CAP_COPY, C_UPLOAD, C_CONVERT, C_DOWNLOAD, C_SUBMIT_WAIT,
-    F_RING_WAIT, F_UPLOAD, F_DOWNSAMPLE, F_PYRAMID, F_MATCH, F_WARP_DISCARD, F_POST, F_COPYOUT, F_SUBMIT_WAIT,
+    C_CAP_COPY, C_UPLOAD, C_CONVERT, C_DOWNLOAD, C_TRANSITIONS, C_SUBMIT_WAIT,
+    F_RING_WAIT, F_UPLOAD, F_TRANSITIONS, F_DOWNSAMPLE, F_PYRAMID, F_MATCH, F_WARP_DISCARD, F_POST, F_COPYOUT, F_SUBMIT_WAIT,
     B_DOWNSAMPLE, B_PYRAMID, B_MATCH, B_WARP_DISCARD, B_COPYOUT, B_WAIT,
-    P_UPLOAD_FRAMES, P_UPLOAD_FIELDS, P_CONSENSUS, P_SUBMIT_WAIT, P_WARP,
+    P_UPLOAD_FRAMES, P_TRANSITIONS, P_UPLOAD_FIELDS, P_CONSENSUS, P_SUBMIT_WAIT, P_WARP,
     // the D3D11 side (added after the OV1 judgement): D3D11 timestamps on the capture device and the present device
     D_CAP_COPY,                            // GPU: the WGC callback's CopyResource(staging ring slot, captured surface)
     D_BRIDGE_COPY,                         // GPU: PresentSurface's CopyResource(backbuffer, imported bridge)
@@ -158,12 +158,20 @@ private:
 SiteTiming* site_timing();
 void site_timing_set(SiteTiming* st);
 
-// The marks each lane writes (indices into its pool). Mark 0 is always begin().
-inline constexpr uint32_t kLaneMarks[4] = { 4u, 8u, 6u, 4u };   // C, F, B, P
-// F: 0 begin | 1 after upload | 2 after downsample | 3 pyramid (framework) | 4 match (framework) | 5 after the
-//    record (warp_discard) | 6 after post | 7 end (after the copy-outs)
+// The marks each lane writes (indices into its pool). Mark 0 is always begin(). Since the OV1 judgement of
+// 2026-09-24 every whole-frame COPY site is bracketed by its own two marks, written after the copy's opening layout
+// barrier and before its closing one, so the site holds the copy alone; the barriers go to X.transitions.
+inline constexpr uint32_t kLaneMarks[4] = { 6u, 10u, 6u, 8u };   // C, F, B, P
+// C: 0 begin | 1 before the upload copy | 2 after it | 3 after the convert dispatch | 4 before the download copy |
+//    5 after it.  C.upload [1,2] . C.convert [2,3] (with the upload's closing and the convert's opening barrier) .
+//    C.download [4,5] . C.transitions [0,1] + [3,4]
+// F: 0 begin | 1 before the upload copy | 2 after it | 3 after its closing barrier | 4 after downsample |
+//    5 pyramid (framework) | 6 match (framework) | 7 after the record (warp_discard) | 8 after post | 9 end (after the
+//    copy-outs).  F.upload [1,2] . F.transitions [0,1] + [2,3] . then [3,4] [4,5] [5,6] [6,7] [7,8] [8,9]. On the
+//    iGPU-convert path (not the default) marks 1-2 bracket the whole unpack, barriers included.
 // B: 0 begin | 1 after downsample | 2 pyramid (framework) | 3 match (framework) | 4 after the record | 5 end
-// C: 0 begin | 1 after upload | 2 after convert | 3 end (after download)
-// P: 0 begin | 1 after the frame uploads | 2 after the field uploads | 3 end (after consensus)
+// P: 0 begin | 1 before the prev copy | 2 after it | 3 before the cur copy | 4 after it | 5 after the frame uploads
+//    (+ the field when on) | 6 after the field uploads | 7 end (after consensus).  P.upload_frames [1,2] + [3,4] .
+//    P.transitions [0,1] + [2,3] + [4,5] . P.upload_fields [5,6] . P.consensus [6,7]
 
 }  // namespace pfg::instrument

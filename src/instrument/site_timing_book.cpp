@@ -11,15 +11,17 @@
 namespace pfg::instrument {
 
 namespace {
-constexpr SiteInfo kInfo[kSiteCount] = {
+constexpr SiteInfo kInfo[] = {
     {"C.cap_copy",       SiteKind::Host}, {"C.upload",       SiteKind::Gpu},  {"C.convert",     SiteKind::Gpu},
-    {"C.download",       SiteKind::Gpu},  {"C.submit_wait",  SiteKind::Host},
-    {"F.ring_wait",      SiteKind::Host}, {"F.upload",       SiteKind::Gpu},  {"F.downsample",  SiteKind::Gpu},
+    {"C.download",       SiteKind::Gpu},  {"C.transitions",  SiteKind::Gpu},  {"C.submit_wait", SiteKind::Host},
+    {"F.ring_wait",      SiteKind::Host}, {"F.upload",       SiteKind::Gpu},  {"F.transitions", SiteKind::Gpu},
+    {"F.downsample",     SiteKind::Gpu},
     {"F.pyramid",        SiteKind::Gpu},  {"F.match",        SiteKind::Gpu},  {"F.warp_discard",SiteKind::Gpu},
     {"F.post",           SiteKind::Gpu},  {"F.copyout",      SiteKind::Gpu},  {"F.submit_wait", SiteKind::Host},
     {"B.downsample",     SiteKind::Gpu},  {"B.pyramid",      SiteKind::Gpu},  {"B.match",       SiteKind::Gpu},
     {"B.warp_discard",   SiteKind::Gpu},  {"B.copyout",      SiteKind::Gpu},  {"B.wait",        SiteKind::Host},
-    {"P.upload_frames",  SiteKind::Gpu},  {"P.upload_fields",SiteKind::Gpu},  {"P.consensus",   SiteKind::Gpu},
+    {"P.upload_frames",  SiteKind::Gpu},  {"P.transitions",  SiteKind::Gpu},  {"P.upload_fields", SiteKind::Gpu},
+    {"P.consensus",      SiteKind::Gpu},
     {"P.submit_wait",    SiteKind::Host}, {"P.warp",         SiteKind::Gpu},
     {"D.cap_copy",       SiteKind::Gpu},  {"D.bridge_copy",  SiteKind::Gpu},
     {"D.km_acquire",     SiteKind::Host}, {"D.copy_call",    SiteKind::Host}, {"D.present_call", SiteKind::Host},
@@ -27,6 +29,7 @@ constexpr SiteInfo kInfo[kSiteCount] = {
     {"C.span",           SiteKind::Span}, {"F.span",         SiteKind::Span}, {"B.span",        SiteKind::Span},
     {"P.span",           SiteKind::Span},
 };
+static_assert(sizeof kInfo / sizeof kInfo[0] == kSiteCount, "one name per Site, in the enum's order");
 
 // Appends the formatted text WHOLE. It used a fixed 512-byte buffer and cut anything longer: the header line grew past
 // it with the D3D11 note, lost its tail and its newline, and the table header ran onto it (T8; found in the first

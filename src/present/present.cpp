@@ -701,9 +701,13 @@ void run_present(FgContext& ctx){
                 VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; vkBeginCommandBuffer(cmdBridge,&bi);
                 const bool st_pl = st_pt && !up_xfer && st_pt->on(pfg::instrument::Lane::P);   // the fenced path only
                 if(st_pl) st_pt->begin(pfg::instrument::Lane::P,cmdBridge);
-                auto up_imgA=[&](Img& dst,VkBuffer src,uint32_t w,uint32_t h){
+                // mb / ma (--site-timing, the frame copies only): P-lane marks just before / after the copy, so the site
+                // holds the copy alone; -1 = none (every other call, and always when the flag is off).
+                auto up_imgA=[&](Img& dst,VkBuffer src,uint32_t w,uint32_t h,int mb=-1,int ma=-1){
                     img_barrier(cmdBridge,dst.img,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_ACCESS_SHADER_READ_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);
+                    if(st_pl && mb>=0) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,(uint32_t)mb);
                     { VkBufferImageCopy cp=full_bic(w,h); vkCmdCopyBufferToImage(cmdBridge,src,dst.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
+                    if(st_pl && ma>=0) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,(uint32_t)ma);
                     img_barrier(cmdBridge,dst.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                 };
                 // R5 step 4: the per-channel transport is gated by the declared ROWS (cfg.layers.eff), not by the
@@ -719,8 +723,8 @@ void run_present(FgContext& ctx){
                 const bool up_gmebwd = up_row(pfg::layers::LayerId::GME_BWD);
                 const bool up_per    = up_row(pfg::layers::LayerId::PERSISTENCE);
                 const bool up_vbl    = up_row(pfg::layers::LayerId::VBLEND);
-                up_imgA(wapPrevA,hR_a[prev_slot].buf,WW,WH);
-                up_imgA(wapCurA, hR_a[cur_slot].buf, WW,WH);
+                up_imgA(wapPrevA,hR_a[prev_slot].buf,WW,WH,1,2);   // --site-timing: P.upload_frames = [1,2] + [3,4]
+                up_imgA(wapCurA, hR_a[cur_slot].buf, WW,WH,3,4);
                 // upload the iGPU contour field (cur_slot — the SAME real slot
                 // as wapCurA / hR_a[cur_slot]) into wapFIELDA. Distinct from up_imgA: the imageLoad readers (the
                 // fill AND the warp's binding 11) read the field as a STORAGE image in GENERAL, so it ends in
@@ -731,7 +735,7 @@ void run_present(FgContext& ctx){
                     { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyBufferToImage(cmdBridge,hFIELD_a[cur_slot].buf,wapFIELDA.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
                     img_barrier(cmdBridge,wapFIELDA.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_GENERAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                 }
-                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,1u);   // P.upload_frames ends (prev + cur, + the field when on)
+                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,5u);   // the frame-upload stage ends (its barriers, + the field when on, go to P.transitions)
                 up_imgA(wapMVA,  hMV_a[gen].buf,  wap_mvw,wap_mvh);
                 // --vblend: upload the NEXT pair's forward MV grid into wapMVTA (binding 12) — the
                 // velocity-continuity TARGET. Sourced from the SAME hMV_a forward-MV bridge as wapMVA, just at
@@ -756,7 +760,7 @@ void run_present(FgContext& ctx){
                 // on use_inertia; off-inertia wapPERA stays in its initial RO state and is never sampled
                 // (inertia_thresh=0). Same DST→RO per-pair upload contract as the dissidence masks.
                 if(up_per) up_imgA(wapPERA, hPER_a[gen].buf, wap_mvw,wap_mvh);
-                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,2u);   // P.upload_fields ends (MV, SAD, MV_bwd, candidates, masks)
+                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,6u);   // P.upload_fields ends (MV, SAD, MV_bwd, candidates, masks)
                 // ── in-cmdBridge 3x3 consensus on the just-uploaded MV image(s) ─────
                 // The MV image is RO after up_imgA (the pass samples it); cur_real (wapCurA) was uploaded
                 // above too (RO) — the consensus pass reads it for color membership. Dispatch
@@ -789,7 +793,7 @@ void run_present(FgContext& ctx){
                     median_filter(medPipe.set_mv,wapMVA);
                     if(use_bidir) median_filter(medPipe.set_mvb,wapMVBA);
                 }
-                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,3u);   // P.consensus ends
+                if(st_pl) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,7u);   // P.consensus ends
                 vkEndCommandBuffer(cmdBridge);
                 if(up_xfer){
                     // --upload-xfer: submit to A.qT — WAIT semWarpTL>=xfer_W (the WAR back-edge:

@@ -504,7 +504,14 @@ void consume_wap(FgContext& ctx, ConsumeState& S, const FwdPend& pc, bool allow_
                 if(use_gme&&gme_did_fit){
                     gme_fit_ema=gme_fit_ema>0.0?gme_fit_ema*0.8+gme_fit_total_ms*0.2:gme_fit_total_ms;
                     gme_fit_us.store((uint64_t)(gme_fit_ema*1000.0));
-                    if(!gme_sub2&&gme_fit_ema>2.0) gme_sub2=true;
+                    if(!gme_sub2&&gme_fit_ema>2.0){
+                        gme_sub2=true;
+                        // P-054: the moment the one-way latch fires, printed once when an instrument is armed (a run with no
+                        // instrument prints exactly what it printed before).
+                        if(cfg.site_timing||cfg.gdump_dir[0])
+                            std::printf("[ra] gme: sub2 latched at fit %llu (fit CPU EMA %.2f ms > 2.0) -- the fit is step-2 sub-sampled from here on\n",
+                                        (unsigned long long)gme_fits,gme_fit_ema);
+                    }
                     ++gme_fits;
                     if(gme_fits<=3)
                         std::printf("[ra] gme: t=(%.2f,%.2f)px b=%.4f c=%.4f e=%.4f f=%.4f dis:%.0f%% fit=%.2fms%s%s\n",
