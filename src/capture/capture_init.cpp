@@ -235,6 +235,13 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
             }
         }
 
+        // --site-timing: the D.cap_copy bracket, on the SAME device + context as the callback's CopyResource.
+        if(cfg.site_timing){
+            if(wgc_ctx->cap_ts.create(cap_dev,cap_ctx,2))
+                std::printf("[ra] --site-timing: D3D11 timestamps armed around the WGC callback's CopyResource (D.cap_copy)\n");
+            else
+                std::printf("[ra] --site-timing: D3D11 timestamp queries unavailable on the capture device -- D.cap_copy not measured\n");
+        }
         // FrameArrived callback — CopyResource to next ring slot only. Map/memcpy run in the main loop;
         // D3D11Multithread (d3d_init) makes both sides safe. Captures pointers by value to survive teardown
         // ordering.
@@ -246,7 +253,8 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
         const bool lt_on=cfg.latency_trace;   // captured once → byte-identical callback when off
         const bool cf_on=cfg.copy_fence;      // captured once (post-probe) → zero work in the callback when off
         const bool dp_on=cfg.dpi_probe;       // --dpi-probe: one-shot first-frame ContentSize log (default off → dead in the callback → byte-identical)
-        wgc_ctx->pool.FrameArrived([raw_wctx,raw_ctx,lt_on,cf_on,dp_on](auto& p,auto&){
+        const bool ts_on=wgc_ctx->cap_ts.armed();   // --site-timing (captured once; false when off -> no-op below)
+        wgc_ctx->pool.FrameArrived([raw_wctx,raw_ctx,lt_on,cf_on,dp_on,ts_on](auto& p,auto&){
             if(!raw_wctx->running.load()) return;
             auto frame=p.TryGetNextFrame(); if(!frame) return;
             if(dp_on){ static bool _dp_once=false; if(!_dp_once){ _dp_once=true; auto _cs=frame.ContentSize(); std::printf("[ra] --dpi-probe: first frame.ContentSize()=%dx%d (what WGC ACTUALLY delivers — the non-circular truth vs the pool size)\n",_cs.Width,_cs.Height); } }
@@ -305,7 +313,9 @@ bool init_wgc_backend(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, int c
             const uint32_t w=raw_wctx->ring_write.load();
             const uint32_t r=raw_wctx->ring_read.load();
             if(w-r>=WgcCtx::RING_N){ ++raw_wctx->arrived; ++raw_wctx->ringfull; return; }  // ring full; drop frame (ringfull counts the SILENT drop arrived++ masks)
+            const int ts_slot = ts_on ? raw_wctx->cap_ts.begin() : -1;   // --site-timing: D.cap_copy (-1 = off / skipped)
             raw_ctx->CopyResource(raw_wctx->ring[w%WgcCtx::RING_N],tex.get());
+            if(ts_slot>=0){ raw_wctx->cap_ts.mark(ts_slot,1); raw_wctx->cap_ts.end(ts_slot); }   // before the Flush below submits them
             ++raw_wctx->ring_write;
             // --copy-fence: enqueue a GPU-timeline Signal AFTER the CopyResource for slot w%N. The value is
             // w+1 (== ring_write post-increment) so the C-thread, seeing ring_write==W, can wait fence>=W for

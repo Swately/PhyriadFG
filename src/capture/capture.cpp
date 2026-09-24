@@ -682,6 +682,7 @@ void run_capture(FgContext& ctx){
                         if(st_cap){ const double tn=now_ms(); st_cap->host(pfg::instrument::Site::C_CAP_COPY,tn-_st_mc0,tn); }
                         if(cfg.latency_trace) _wmc_ms=now_ms()-_w_t_mc0;
                         cap_ctx->Unmap(wgc_ctx->ring[(use_cnt-1u)%WgcCtx::RING_N],0); wgc_ctx->ring_read.store(use_cnt);
+                        if(st_cap && wgc_ctx->cap_ts.armed()) st_cap->drain_d3d(wgc_ctx->cap_ts,pfg::instrument::Site::D_CAP_COPY,now_ms());   // --site-timing: D.cap_copy
                         arr_ts=now_ms();   // WGC consume instant (la referencia PLL — mismo instante que el serial)
                         if(cfg.latency_trace){ const uint32_t cs=(use_cnt-1u)%WgcCtx::RING_N;
                             lt_wgc_submit_ms =(double)wgc_ctx->ring_submit_us[cs].load()/1000.0;
@@ -719,6 +720,7 @@ void run_capture(FgContext& ctx){
                     if(st_cap){ const double tn=now_ms(); st_cap->host(pfg::instrument::Site::C_CAP_COPY,tn-_st_mc0,tn); }
                     if(cfg.latency_trace) _wmc_ms=now_ms()-_w_t_mc0;
                     cap_ctx->Unmap(wgc_ctx->ring[(use_cnt-1u)%WgcCtx::RING_N],0); wgc_ctx->ring_read.store(use_cnt);
+                    if(st_cap && wgc_ctx->cap_ts.armed()) st_cap->drain_d3d(wgc_ctx->cap_ts,pfg::instrument::Site::D_CAP_COPY,now_ms());   // --site-timing: D.cap_copy
                     arr_ts=now_ms();   // WGC consume instant (≈ delivery + copy; el jitter lo absorbe la EMA+banda)
                     if(cfg.latency_trace){ const uint32_t cs=(use_cnt-1u)%WgcCtx::RING_N;
                         lt_wgc_submit_ms =(double)wgc_ctx->ring_submit_us[cs].load()/1000.0;

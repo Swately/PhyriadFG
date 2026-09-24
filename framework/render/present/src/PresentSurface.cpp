@@ -37,7 +37,9 @@
 #include <dcomp.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <phyriad/render/present/D3d11StampRing.hpp>   // set_gpu_timing (INSTRUMENT, default off)
 #include <cstdio>      // swprintf — the per-instance class-name suffix
 #include <cwchar>      // wcscpy / wchar_t
 #include <exception>   // std::set_terminate / std::terminate_handler (crash last-gasp)
@@ -207,6 +209,10 @@ struct PresentSurface::Impl {
     ID3D11Texture2D*        backbuffer = nullptr;
     HANDLE                  waitable_obj = nullptr;  // waitable object (default-off); app-owned → CloseHandle
 
+    // set_gpu_timing (INSTRUMENT, default off): the CopyResource bracket + the host walls, stored by ring slot.
+    D3d11StampRing          gpu_ts;
+    PresentSurface::GpuTiming gpu_host[D3d11StampRing::kSlots] = {};
+
     IDCompositionDevice* dcdev = nullptr;
     IDCompositionTarget* dctgt = nullptr;
     IDCompositionVisual* dcvis = nullptr;
@@ -354,6 +360,7 @@ struct PresentSurface::Impl {
         }
         rel(keyed); rel(imported);
         rel(dcvis); rel(dctgt); rel(dcdev);
+        gpu_ts.release();   // set_gpu_timing's queries go before their device (no-op when never armed)
         rel(backbuffer); rel(sc); rel(ctx); rel(dev);
         if (hwnd) { DestroyWindow(hwnd); hwnd = nullptr; }
         // Pump so the window actually disappears before the class is unregistered.
@@ -673,14 +680,24 @@ PresentSurface::submit(const SharedFrameHandle& s) noexcept {
 
     // keyed-mutex acquire (the platform cross-device sync). A timeout degrades to
     // a skipped present — return the error, never block the presenter.
+    // set_gpu_timing (INSTRUMENT): host walls around the acquire, the copy call and the Present call; the GPU
+    // bracket around the copy. Off (the ring unarmed) -> tim is false and nothing below records anything.
+    using tclk = std::chrono::steady_clock;
+    const bool tim = impl_->gpu_ts.armed();
+    tclk::time_point t_a0{}, t_a1{}, t_c1{};
+    if (tim) t_a0 = tclk::now();
     if (impl_->keyed) {
         HRESULT a = impl_->keyed->AcquireSync(s.keyed_mutex_key, kAcquireTimeoutMs);
         if (a == static_cast<HRESULT>(WAIT_TIMEOUT)) return fail(phyriad::ErrorCode::Timeout);
         if (FAILED(a)) return fail(phyriad::ErrorCode::SystemError);
     }
+    if (tim) t_a1 = tclk::now();
+    const int ts_slot = tim ? impl_->gpu_ts.begin() : -1;
 
     impl_->ctx->CopyResource(impl_->backbuffer, impl_->imported);  // the one copy/frame
 
+    if (ts_slot >= 0) { impl_->gpu_ts.mark(ts_slot, 1); impl_->gpu_ts.end(ts_slot); }
+    if (tim) t_c1 = tclk::now();
     if (impl_->keyed) impl_->keyed->ReleaseSync(s.keyed_mutex_key);
 
     // Device-loss hardening — dxgi_live is ALWAYS-ON but IDENTITY-ON-SUCCESS (the happy path returns
@@ -688,7 +705,15 @@ PresentSurface::submit(const SharedFrameHandle& s) noexcept {
     // OwnWindow OWNS the displayed DXGI present, so this present-site takes the device-loss hit
     // directly. Present uses the sync_interval knob (defaults 0) for EVERY style — the OwnWindow
     // handling is purely in the result classification below.
+    const tclk::time_point t_p0 = tim ? tclk::now() : tclk::time_point{};
     const HRESULT hr = impl_->sc->Present(impl_->desc.sync_interval, 0);
+    if (ts_slot >= 0) {   // the host walls travel with the bracket, by slot (same thread writes and reads them)
+        using ms = std::chrono::duration<double, std::milli>;
+        PresentSurface::GpuTiming& g = impl_->gpu_host[ts_slot];
+        g.acquire_ms      = ms(t_a1 - t_a0).count();
+        g.copy_call_ms    = ms(t_c1 - t_a1).count();
+        g.present_call_ms = ms(tclk::now() - t_p0).count();
+    }
     // Overlay styles (DcompCt/Dcomp/Baseline): SUCCEEDED → {}, FAILED → SystemError. The device-loss
     // recovery/terminal handling is gated to OwnWindow (it is a benign composition surface; it does
     // not own the panel).
@@ -764,6 +789,30 @@ std::optional<PresentSurface::FlipStats> PresentSurface::last_flip_qpc() const n
                       static_cast<uint32_t>(fs.PresentCount) };
 }
 
+// INSTRUMENT (default off): the D3D11 side of submit(). Presenting thread only.
+void PresentSurface::set_gpu_timing(bool on) noexcept {
+    if (!impl_) return;
+    if (!on) { impl_->gpu_ts.release(); return; }
+    if (!impl_->gpu_ts.armed()) (void)impl_->gpu_ts.create(impl_->dev, impl_->ctx, 2);
+}
+bool PresentSurface::gpu_timing_on() const noexcept { return impl_ && impl_->gpu_ts.armed(); }
+bool PresentSurface::take_gpu_timing(GpuTiming& out) noexcept {
+    if (!impl_ || !impl_->gpu_ts.armed()) return false;
+    for (;;) {
+        double iv[D3d11StampRing::kMaxMarks - 1] = {};
+        int slot = -1;
+        const D3d11StampRing::Take t = impl_->gpu_ts.take(iv, &slot);
+        if (t == D3d11StampRing::Take::None) return false;
+        if (t == D3d11StampRing::Take::Disjoint) continue;   // counted inside the ring; look at the next one
+        out = impl_->gpu_host[slot];
+        out.copy_gpu_ms = iv[0];
+        return true;
+    }
+}
+uint64_t PresentSurface::gpu_timing_lost() const noexcept {
+    return impl_ ? impl_->gpu_ts.skipped() + impl_->gpu_ts.disjoint() : 0u;
+}
+
 // ─── move + destruction ─────────────────────────────────────────────────────
 PresentSurface::PresentSurface(PresentSurface&& o) noexcept : impl_(o.impl_) { o.impl_ = nullptr; }
 PresentSurface& PresentSurface::operator=(PresentSurface&& o) noexcept {
@@ -803,6 +852,10 @@ bool PresentSurface::is_yielded() const noexcept { return false; }  // is_yielde
 bool PresentSurface::present_is_fp16() const noexcept { return false; }
 bool PresentSurface::device_lost() const noexcept { return false; }  // device_lost() stub
 std::optional<PresentSurface::FlipStats> PresentSurface::last_flip_qpc() const noexcept { return std::nullopt; }  // last_flip_qpc() stub
+void PresentSurface::set_gpu_timing(bool) noexcept {}                                       // gpu timing stubs
+bool PresentSurface::gpu_timing_on() const noexcept { return false; }
+bool PresentSurface::take_gpu_timing(GpuTiming&) noexcept { return false; }
+uint64_t PresentSurface::gpu_timing_lost() const noexcept { return 0u; }
 
 PresentSurface::PresentSurface(PresentSurface&& o) noexcept : impl_(o.impl_) { o.impl_ = nullptr; }
 PresentSurface& PresentSurface::operator=(PresentSurface&& o) noexcept {

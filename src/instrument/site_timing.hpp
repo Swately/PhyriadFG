@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+namespace phyriad::render::present { class D3d11StampRing; }   // the D3D11 sites' rings (framework, header-only)
+
 namespace pfg::instrument {
 
 // The sites, in the order the report prints them (the chain a source frame travels).
@@ -45,7 +47,11 @@ enum class Site : uint8_t {
     F_RING_WAIT, F_UPLOAD, F_DOWNSAMPLE, F_PYRAMID, F_MATCH, F_WARP_DISCARD, F_POST, F_COPYOUT, F_SUBMIT_WAIT,
     B_DOWNSAMPLE, B_PYRAMID, B_MATCH, B_WARP_DISCARD, B_COPYOUT, B_WAIT,
     P_UPLOAD_FRAMES, P_UPLOAD_FIELDS, P_CONSENSUS, P_SUBMIT_WAIT, P_WARP,
-    F_ITER, F_CPU,                         // the F-thread pair wall and its unbucketed remainder
+    // the D3D11 side (added after the OV1 judgement): D3D11 timestamps on the capture device and the present device
+    D_CAP_COPY,                            // GPU: the WGC callback's CopyResource(staging ring slot, captured surface)
+    D_BRIDGE_COPY,                         // GPU: PresentSurface's CopyResource(backbuffer, imported bridge)
+    D_KM_ACQUIRE, D_COPY_CALL, D_PRESENT_CALL,   // host walls of the present side: keyed-mutex acquire, the copy call, Present
+    F_ITER, F_CPU,                        // the F-thread pair wall and its unbucketed remainder
     C_SPAN, F_SPAN, B_SPAN, P_SPAN,        // each lane's first->last timestamp (a check, never summed)
     kCount
 };
@@ -122,6 +128,11 @@ public:
 
     // A sample computed by the caller: every host wall, and P.warp (the GPU interval --warp-timing already read).
     void host(Site s, double ms, double t_now_ms) { book_.record(s, ms, t_now_ms); }
+    // The D3D11 sites. drain_d3d: every completed bracket of a D3D11 timestamp ring whose first interval is the
+    // site (called by that site's single reading thread). note_lost: a running total of brackets the source lost
+    // (skipped + disjoint) -> the book's lost count for the site, by delta.
+    void drain_d3d(phyriad::render::present::D3d11StampRing& ring, Site gpu_site, double t_now_ms);
+    void note_lost(Site s, uint64_t running_total);
     // The F-thread pair: begin at pickup, add each named wait, end after the consume -> F.iter + F.cpu.
     void f_pair_begin(double t_ms) { f_t0_ = t_ms; f_waits_ = 0.0; }
     void f_pair_wait(double ms) { f_waits_ += ms; }
@@ -138,6 +149,7 @@ private:
     uint64_t mask_[4] = {};
     std::string note_[4];
     double f_t0_ = 0.0, f_waits_ = 0.0;
+    uint64_t lost_seen_[kSiteCount] = {};   // note_lost's last running total per site
 };
 
 // The process-wide instance: null when --site-timing is off. Set once before the worker threads start (the

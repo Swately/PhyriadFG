@@ -1153,6 +1153,7 @@ done:
         if(wgc_ctx->copyFence){ wgc_ctx->copyFence->Release(); wgc_ctx->copyFence=nullptr; }
         if(wgc_ctx->ctx4){ wgc_ctx->ctx4->Release(); wgc_ctx->ctx4=nullptr; }
         wgc_ctx->pool.Close();
+        wgc_ctx->cap_ts.release();   // --site-timing: D.cap_copy's queries, after the callback drain and before any capture-device release (no-op when off)
         for(uint32_t i=1;i<WgcCtx::RING_N;++i) rel(wgc_ctx->ring[i]); // ring[0]==dxgi_stage released below (off path)
         // --copy-device: when armed, ring[0] is a FRESH 2nd-device staging texture (NOT dxgi_stage), so
         // release it here; then release the 2nd device + its context (AFTER the pool.Close() that dropped

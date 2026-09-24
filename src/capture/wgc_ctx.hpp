@@ -11,6 +11,7 @@
 #endif
 #include <windows.h>
 #include <d3d11_4.h>   // ID3D11Fence / ID3D11DeviceContext4 / ID3D11Texture2D (WgcCtx members)
+#include <phyriad/render/present/D3d11StampRing.hpp>   // --site-timing: D.cap_copy (the callback's CopyResource)
 #include <atomic>
 #include <mutex>
 #include <cstdint>
@@ -95,6 +96,11 @@ IDirect3DDxgiInterfaceAccess : ::IUnknown {
         // teardown AFTER the running=false + Sleep(100) callback drain (same ordering as the fence).
         ID3D11Device*         cdev=nullptr;        // 2nd D3D11 device (null when --copy-device off)
         ID3D11DeviceContext*  cctx=nullptr;        // its immediate context (null when off)
+        // --site-timing (INSTRUMENT, default off): D3D11 timestamps around the callback's CopyResource. The callback
+        // issues (begin/mark/end), the C-thread drains (take) - one issuer, one reader, the capture context is
+        // multithread-protected. Created at the ring-alloc site only when --site-timing; released at teardown
+        // AFTER the running=false + Sleep(100) callback drain, before the capture device goes. Unarmed = no-op.
+        phyriad::render::present::D3d11StampRing cap_ts;
     };
 #endif // _MSC_VER
 // Made with my soul - Swately <3

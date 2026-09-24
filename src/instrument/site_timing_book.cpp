@@ -21,6 +21,8 @@ constexpr SiteInfo kInfo[kSiteCount] = {
     {"B.warp_discard",   SiteKind::Gpu},  {"B.copyout",      SiteKind::Gpu},  {"B.wait",        SiteKind::Host},
     {"P.upload_frames",  SiteKind::Gpu},  {"P.upload_fields",SiteKind::Gpu},  {"P.consensus",   SiteKind::Gpu},
     {"P.submit_wait",    SiteKind::Host}, {"P.warp",         SiteKind::Gpu},
+    {"D.cap_copy",       SiteKind::Gpu},  {"D.bridge_copy",  SiteKind::Gpu},
+    {"D.km_acquire",     SiteKind::Host}, {"D.copy_call",    SiteKind::Host}, {"D.present_call", SiteKind::Host},
     {"F.iter",           SiteKind::Host}, {"F.cpu",          SiteKind::Host},
     {"C.span",           SiteKind::Span}, {"F.span",         SiteKind::Span}, {"B.span",        SiteKind::Span},
     {"P.span",           SiteKind::Span},
@@ -99,7 +101,8 @@ std::string SiteBook::report(const char* const lane_note[4]) const {
     appendf(o, "[site] window %.2f s after a %.1f s warm-up (%llu warm-up samples not kept), unix %.3f .. %.3f | F pairs "
                "%.1f/s | percentiles are nearest-rank | GPU sites are ELAPSED time between timestamps; each lane's mark 0 is "
                "bottom-of-pipe, so work queued on that queue before the lane is outside it; the other queue runs beside it "
-               "(A.q present vs A.q2 flow+convert) and overlap is counted in both, so a sum can exceed the device's busy time\n",
+               "(A.q present vs A.q2 flow+convert) and overlap is counted in both, so a sum can exceed the device's busy time; "
+               "D.* GPU sites are D3D11 timestamps on the capture and present devices (same GPU, their own queues)\n",
             W, warmup_ms_ / 1000.0, (unsigned long long)warm_total, t0_epoch, t1_epoch, fpairs);
     static const char* const kLaneName[4] = {"C (convert, A.q2)", "F (fwd flow, A.q2)", "B (bwd flow, A.q2)", "P (bridge upload, A.q)"};
     for (int l = 0; l < 4; ++l)

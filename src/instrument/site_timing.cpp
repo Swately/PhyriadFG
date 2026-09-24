@@ -2,6 +2,7 @@
 // query pool per lane, the marks, the non-blocking reads after the lane's fence). Contract: site_timing.hpp.
 // Made with my soul - Swately <3
 #include "instrument/site_timing.hpp"
+#include <phyriad/render/present/D3d11StampRing.hpp>   // drain_d3d: the D3D11 sites' rings
 #include <chrono>
 #include <cstdio>
 #include <vector>
@@ -103,6 +104,19 @@ bool SiteTiming::read(Lane l, double t_now_ms) {
     for (size_t k = 0; k < niv; ++k) book_.record(iv[k].site, v[k], t_now_ms);
     book_.record(kSpan[i], span, t_now_ms);
     return true;
+}
+
+void SiteTiming::drain_d3d(phyriad::render::present::D3d11StampRing& ring, Site gpu_site, double t_now_ms) {
+    using R = phyriad::render::present::D3d11StampRing;
+    double iv[R::kMaxMarks - 1] = {};
+    for (R::Take t; (t = ring.take(iv)) != R::Take::None; )
+        if (t == R::Take::Sample && iv[0] >= 0.0) book_.record(gpu_site, iv[0], t_now_ms);
+    note_lost(gpu_site, ring.skipped() + ring.disjoint());
+}
+
+void SiteTiming::note_lost(Site s, uint64_t running_total) {
+    const int i = (int)s;
+    while (lost_seen_[i] < running_total) { book_.lost(s); ++lost_seen_[i]; }
 }
 
 void SiteTiming::f_pair_end(double t_ms) {

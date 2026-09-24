@@ -74,6 +74,12 @@ bool PresentStage::init(void* wgc_target_hwnd) {
         g_quit_threads.store(true); g_quit=true; return false;
     }
     ra_surface=std::move(*cr); surface_ready=true;
+    if(cfg.site_timing){   // --site-timing: the D3D11 side of every submit (D.bridge_copy + host walls); off = never armed
+        ra_surface.set_gpu_timing(true);
+        std::printf(ra_surface.gpu_timing_on()
+            ? "[ra] --site-timing: D3D11 timestamps armed around the present CopyResource (D.bridge_copy) + host walls (D.km_acquire, D.copy_call, D.present_call)\n"
+            : "[ra] --site-timing: D3D11 timestamp queries unavailable on the present device -- the D.* present sites are not measured\n");
+    }
     // Print the REAL style (the old line said "dcomp-ct+WDA" hardcoded — under
     // --present-own-window it misreported the own flip plane as the overlay). The yield clause is
     // read from psd.game_hwnd rather than hardcoded: since I-5 an UNBOUND plane never yields, and
@@ -105,6 +111,19 @@ bool PresentStage::init(void* wgc_target_hwnd) {
 // TRANSFORMS: none.
 void PresentStage::account(const std::expected<void, phyriad::Error>& r) {
     std::atomic<uint64_t>& total_frames = total_frames_;
+    // --site-timing (null = off): the D3D11 side of the submit just made -- D.bridge_copy (GPU) + the host walls.
+    // Every submit passes here, so draining here keeps the present ring read on the presenting thread.
+    if(auto* st = pfg::instrument::site_timing(); st && surface.gpu_timing_on()){
+        pp::PresentSurface::GpuTiming g;
+        while(surface.take_gpu_timing(g)){
+            const double tn = now_ms();
+            if(g.copy_gpu_ms >= 0.0) st->host(pfg::instrument::Site::D_BRIDGE_COPY, g.copy_gpu_ms, tn);
+            st->host(pfg::instrument::Site::D_KM_ACQUIRE, g.acquire_ms, tn);
+            st->host(pfg::instrument::Site::D_COPY_CALL, g.copy_call_ms, tn);
+            st->host(pfg::instrument::Site::D_PRESENT_CALL, g.present_call_ms, tn);
+        }
+        st->note_lost(pfg::instrument::Site::D_BRIDGE_COPY, surface.gpu_timing_lost());
+    }
     if(r){ ++ps_ok; total_frames.fetch_add(1); return; }
     const auto code=r.error().code;
     if(code==phyriad::ErrorCode::Timeout){ ++ps_timeout; return; }

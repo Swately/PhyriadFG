@@ -228,6 +228,24 @@ public:
     };
     [[nodiscard]] std::optional<FlipStats> last_flip_qpc() const noexcept;
 
+    // INSTRUMENT (PhyriadFG --site-timing; default OFF): time each submit's D3D11 side. When on, every submit that
+    // reaches the copy records one bracket: the GPU time of the CopyResource(backbuffer, imported) by D3D11
+    // timestamps inside a TIMESTAMP_DISJOINT query (read later, non-blocking), and three host walls - the keyed-mutex
+    // AcquireSync, the CopyResource call, the Present call. Off: no query exists, submit() records nothing, the
+    // present bytes are the same. Call both on the presenting thread (the one that calls submit()).
+    struct GpuTiming {
+        double copy_gpu_ms     = -1.0;   // GPU, CopyResource(backbuffer, imported); -1 = not available
+        double acquire_ms      = 0.0;    // host, keyed-mutex AcquireSync (the wait for the producer's release)
+        double copy_call_ms    = 0.0;    // host, the CopyResource call itself (it records; it does not wait)
+        double present_call_ms = 0.0;    // host, IDXGISwapChain::Present
+    };
+    void set_gpu_timing(bool on) noexcept;               // creates / releases the queries; false if unavailable
+    [[nodiscard]] bool gpu_timing_on() const noexcept;
+    // One completed submit, oldest first; false = none ready yet (never waits).
+    [[nodiscard]] bool take_gpu_timing(GpuTiming& out) noexcept;
+    // Brackets lost so far: skipped (every slot still unread) + dropped as Disjoint.
+    [[nodiscard]] uint64_t gpu_timing_lost() const noexcept;
+
     PresentSurface() noexcept = default;
     PresentSurface(PresentSurface&&) noexcept;
     PresentSurface& operator=(PresentSurface&&) noexcept;
