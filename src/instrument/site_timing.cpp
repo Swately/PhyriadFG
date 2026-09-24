@@ -109,8 +109,11 @@ bool SiteTiming::read(Lane l, double t_now_ms) {
 void SiteTiming::drain_d3d(phyriad::render::present::D3d11StampRing& ring, Site gpu_site, double t_now_ms) {
     using R = phyriad::render::present::D3d11StampRing;
     double iv[R::kMaxMarks - 1] = {};
-    for (R::Take t; (t = ring.take(iv)) != R::Take::None; )
-        if (t == R::Take::Sample && iv[0] >= 0.0) book_.record(gpu_site, iv[0], t_now_ms);
+    for (R::Take t; (t = ring.take(iv)) != R::Take::None; ) {
+        if (t != R::Take::Sample) continue;                    // Disjoint: counted by the ring, reaches note_lost below
+        if (iv[0] >= 0.0) book_.record(gpu_site, iv[0], t_now_ms);
+        else book_.lost(gpu_site);                             // a negative interval is lost, never silently dropped
+    }
     note_lost(gpu_site, ring.skipped() + ring.disjoint());
 }
 

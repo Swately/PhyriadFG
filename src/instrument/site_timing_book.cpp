@@ -28,12 +28,21 @@ constexpr SiteInfo kInfo[kSiteCount] = {
     {"P.span",           SiteKind::Span},
 };
 
+// Appends the formatted text WHOLE. It used a fixed 512-byte buffer and cut anything longer: the header line grew past
+// it with the D3D11 note, lost its tail and its newline, and the table header ran onto it (T8; found in the first
+// D3D11 campaign's logs, 2026-09-24 - rows and the done-line are separate appends, so no number was affected).
 void appendf(std::string& out, const char* fmt, ...) {
-    char buf[512];
     va_list ap; va_start(ap, fmt);
-    const int n = std::vsnprintf(buf, sizeof buf, fmt, ap);
+    va_list ap2; va_copy(ap2, ap);
+    const int n = std::vsnprintf(nullptr, 0, fmt, ap);
     va_end(ap);
-    if (n > 0) out.append(buf, (size_t)std::min(n, (int)sizeof buf - 1));
+    if (n > 0) {
+        const size_t at = out.size();
+        out.resize(at + (size_t)n + 1u);
+        std::vsnprintf(&out[at], (size_t)n + 1u, fmt, ap2);
+        out.resize(at + (size_t)n);   // drop the terminator vsnprintf wrote
+    }
+    va_end(ap2);
 }
 
 // Nearest-rank percentile over an ascending-sorted vector: the smallest sample with at least p of the mass

@@ -133,6 +133,7 @@ public:
     // (skipped + disjoint) -> the book's lost count for the site, by delta.
     void drain_d3d(phyriad::render::present::D3d11StampRing& ring, Site gpu_site, double t_now_ms);
     void note_lost(Site s, uint64_t running_total);
+    void lost(Site s) { book_.lost(s); }   // one sample the site could not produce (e.g. a negative D3D11 interval)
     // The F-thread pair: begin at pickup, add each named wait, end after the consume -> F.iter + F.cpu.
     void f_pair_begin(double t_ms) { f_t0_ = t_ms; f_waits_ = 0.0; }
     void f_pair_wait(double ms) { f_waits_ += ms; }

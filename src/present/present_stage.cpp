@@ -118,6 +118,7 @@ void PresentStage::account(const std::expected<void, phyriad::Error>& r) {
         while(surface.take_gpu_timing(g)){
             const double tn = now_ms();
             if(g.copy_gpu_ms >= 0.0) st->host(pfg::instrument::Site::D_BRIDGE_COPY, g.copy_gpu_ms, tn);
+            else st->lost(pfg::instrument::Site::D_BRIDGE_COPY);   // a negative interval is lost, never silently dropped
             st->host(pfg::instrument::Site::D_KM_ACQUIRE, g.acquire_ms, tn);
             st->host(pfg::instrument::Site::D_COPY_CALL, g.copy_call_ms, tn);
             st->host(pfg::instrument::Site::D_PRESENT_CALL, g.present_call_ms, tn);

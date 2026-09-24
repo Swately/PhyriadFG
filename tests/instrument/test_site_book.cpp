@@ -149,6 +149,20 @@ int main() {
         check(parse_done(rep, "F.match", mean, p99, n, msps) && approx(n, 2.0), "the site fields still parse after the new fields");
     }
 
+    // ── T8 — no line of the report is cut (added 2026-09-24): the first D3D11 campaign's logs showed the header line
+    //    truncated at appendf's 512-byte buffer, its newline lost and the table header run onto it. Every line the
+    //    report builds must arrive whole: the header ends with its last clause and a newline, and the table header
+    //    starts a line of its own.
+    std::printf("T8 no report line is truncated\n");
+    {
+        SiteBook b(16u, 0.0, 0.0);
+        b.set_epoch_offset(1790000000.0);
+        b.record(Site::F_MATCH, 1.0, 500.0); b.record(Site::F_MATCH, 1.0, 1000.0);
+        const std::string rep = b.report(kNoNotes);
+        check(rep.find("their own queues)\n") != std::string::npos, "the header line ends with its last clause and a newline");
+        check(rep.find("\n[site] site ") != std::string::npos, "the table header starts its own line");
+    }
+
     // ── T6 — a check can fail: a wrong expectation, seen red, then not counted.
     std::printf("T6 the checks can fail (one deliberate red, excluded from the count)\n");
     {
