@@ -10,6 +10,7 @@
 //          (zero-copy cross-device).
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "core/frame_vram.hpp"   // --frame-vram: the post-init route check (the lever of O0_FREEZE_LEVER1.md)
 #include <windows.h>
 // WDA_EXCLUDEFROMCAPTURE (Win10 2004+) — older MinGW winuser.h omits it.
 #ifndef WDA_EXCLUDEFROMCAPTURE
@@ -537,6 +538,11 @@ int main(int argc, char** argv) {
     init_wap(cfg,WW,WH,WW_warp,WH_warp,o_dev,o_flow,o_wap);
     // ── gme-gpu pipeline + use_* re-finalization (E1 → flow/flow_init.cpp) ─────
     init_gme_finalize(cfg,o_dev,o_flow,o_gme);
+    // --frame-vram (O0_FREEZE_LEVER1.md): an armed lever must still hold the warp-at-presenter route after every init
+    // cascade above; the non-WAP presenter reads the host ring, so a lost route fails the run (core/frame_vram.hpp).
+    if(const char* fv_why=pfg::core::frame_vram_route_lost(use_frame_vram,use_wap)){
+        std::printf("[ra] --frame-vram: REFUSED - %s; a requested lever that cannot hold its route is fatal\n",fv_why);
+        ra::compat::emit_fatal(ra::compat::ReasonCode::DEVICE_INIT_FAILED,"frame-vram route"); goto done; }
     // R5 step 3b: the registry's FLOW rows resolved against the init cascades (the loud abort of R0's parity, one
     // level later: after every create-time fact is known). F reads cfg.layers.eff / avail from here on.
     if(!pfg::layers::layer_flow_resolve(cfg,use_wap,use_gme,use_gme_gpu,use_objects,use_memory,use_bidir,use_ambig,use_inertia,use_mv_smooth)){

@@ -270,7 +270,7 @@ bool init_devices(Config& cfg, VkPhysicalDevice pA, VkPhysicalDevice pB, VkPhysi
     { const char* why=nullptr; pfg::core::FrameVramGate g{};
       g.requested=cfg.frame_vram; g.single_gpu=single_gpu; g.use_igpu_convert=use_igpu_convert; g.use_wap=use_wap;
       g.use_upscale=use_upscale; g.upload_xfer=cfg.upload_xfer; g.real_fast_path=cfg.real_fast_path;
-      g.rfp_fresh=cfg.rfp_fresh; g.dump_n=cfg.dump_n; g.pairdump_n=cfg.pairdump_n;
+      g.rfp_fresh=cfg.rfp_fresh; g.motion_fallback=cfg.motion_fallback; g.dump_n=cfg.dump_n; g.pairdump_n=cfg.pairdump_n;
       o_dev.use_frame_vram=pfg::core::frame_vram_arm(g,&why);
       if(why){ std::printf("[ra] --frame-vram: REFUSED - %s; a requested lever that cannot arm is fatal\n",why); return false; } }
     // --fwd-prestage: the prestage only has a copy to collapse on the iGPU-convert path (the only one

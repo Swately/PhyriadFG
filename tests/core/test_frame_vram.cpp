@@ -54,6 +54,14 @@ int main() {
     { auto g = shipping(); g.rfp_fresh = true;        refused(g, "--rfp-fresh",       "F9 --rfp-fresh refused"); }
     { auto g = shipping(); g.dump_n = 3;              refused(g, "--dump",            "F10 --dump refused"); }
     { auto g = shipping(); g.pairdump_n = 2;          refused(g, "--pairdump",        "F11 --pairdump refused"); }
+    { auto g = shipping(); g.motion_fallback = true;  refused(g, "--motion-fallback", "F12 --motion-fallback refused"); }
+    {   // F13: after init, an armed lever that lost warp-at-presenter fails the run; every other pair passes
+        const char* lost = pfg::core::frame_vram_route_lost(true, false);
+        expect(lost != nullptr && std::strstr(lost, "warp-at-presenter") != nullptr, "F13a armed + route lost: fatal reason");
+        if (lost) std::printf("      reason: %s\n", lost);
+        expect(pfg::core::frame_vram_route_lost(true, true) == nullptr, "F13b armed + route held: no reason");
+        expect(pfg::core::frame_vram_route_lost(false, false) == nullptr, "F13c not armed: no reason");
+    }
     if (g_fail) std::printf("FRAME_VRAM TEST: %d FAILED\n", g_fail);
     else        std::printf("FRAME_VRAM TEST: all passed\n");
     return g_fail ? 1 : 0;

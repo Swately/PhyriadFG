@@ -21,6 +21,7 @@ struct FrameVramGate {
     bool upload_xfer = false;       // --upload-xfer records the presenter upload on another queue family (A.qT)
     bool real_fast_path = false;    // --real-fast-path blits a real from the host ring to the present
     bool rfp_fresh = false;         // --rfp-fresh presents the freshest captured real from the host ring
+    bool motion_fallback = false;   // --motion-fallback presents a real from the host ring (rfp_present, present.cpp)
     int  dump_n = 0;                // --dump reads the host ring
     int  pairdump_n = 0;            // --pairdump reads the host ring
 };
@@ -38,9 +39,17 @@ inline bool frame_vram_arm(const FrameVramGate& g, const char** why) {
     if (g.upload_xfer)      { *why = "--upload-xfer records the presenter upload on another queue family"; return false; }
     if (g.real_fast_path)   { *why = "--real-fast-path reads the host ring"; return false; }
     if (g.rfp_fresh)        { *why = "--rfp-fresh reads the host ring"; return false; }
+    if (g.motion_fallback)  { *why = "--motion-fallback presents a real from the host ring"; return false; }
     if (g.dump_n > 0)       { *why = "--dump reads the host ring"; return false; }
     if (g.pairdump_n > 0)   { *why = "--pairdump reads the host ring"; return false; }
     return true;
+}
+
+// After every init cascade: a route the gate armed can still lose warp-at-presenter to a later allocation failure
+// (init_host_bridge, init_wap), and the non-WAP presenter reads the host ring. Returns the reason an armed lever must
+// fail the run, or nullptr (not armed, or the route held).
+inline const char* frame_vram_route_lost(bool armed, bool use_wap) {
+    return (armed && !use_wap) ? "the warp-at-presenter route was lost after the gate (an allocation failure disabled it)" : nullptr;
 }
 
 }  // namespace pfg::core
