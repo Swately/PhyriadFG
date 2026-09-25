@@ -1046,8 +1046,9 @@ struct Config {
     bool  frame_vram=false;         // --frame-vram (the lever of docs/planning/O0_FREEZE_LEVER1.md; default OFF): keep the
                                     // CONVERTED frame on the device. A full-ring VRAM mirror of the capture ring is filled by
                                     // a device copy after the convert, and the flow's and the presenter's frame inputs copy
-                                    // from it (no host round trip). Armed or refused in init_devices (core/frame_vram.hpp:
-                                    // refused wherever the host ring is still read). Off = the host round trip, byte-identical.
+                                    // from it (no host round trip). Armed in init_devices, or REFUSED - and then the run
+                                    // fails - wherever the host ring is still read (core/frame_vram.hpp). Off = the host round
+                                    // trip, byte-identical.
     bool  gme_sub2_force=false;     // --gme-sub2-force (DIAGNOSTIC, P-054): start with the gme fit's step-2 sub-sample latched, the
                                     // state flow_consume.cpp's one-way latch (fit CPU EMA > 2.0 ms) reaches mid-run in almost
                                     // every run. For equivalence runs, so the planes downstream of the fit do not depend on

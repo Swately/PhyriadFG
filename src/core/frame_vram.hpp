@@ -25,7 +25,8 @@ struct FrameVramGate {
     int  pairdump_n = 0;            // --pairdump reads the host ring
 };
 
-// true = arm. false with *why set = requested and refused (the caller prints the reason and the flag stays off).
+// true = arm. false with *why set = requested and refused: the caller prints the reason and FAILS the run (fatal,
+// init_devices returns false), so a run that asked for the lever never runs without it.
 // false with *why == nullptr = not requested: off, the host round trip, byte-identical.
 inline bool frame_vram_arm(const FrameVramGate& g, const char** why) {
     *why = nullptr;

@@ -265,13 +265,14 @@ bool init_devices(Config& cfg, VkPhysicalDevice pA, VkPhysicalDevice pB, VkPhysi
     // WAP rides the surface path on A (the bridge owner) — always available.
     use_wap=cfg.warp_at_presenter;
     // --frame-vram (the lever of docs/planning/O0_FREEZE_LEVER1.md): armed only on the single-GPU WAP route and only
-    // where nothing reads the host ring (core/frame_vram.hpp). A refusal is printed; the flag then stays off.
+    // where nothing reads the host ring (core/frame_vram.hpp). A refusal of an explicit request is FATAL: a run that
+    // asked for the lever must never run without it (a V run must never silently measure B).
     { const char* why=nullptr; pfg::core::FrameVramGate g{};
       g.requested=cfg.frame_vram; g.single_gpu=single_gpu; g.use_igpu_convert=use_igpu_convert; g.use_wap=use_wap;
       g.use_upscale=use_upscale; g.upload_xfer=cfg.upload_xfer; g.real_fast_path=cfg.real_fast_path;
       g.rfp_fresh=cfg.rfp_fresh; g.dump_n=cfg.dump_n; g.pairdump_n=cfg.pairdump_n;
       o_dev.use_frame_vram=pfg::core::frame_vram_arm(g,&why);
-      if(why) std::printf("[ra] --frame-vram: REFUSED - %s; the host round trip stays\n",why); }
+      if(why){ std::printf("[ra] --frame-vram: REFUSED - %s; a requested lever that cannot arm is fatal\n",why); return false; } }
     // --fwd-prestage: the prestage only has a copy to collapse on the iGPU-convert path (the only one
     // with the inline hRP_b[s]->hRP_b_dev[s] copy at the F-build top) AND only matters on the WAP path
     // (the serial WAP build is the one whose blocking flow submit fronts the copy). Force-OFF otherwise
