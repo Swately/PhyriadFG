@@ -1,6 +1,7 @@
 // PhyriadFG — core-side init (E1 of docs/planning/RESTRUCTURE_PLAN.md).
 // Init-seq sections moved verbatim out of main.cpp behind ownership-struct binding preambles;
 // bodies byte-identical to the pre-E1 sections except `goto done` -> `return false`.
+#include "core/frame_vram.hpp"   // --frame-vram: the arming decision (the lever of O0_FREEZE_LEVER1.md)
 #include "capture/wgc_ctx.hpp"   // FIRST: defines NOMINMAX before <windows.h> (winrt include order matters — same as main.cpp)
 #include <algorithm>
 #include <cstdio>
@@ -263,6 +264,14 @@ bool init_devices(Config& cfg, VkPhysicalDevice pA, VkPhysicalDevice pB, VkPhysi
             IS_HDR?" (HDR tone-map)":"");
     // WAP rides the surface path on A (the bridge owner) — always available.
     use_wap=cfg.warp_at_presenter;
+    // --frame-vram (the lever of docs/planning/O0_FREEZE_LEVER1.md): armed only on the single-GPU WAP route and only
+    // where nothing reads the host ring (core/frame_vram.hpp). A refusal is printed; the flag then stays off.
+    { const char* why=nullptr; pfg::core::FrameVramGate g{};
+      g.requested=cfg.frame_vram; g.single_gpu=single_gpu; g.use_igpu_convert=use_igpu_convert; g.use_wap=use_wap;
+      g.use_upscale=use_upscale; g.upload_xfer=cfg.upload_xfer; g.real_fast_path=cfg.real_fast_path;
+      g.rfp_fresh=cfg.rfp_fresh; g.dump_n=cfg.dump_n; g.pairdump_n=cfg.pairdump_n;
+      o_dev.use_frame_vram=pfg::core::frame_vram_arm(g,&why);
+      if(why) std::printf("[ra] --frame-vram: REFUSED - %s; the host round trip stays\n",why); }
     // --fwd-prestage: the prestage only has a copy to collapse on the iGPU-convert path (the only one
     // with the inline hRP_b[s]->hRP_b_dev[s] copy at the F-build top) AND only matters on the WAP path
     // (the serial WAP build is the one whose blocking flow submit fronts the copy). Force-OFF otherwise
@@ -708,6 +717,23 @@ bool init_images(Config& cfg, D3D& d, uint32_t NAT_W, uint32_t NAT_H, VkFormat n
        ((use_upscale||use_igpu_convert)&&!img_create(G,WW,WH,VK_FORMAT_R8G8B8A8_UNORM,gsrc_use,Gsrc))||
        (use_upscale&&!img_create(G,UP_W,UP_H,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT,Gdst)))
         { std::printf("[ra] image allocation failed\n"); return false; }
+    // --frame-vram: the device mirror of the capture ring, one R8G8B8A8_UNORM WW x WH image per ACTIVE slot (the slot
+    // index of hostR[s]), TRANSFER_SRC|TRANSFER_DST, no view. Its measured size is printed: the O0's device-memory band.
+    // A failed allocation is fatal, so a lever run can never silently measure the baseline.
+    if(o_dev.use_frame_vram){
+        VkDeviceSize vbytes=0;
+        for(int _s=0;_s<o_host.cap_slots;++_s){
+            if(!img_create(A,WW,WH,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,o_img.Vframe[_s],false))
+                { std::printf("[ra] --frame-vram: mirror slot %d allocation failed\n",_s); return false; }
+            VkMemoryRequirements mr; vkGetImageMemoryRequirements(A.dev,o_img.Vframe[_s].img,&mr); vbytes+=mr.size;
+        }
+        // Every slot starts TRANSFER_SRC (its bytes undefined, as an unwritten host slot's are): a start-up copy from a
+        // slot the convert has not reached yet is then a valid read, never a layout error.
+        const int nvf=o_host.cap_slots;
+        oneshot(A,[&](VkCommandBuffer c){ for(int _s=0;_s<nvf;++_s) img_barrier(c,o_img.Vframe[_s].img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,0,VK_ACCESS_TRANSFER_READ_BIT); });
+        std::printf("[ra] --frame-vram: ARMED - %d mirror slots x %ux%u RGBA8 = %.1f MiB device; the converted frame stays in VRAM (C.download, F.upload, P.upload_frames are device copies)\n",
+                    o_host.cap_slots,WW,WH,(double)vbytes/1048576.0);
+    }
 
     oneshot(FD,[&](VkCommandBuffer c){ for(int i=0;i<2;++i) img_barrier(c,Bframe[i].img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,0,VK_ACCESS_SHADER_READ_BIT); img_barrier(c,Cinterp.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT); });   // FD-route the layout-seed oneshot (uses FD.q/FD.pool internally)
     // Seed the downscale scratch to SHADER_READ_ONLY_OPTIMAL so the first per-pair blit's

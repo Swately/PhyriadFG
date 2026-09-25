@@ -710,6 +710,16 @@ void run_present(FgContext& ctx){
                     if(st_pl && ma>=0) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,(uint32_t)ma);
                     img_barrier(cmdBridge,dst.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                 };
+                // --frame-vram (the lever of O0_FREEZE_LEVER1.md): the frame copies' device-to-device twin of up_imgA. The same
+                // RO<->TRANSFER_DST discipline on dst and the same P marks; the source is the frame's slot of the device mirror,
+                // left TRANSFER_SRC by the convert. A separate helper: up_imgA also serves the field uploads, so it stays as is.
+                auto up_imgA_vram=[&](Img& dst,VkImage src,uint32_t w,uint32_t h,int mb,int ma){
+                    img_barrier(cmdBridge,dst.img,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_ACCESS_SHADER_READ_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);
+                    if(st_pl && mb>=0) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,(uint32_t)mb);
+                    { VkImageCopy ic=full_ic(w,h); vkCmdCopyImage(cmdBridge,src,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,dst.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&ic); }
+                    if(st_pl && ma>=0) st_pt->mark(pfg::instrument::Lane::P,cmdBridge,(uint32_t)ma);
+                    img_barrier(cmdBridge,dst.img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
+                };
                 // R5 step 4: the per-channel transport is gated by the declared ROWS (cfg.layers.eff), not by the
                 // hand flags. R7 retired the second oracle that sat beside each site: 49,014 transport decisions, 0
                 // disagreements, over two pressured runs. These six sites read an eff bit and nothing else, so what
@@ -723,8 +733,11 @@ void run_present(FgContext& ctx){
                 const bool up_gmebwd = up_row(pfg::layers::LayerId::GME_BWD);
                 const bool up_per    = up_row(pfg::layers::LayerId::PERSISTENCE);
                 const bool up_vbl    = up_row(pfg::layers::LayerId::VBLEND);
+                if(ctx.use_frame_vram){ up_imgA_vram(wapPrevA,ctx.Vframe[prev_slot].img,WW,WH,1,2); up_imgA_vram(wapCurA,ctx.Vframe[cur_slot].img,WW,WH,3,4); }   // --frame-vram
+                else {
                 up_imgA(wapPrevA,hR_a[prev_slot].buf,WW,WH,1,2);   // --site-timing: P.upload_frames = [1,2] + [3,4]
                 up_imgA(wapCurA, hR_a[cur_slot].buf, WW,WH,3,4);
+                }
                 // upload the iGPU contour field (cur_slot — the SAME real slot
                 // as wapCurA / hR_a[cur_slot]) into wapFIELDA. Distinct from up_imgA: the imageLoad readers (the
                 // fill AND the warp's binding 11) read the field as a STORAGE image in GENERAL, so it ends in

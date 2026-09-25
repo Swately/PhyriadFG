@@ -2,7 +2,7 @@
 // PhyriadFG core/vk_util layer: the timing helper (now_ms), the hal f16 forwarders, the DXGI→VK
 // format router (route_for), the Img/HBuf wrappers + their create/destroy factories, and the
 // command-buffer helpers (img_barrier / oneshot / submit_wait / submit_wait_q2 / full_bic).
-// Tiny/hot helpers stay `inline` in the header (now_ms, the f16 forwarders, img_barrier, full_bic)
+// Tiny/hot helpers stay `inline` in the header (now_ms, the f16 forwarders, img_barrier, full_bic, full_ic)
 // and oneshot is a template; the larger factory bodies live in vk_util.cpp.
 #include "core/device.hpp"          // VDev + pick_mem (the factories take VDev& and call pick_mem)
 #include <vulkan/vulkan.h>
@@ -66,4 +66,7 @@ void submit_wait(VDev& d,VkCommandBuffer cmd,VkFence f);   // device-lost via th
 // buffers submit with no family trap. Safe to call only when d.q2!=d.q (a real 2nd queue); otherwise it
 // would submit to d.q and race P — callers gate on (A.q2!=A.q) before invoking.
 void submit_wait_q2(VDev& d,VkCommandBuffer cmd,VkFence f);   // device-lost via the q2 submit helper
+// --frame-vram: one whole-image, same-format image-to-image copy region (mip 0, layer 0), the device-route twin of full_bic.
+// Made with my soul - Swately <3
+inline VkImageCopy full_ic(uint32_t w,uint32_t h){ VkImageCopy c{}; c.srcSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; c.dstSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; c.extent={w,h,1}; return c; }
 inline VkBufferImageCopy full_bic(uint32_t w,uint32_t h){ VkBufferImageCopy c{}; c.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; c.imageExtent={w,h,1}; return c; }

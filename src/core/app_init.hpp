@@ -73,6 +73,7 @@ struct DevicesInit {
     bool have_igpu=false, use_upscale=false, use_igpu_convert=false;
     bool use_fwd_prestage=false; // --fwd-prestage: derived gate (cfg.fwd_prestage && use_wap && use_igpu_convert); assigned after use_wap. Declared here (non-const, NOT skipped by goto done) so its init is never bypassed.
     bool use_wap=false;          // warp-at-presenter active (re-warps on A, the bridge owner)
+    bool use_frame_vram=false;   // --frame-vram armed (core/frame_vram.hpp decides; resolved in init_devices after use_wap)
     bool use_bidir=false;        // bidirectional flow + occlusion classification (WAP-only; needs use_wap)
     bool use_fill_div=false;     // divergence-directed disocclusion pick (bidir-only; needs use_bidir)
     bool use_rescue=false;       // candidate-rescue (WAP-only; needs use_wap + commit armed)
@@ -205,6 +206,7 @@ struct ImagesInit {
     ID3D11Texture2D* dxgi_stage=nullptr;
     ID3D11Texture2D* dxgi_stage2=nullptr;   // INGEST-ASYNC: 2nd DDA staging texture (readback double-buffer); created only when cfg.ingest_async
     Img Anative{},Awork{},Bframe[2]{},Cinterp{},Gsrc{},Gdst{};
+    Img Vframe[kCapSlots]{};             // --frame-vram: the device mirror of the capture ring (one per ACTIVE slot; null when off)
     // Per-pair flow-input downscale scratch (only allocated when flow_div>1). Two WW_flow×WH_flow
     // RGBA8 DEVICE_LOCAL images (SAMPLED so the OFP can read them as a_view/b_view; TRANSFER_DST as the
     // vkCmdBlitImage destination). The F thread blits Bframe[prv]/Bframe[cur] (full-res) into these with a

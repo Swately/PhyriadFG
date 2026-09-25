@@ -56,6 +56,8 @@ static void convert_record_submit(FgContext& ctx, uint32_t cap_rot180, int s,
     auto& g_q_mtx = ctx.g_q_mtx;
     auto& hostFIELD = ctx.hostFIELD;
     auto& hostR = ctx.hostR;
+    auto& Vframe = ctx.Vframe;                   // --frame-vram: the device mirror of the capture ring
+    auto& use_frame_vram = ctx.use_frame_vram;
                 if(!use_igpu_convert){
                     using pfg::instrument::Lane;
                     pfg::instrument::SiteTiming* const st = pfg::instrument::site_timing();   // --site-timing; null = off (byte-identical)
@@ -73,9 +75,21 @@ static void convert_record_submit(FgContext& ctx, uint32_t cap_rot180, int s,
                     vkCmdDispatch(cmdA,(WW+7)/8,(WH+7)/8,1);
                     if(st) st->mark(Lane::C,cmdA,3u);   // C.convert ends (its two barriers included)
                     img_barrier(cmdA,Awork.img,VK_IMAGE_LAYOUT_GENERAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+                    if(use_frame_vram){
+                        // --frame-vram (the lever of O0_FREEZE_LEVER1.md): the converted frame goes to its slot of the device
+                        // mirror instead of host memory. The opening barrier sits before mark 4 (C.transitions), so the
+                        // C.download site times the device copy alone; the closing barrier leaves the slot TRANSFER_SRC for
+                        // the flow and the presenter to copy from. Same format (RGBA8 to RGBA8): the bytes do not change.
+                        img_barrier(cmdA,Vframe[s].img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
+                        if(st) st->mark(Lane::C,cmdA,4u);
+                        { VkImageCopy ic=full_ic(WW,WH); vkCmdCopyImage(cmdA,Awork.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,Vframe[s].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&ic); }
+                        if(st) st->mark(Lane::C,cmdA,5u);
+                        img_barrier(cmdA,Vframe[s].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+                    } else {
                     if(st) st->mark(Lane::C,cmdA,4u);   // C.download starts (the barrier above goes to C.transitions)
                     { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyImageToBuffer(cmdA,Awork.img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,hR_a[s].buf,1,&cp); }
                     if(st) st->mark(Lane::C,cmdA,5u);   // C.download ends: the converted frame is back in host memory
+                    }
                     // Crash safety: when convert runs on the PRIMARY (--convert-gpu primary → use_igpu_convert
                     // false, so we are in THIS branch) route C's convert submit off A.q (P-exclusive) to A.q2
                     // (same-family, lock-free; cmdA is A.pool-bound). Default (--convert-gpu igpu) never enters

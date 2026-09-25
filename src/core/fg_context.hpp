@@ -84,6 +84,8 @@ struct FgContext {
     const uint32_t& WW;
     const uint32_t& WH;
     HBuf* hR_a;
+    Img* Vframe;                   // --frame-vram: the device mirror of the capture ring (null handles when off)
+    const bool& use_frame_vram;    // --frame-vram armed
     VDev& A;
     const bool& single_gpu;
     std::mutex& a_q2_mtx;

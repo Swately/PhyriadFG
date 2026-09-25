@@ -307,6 +307,7 @@ bool parse_args(int argc, char** argv, Config& c) {
             if(!std::strcmp(arg,"--arrival-log")){ if(auto v=next(arg)){ std::snprintf(c.arrival_log,sizeof(c.arrival_log),"%s",v);
                 std::printf("[ra] --arrival-log %s: R1 instrument — one line per WAP tick with the clock inputs+outputs in exact hex-float (the PhaseClock replay oracle). Measurement runs only.\n",v); return 0; } return 1; }
             if(!std::strcmp(arg,"--warp-timing")){ c.warp_timing=true; return 0; }   // R4b: GPU timestamps around the warp batch
+            if(!std::strcmp(arg,"--frame-vram")){ c.frame_vram=true; return 0; }   // the lever of O0_FREEZE_LEVER1.md (default off); armed or refused in init_devices
             if(!std::strcmp(arg,"--gme-sub2-force")){ c.gme_sub2_force=true;   // P-054: the gme sub-sample latched from pair 0
                 std::printf("[ra] --gme-sub2-force: DIAGNOSTIC -- the gme fit starts in its step-2 sub-sampled state (the state its one-way CPU-time latch reaches mid-run in almost every run), so equivalence runs do not depend on when the latch fires.\n"); return 0; }
             if(!std::strcmp(arg,"--site-timing")){ c.site_timing=true; c.warp_timing=true;   // the OAP site profile; P.warp IS the --warp-timing pair

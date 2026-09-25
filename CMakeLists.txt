@@ -225,6 +225,11 @@ add_test(NAME gdump_book COMMAND pfg_gdump_test)
 # --site-timing: every number the instrument prints passes through SiteBook. Exit code + the OK line are the pass;
 # T6 shows a wrong expectation printing [FAIL] (the gate seen red) before it is excluded from the count.
 add_test(NAME site_book COMMAND pfg_site_test)
+# --frame-vram (the lever of docs/planning/O0_FREEZE_LEVER1.md): its arming decision, every refusal, no GPU.
+add_executable(pfg_frame_vram_test tests/core/test_frame_vram.cpp)
+target_compile_features(pfg_frame_vram_test PRIVATE cxx_std_23)
+target_include_directories(pfg_frame_vram_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_test(NAME frame_vram COMMAND pfg_frame_vram_test)
 set_tests_properties(site_book PROPERTIES PASS_REGULAR_EXPRESSION "OK: site_book -- all checks passed")
 
 # 2b. The same oracle over the two dimensions the first fixture cannot reach (4.3's honesty ledger named this gap):

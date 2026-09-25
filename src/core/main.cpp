@@ -342,6 +342,7 @@ int main(int argc, char** argv) {
     auto& have_igpu=o_dev.have_igpu; auto& use_upscale=o_dev.use_upscale; auto& use_igpu_convert=o_dev.use_igpu_convert;
     auto& use_fwd_prestage=o_dev.use_fwd_prestage;
     auto& use_wap=o_dev.use_wap;
+    auto& use_frame_vram=o_dev.use_frame_vram;   // --frame-vram (the lever of O0_FREEZE_LEVER1.md)
     auto& use_bidir=o_dev.use_bidir;
     auto& use_fill_div=o_dev.use_fill_div;
     auto& use_rescue=o_dev.use_rescue;
@@ -410,6 +411,7 @@ int main(int argc, char** argv) {
     auto& dxgi_stage2=o_img.dxgi_stage2;
     auto& Astage=o_host.Astage;
     auto& Anative=o_img.Anative; auto& Awork=o_img.Awork; auto& Bframe=o_img.Bframe;
+    auto& Vframe=o_img.Vframe;   // --frame-vram mirror
     auto& Cinterp=o_img.Cinterp; auto& Gsrc=o_img.Gsrc; auto& Gdst=o_img.Gdst;
     auto& Bflow=o_img.Bflow;
     auto& pres_w=o_host.pres_w; auto& pres_h=o_host.pres_h;
@@ -789,6 +791,8 @@ int main(int argc, char** argv) {
             .WW = WW,
             .WH = WH,
             .hR_a = hR_a,
+            .Vframe = Vframe,
+            .use_frame_vram = use_frame_vram,
             .A = A,
             .single_gpu = single_gpu,
             .a_q2_mtx = a_q2_mtx,
@@ -1262,6 +1266,7 @@ done:
     img_destroy(A,CinterpA); img_destroy(A,AframeA[1]); img_destroy(A,AframeA[0]);
     img_destroy(A,Anative); img_destroy(A,Awork); hbuf_destroy(A,Astage);
     if(use_igpu_convert) hbuf_destroy(G,Astage_g);  // G-side import of hostA; free host ptr below
+    for(int _s=0;_s<kCapSlots;++_s) img_destroy(A,Vframe[_s]);   // --frame-vram mirror (VK_NULL_HANDLE no-op when off)
     img_destroy(FD,Bframe[0]); img_destroy(FD,Bframe[1]); img_destroy(FD,Cinterp);   // FD — Bframe/Cinterp created on FD (A under single_gpu)
     img_destroy(FD,Bflow[0]); img_destroy(FD,Bflow[1]);   // VK_NULL_HANDLE no-op when flow_div==1 (FD)
     if(b_q2_split) for(int _k=0;_k<kMaxInterp;++_k) hbuf_destroy(FD,sbI[_k]);   // VRAM staging (FD; b_q2_split false under single_gpu)

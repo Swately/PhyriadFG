@@ -535,6 +535,8 @@ void run_flow(FgContext& ctx){
     auto& tfb = ctx.tfb;
     auto& hostI = ctx.hostI;
     auto& hR_b = ctx.hR_b;
+    auto& Vframe = ctx.Vframe;                   // --frame-vram: the device mirror of the capture ring
+    auto& use_frame_vram = ctx.use_frame_vram;
     auto& hRP_b = ctx.hRP_b;
     auto& hRP_b_dev = ctx.hRP_b_dev;
     auto& hMV_b = ctx.hMV_b;
@@ -1104,7 +1106,8 @@ void run_flow(FgContext& ctx){
                 } else {
                     img_barrier(cmdF,Bframe[cur_f].img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
                     if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,1u);   // F.upload starts (the opening barrier goes to F.transitions)
-                    { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyBufferToImage(cmdF,hR_b[s].buf,Bframe[cur_f].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
+                    if(use_frame_vram){ VkImageCopy ic=full_ic(WW,WH); vkCmdCopyImage(cmdF,Vframe[s].img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,Bframe[cur_f].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&ic); }   // --frame-vram: from the device mirror (O0_FREEZE_LEVER1.md)
+                    else { VkBufferImageCopy cp=full_bic(WW,WH); vkCmdCopyBufferToImage(cmdF,hR_b[s].buf,Bframe[cur_f].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&cp); }
                     if(st_fl) st_ft->mark(pfg::instrument::Lane::F,cmdF,2u);   // F.upload ends (the copy alone)
                     img_barrier(cmdF,Bframe[cur_f].img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
                 }
