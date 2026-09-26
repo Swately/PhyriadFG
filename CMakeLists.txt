@@ -236,6 +236,11 @@ add_executable(pfg_plane_watchdog_test tests/core/test_plane_watchdog.cpp)
 target_compile_features(pfg_plane_watchdog_test PRIVATE cxx_std_23)
 target_include_directories(pfg_plane_watchdog_test PRIVATE "${_fw}/render/present/include")
 add_test(NAME plane_watchdog COMMAND pfg_plane_watchdog_test)
+# The present loop's stall trace (src/present/stall_trace.hpp): when a tick gap is reported and how it is split, no GPU.
+add_executable(pfg_stall_trace_test tests/core/test_stall_trace.cpp)
+target_compile_features(pfg_stall_trace_test PRIVATE cxx_std_23)
+target_include_directories(pfg_stall_trace_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_test(NAME stall_trace COMMAND pfg_stall_trace_test)
 set_tests_properties(site_book PROPERTIES PASS_REGULAR_EXPRESSION "OK: site_book -- all checks passed")
 
 # 2b. The same oracle over the two dimensions the first fixture cannot reach (4.3's honesty ledger named this gap):

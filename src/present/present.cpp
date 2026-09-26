@@ -12,6 +12,7 @@
 #include "flow/flow.hpp"             // MedianPipe (the P-thread medPipe member access)
 #include <phyriad/hal/CpuWait.hpp>   // phyriad::hal::cpu_wait_for_ns (paced spin-finish)
 #include "core/globals.hpp"          // g_quit / vk_live / g_ov_in/g_ov_out / g_gpu_a_util / g_device_lost (true globals the P body names)
+#include "present/stall_trace.hpp"     // the present loop's stall trace (LEVER1_RECORD s4.7)
 #include "core/telemetry_csv.hpp"    // phyriadfg::TelemetryCsv (the P-thread-local tcsv)
 #include "instrument/instrument.hpp" // dump_bmp / dump_rgba (P-thread diagnostic dumps)
 #include "instrument/gdump.hpp"      // --gdump: the every-tick capture tap (GDUMP_PLAN.md S5: the five P-side sites in this file)
@@ -1776,6 +1777,8 @@ void run_present(FgContext& ctx){
                 // yielded (present-nothing passthrough, no-lock-out), así que sin estas líneas una
                 // corrida own-window con el juego nunca-en-foco se ve sana mostrando NADA.
                 bool own_yld_prev=false, own_yld_init=false;
+                pfg::present::TickStamps st_cur;   // stall trace (always on, log only): this tick's stamps (stall_trace.hpp)
+                uint32_t stall_n=0;                 // tick gaps > 100 ms reported so far
                 uint32_t own_wd_hides=0, own_wd_ended=0;   // the watchdog's hides / ended hides already logged (is_yielded() cannot see them)
                 // ── the CONTENT CLOCK (NCO + 2nd-order PLL), the D calibration, the set selection, the phase
                 // and the content-order guard are STAGE 4: src/clock/phase_clock.{hpp,cpp} (R1/X14). The state
@@ -1873,6 +1876,13 @@ void run_present(FgContext& ctx){
                 // inert local with no effect on any presented pixel → byte-identical-off. (.)
                 const double t_run_start = now_ms();
                 while(!g_quit&&!g_quit_threads.load()){
+                    // Stall trace (LEVER1_RECORD s4.7): a top-to-top gap > 100 ms is logged with where the PREVIOUS tick
+                    // spent it. The stamp is taken before the print, so a print that blocks shows in the next report.
+                    { const double tt=now_ms(); const auto sr=pfg::present::stall_check(st_cur,tt,100.0);
+                      if(sr.report){ ++stall_n;
+                          std::printf("[ra] present stall #%u: tick gap %.0f ms ending at t=%.1f s = top %.1f + pacing %.1f + tick %.1f + tail %.1f + loop %.1f ms (-1 = not reached)\n",
+                                      stall_n,sr.gap,(tt-t_run_start)/1000.0,sr.top,sr.pace,sr.tick,sr.tail,sr.loop); }
+                      st_cur=pfg::present::TickStamps{}; st_cur.top=tt; }
                     // (FG bounded-run) the deadline guard, HOISTED here (R4b) so every path honours it — its former
                     // home inside the WAP branch left grid mode (--no-warp-at-presenter) unbounded (R4_GATE.md §4.4).
                     // Same g_quit, same counters; default-off (run_max_ms/run_max_frames = 0) → byte-identical-off.
@@ -1897,6 +1907,7 @@ void run_present(FgContext& ctx){
                                         ra_surface.is_yielded()?"the plane stays YIELDED (the foreground is elsewhere)":"plane re-asserted",
                                         (now_ms()-t_run_start)/1000.0); }
                     }
+                    st_cur.bound=now_ms();   // stall trace: the tick boundary (before the pacing block)
                     // ── 1. tick boundary ──────────────────────────────────────
                     // timer: paced_wait_P spins to the next k·tick_period target (the clock).
                     {
@@ -2035,6 +2046,7 @@ void run_present(FgContext& ctx){
                     }
                     if(g_quit||g_quit_threads.load()) break;
                     const double t0_p=now_ms();
+                    st_cur.t0p=t0_p;   // stall trace: "iter" starts here
                     ++stat_ticks; gdump.tick();   // --gdump: every vblank tick the loop runs, whatever it decides below
 
                     // ── FIX (window-death) exit cleanly when the captured WINDOW dies ──────────────
@@ -2766,6 +2778,7 @@ void run_present(FgContext& ctx){
                         }
                         // per-second stats (WAP marker; uniq counts distinct (pair,0.1ms-phase))
                         const double iter_p=now_ms()-t0_p; sum_iter+=iter_p; if(iter_p>worst)worst=iter_p;
+                        st_cur.iter_end=t0_p+iter_p;   // stall trace: "iter" ends here
                         if(total_frames.load()-last_stat_presents>=90){
                             const double dt=(now_ms()-stat_t)/1e3;
                             const uint64_t dpres=total_frames.load()-last_stat_presents;
@@ -2959,6 +2972,7 @@ void run_present(FgContext& ctx){
                             stat_ticks=0;
                             stat_t=now_ms(); last_stat_presents=total_frames.load();
                         }
+                        st_cur.tail_end=now_ms();   // stall trace: after the stats and their prints
                         continue;   // WAP tick complete — skip the grid path below
                     }
 
@@ -3090,6 +3104,7 @@ void run_present(FgContext& ctx){
                 if(cfg.present_own_window && surface_ready){   // the watchdog's record at loop exit (a later teardown hide is not counted)
                     const auto _wd=ra_surface.watchdog_stats();
                     std::printf("[ra] own-window watchdog: hides=%u ended=%u max_stall_ms=%lld\n",_wd.hides,_wd.ended,(long long)_wd.max_stall_ms); }
+                std::printf("[ra] present stall trace: %u tick gaps > 100 ms\n",stall_n);   // (LEVER1_RECORD s4.7)
                 if(alog){ std::fclose(alog); std::printf("[ra] --arrival-log: %llu tick lines -> %s\n",(unsigned long long)alog_n,cfg.arrival_log); }   // (R1) the replay oracle
                 gdump.stop(total_frames.load());   // --gdump (CR3): join the writer + summary.txt with the FG's own present count, BEFORE any device teardown
                 if(pdhQuery) PdhCloseQuery(pdhQuery);   // release the PDH query on P exit
