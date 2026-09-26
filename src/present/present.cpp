@@ -1890,10 +1890,12 @@ void run_present(FgContext& ctx){
                         // The watchdog's force-hide is invisible to is_yielded(): log each hide and each end, with its stall.
                         const auto _wd=ra_surface.watchdog_stats();
                         if(_wd.hides!=own_wd_hides){ own_wd_hides=_wd.hides;
-                            std::printf("[ra] own-window: WATCHDOG hid the plane (hide #%u): the present thread did not submit for > 250 ms\n",_wd.hides); }
+                            std::printf("[ra] own-window: WATCHDOG hid the plane (hide #%u): the present thread did not submit for > 250 ms [logged at t=%.1f s]\n",
+                                        _wd.hides,(now_ms()-t_run_start)/1000.0); }
                         if(_wd.ended!=own_wd_ended){ own_wd_ended=_wd.ended;
-                            std::printf("[ra] own-window: WATCHDOG hide #%u ended after a %lld ms present stall -> %s\n",_wd.ended,(long long)_wd.last_stall_ms,
-                                        ra_surface.is_yielded()?"the plane stays YIELDED (the foreground is elsewhere)":"plane re-asserted"); }
+                            std::printf("[ra] own-window: WATCHDOG hide #%u ended after a %lld ms present stall -> %s [t=%.1f s]\n",_wd.ended,(long long)_wd.last_stall_ms,
+                                        ra_surface.is_yielded()?"the plane stays YIELDED (the foreground is elsewhere)":"plane re-asserted",
+                                        (now_ms()-t_run_start)/1000.0); }
                     }
                     // ── 1. tick boundary ──────────────────────────────────────
                     // timer: paced_wait_P spins to the next k·tick_period target (the clock).
