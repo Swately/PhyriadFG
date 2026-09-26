@@ -40,6 +40,7 @@
 #include <chrono>
 #include <cstdint>
 #include <phyriad/render/present/D3d11StampRing.hpp>   // set_gpu_timing (INSTRUMENT, default off)
+#include <phyriad/render/present/PlaneWatchdog.hpp>    // the present watchdog's decisions (pure; tests/core/test_plane_watchdog.cpp)
 #include <cstdio>      // swprintf — the per-instance class-name suffix
 #include <cwchar>      // wcscpy / wchar_t
 #include <exception>   // std::set_terminate / std::terminate_handler (crash last-gasp)
@@ -260,6 +261,14 @@ struct PresentSurface::Impl {
     std::atomic<bool> wd_done{false};       // the watchdog's loop has RETURNED (see destroy(): joining it
                                             // without pumping deadlocks when it is inside yield_plane())
     std::thread       wd_thread;            // present-thread watchdog (own_window only)
+    // The watchdog's force-hide is NOT a yield: it raises wd_hidden, and submit() ends it at the first heartbeat after
+    // the stall (PlaneWatchdog.hpp). Counted, so the consumer can log every hide and its stall (is_yielded() cannot).
+    std::atomic<bool>     wd_hidden{false};
+    std::atomic<uint32_t> wd_hides{0};          // force-hides (the watchdog thread)
+    std::atomic<uint32_t> wd_ended{0};          // hides whose stall ended (submit())
+    std::atomic<int64_t>  wd_last_stall_ms{0};  // the heartbeat gap that ended the last hide
+    std::atomic<int64_t>  wd_max_stall_ms{0};
+    WatchdogResume        wd_resume;            // submit() only (the present thread)
 
     // Drop the displayed plane so the desktop/game beneath is reachable. Win32-only,
     // allocation-free, reentrancy-safe (the crash last-gasp + the watchdog both call it).
@@ -579,19 +588,24 @@ PresentSurface::create(const PresentSurfaceDesc& desc) noexcept {
         impl->heartbeat_ms.store(0);
         impl->wd_run.store(true);
         impl->wd_thread = std::thread([impl]() noexcept {
-            int64_t last_seen = -1, last_change_at = 0;
+            WatchdogPoll poll;
             while (impl->wd_run.load()) {
                 Sleep(50);
-                if (impl->yielded.load()) continue; // already hidden → nothing to guard
-                const int64_t hb  = impl->heartbeat_ms.load();
-                const int64_t nowt = (int64_t)GetTickCount64();
-                if (hb != last_seen) { last_seen = hb; last_change_at = nowt; continue; }
-                if (hb != 0 && (nowt - last_change_at) > kWatchdogStallMs) {
+                // Nothing to guard while the plane is already hidden: yielded by the foreground monitor, or hidden
+                // by an earlier fire that submit() has not ended yet (PlaneWatchdog.hpp; the fire re-arms itself).
+                const bool hidden = impl->yielded.load() || impl->wd_hidden.load();
+                if (watchdog_should_hide(poll, impl->heartbeat_ms.load(), (int64_t)GetTickCount64(), hidden,
+                                         kWatchdogStallMs)) {
                     // The present thread has not bumped the heartbeat for too long while displayed →
                     // a wedged FG. Force-hide so the game/desktop reclaims the plane. We do NOT set
                     // yielded (the foreground monitor owns that bit); the force-hide is the hard floor.
+                    // The hide is POSTED first and only then published in wd_hidden, so the re-assert submit()
+                    // makes when it sees the flag comes after it. Until 2026-09-26 nothing re-asserted a watchdog
+                    // hide: one stall > 250 ms left the plane hidden, non-topmost and unlogged for the rest of the
+                    // run (PhyriadFG docs/planning/records/LEVER1_RECORD.md s4.4).
                     impl->yield_plane();
-                    last_change_at = nowt;  // re-arm so we don't spin SetWindowPos every 50 ms
+                    impl->wd_hides.fetch_add(1);
+                    impl->wd_hidden.store(true);
                 }
             }
             impl->wd_done.store(true, std::memory_order_release);  // destroy() waits on THIS, not on join()
@@ -632,7 +646,8 @@ PresentSurface::submit(const SharedFrameHandle& s) noexcept {
     // in front → re-assert the plane and resume. This whole block is OwnWindow-only; the overlay
     // styles skip it entirely.
     if (impl_->own_window) {
-        impl_->heartbeat_ms.store((int64_t)GetTickCount64());  // liveness (default seq_cst, see own_window_last_gasp)
+        const int64_t hb_now  = (int64_t)GetTickCount64();
+        const int64_t hb_prev = impl_->heartbeat_ms.exchange(hb_now);  // liveness (default seq_cst, see own_window_last_gasp); prev = a stall's start
         HWND fg = GetForegroundWindow();
         // (startup focus-restore) ver el comentario del Impl: dentro de la ventana inicial, si el
         // foreground no es el juego, devolvérselo — la consola/launcher que nos parió lo robó.
@@ -665,6 +680,19 @@ PresentSurface::submit(const SharedFrameHandle& s) noexcept {
         // still held: the present-thread watchdog force-hides the plane on a stall, and the quit paths hide
         // it on exit.
         const bool want_yield = impl_->game_hwnd ? !(ours || game) : false;
+        // A watchdog force-hide ends at the first heartbeat after its stall: measure the stall and re-assert the plane
+        // (now and on the next heartbeat) unless the foreground wants a yield, in which case the yield below takes
+        // over and the yielded→displayed edge re-asserts it later (PlaneWatchdog.hpp). No hide pending: one load.
+        {
+            const bool hide_ended = impl_->wd_hidden.load() && impl_->wd_hidden.exchange(false);
+            const WatchdogAction wa = watchdog_on_heartbeat(impl_->wd_resume, hide_ended, hb_prev, hb_now, want_yield);
+            if (wa.stall_ms >= 0) {
+                impl_->wd_last_stall_ms.store(wa.stall_ms);
+                if (wa.stall_ms > impl_->wd_max_stall_ms.load()) impl_->wd_max_stall_ms.store(wa.stall_ms);
+                impl_->wd_ended.fetch_add(1);
+            }
+            if (wa.reassert) impl_->reassert_plane();
+        }
         const bool was_yielded = impl_->yielded.load();
         if (want_yield && !was_yielded) {
             impl_->yielded.store(true);
@@ -764,6 +792,11 @@ bool PresentSurface::is_click_through() const noexcept {
 // (present-nothing = passthrough, the no-lock-out contract), so ps-ok counters cannot distinguish
 // displayed from hidden — this accessor is the consumer's only truth for "is my plane on the panel".
 bool PresentSurface::is_yielded() const noexcept { return impl_ && impl_->own_window && impl_->yielded.load(); }
+// The watchdog's record (is_yielded() cannot see its hides). All zero for the overlay styles.
+PresentSurface::WatchdogStats PresentSurface::watchdog_stats() const noexcept {
+    if (!impl_ || !impl_->own_window) return {};
+    return { impl_->wd_hides.load(), impl_->wd_ended.load(), impl_->wd_last_stall_ms.load(), impl_->wd_max_stall_ms.load() };
+}
 // The actual present format (post-fallback). The consumer reads this to match its producer bridge
 // texture format: true → FP16 bridge, false → 8-bit bridge.
 bool PresentSurface::present_is_fp16() const noexcept { return impl_ && impl_->present_is_fp16; }
@@ -849,6 +882,7 @@ PresentSurface::submit_at(const SharedFrameHandle&, uint64_t) noexcept {
 bool PresentSurface::capture_excluded() const noexcept { return false; }
 bool PresentSurface::is_click_through() const noexcept { return false; }
 bool PresentSurface::is_yielded() const noexcept { return false; }  // is_yielded() stub
+PresentSurface::WatchdogStats PresentSurface::watchdog_stats() const noexcept { return {}; }  // watchdog_stats() stub
 bool PresentSurface::present_is_fp16() const noexcept { return false; }
 bool PresentSurface::device_lost() const noexcept { return false; }  // device_lost() stub
 std::optional<PresentSurface::FlipStats> PresentSurface::last_flip_qpc() const noexcept { return std::nullopt; }  // last_flip_qpc() stub

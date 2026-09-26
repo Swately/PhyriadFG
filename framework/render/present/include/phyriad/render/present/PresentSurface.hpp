@@ -190,6 +190,17 @@ public:
     // run that never had the game focused reads as "working" while presenting NOTHING. Always false
     // for the overlay styles.
     [[nodiscard]] bool is_yielded() const noexcept;
+    // (Style::OwnWindow) the present watchdog's record. The watchdog force-hides the plane when submit() stops
+    // bumping its heartbeat for > 250 ms (a wedged FG must never hold the panel), and submit() re-asserts it at the
+    // first heartbeat after the stall unless the foreground wants a yield (PlaneWatchdog.hpp). is_yielded() does NOT
+    // see these hides, so a consumer that logs the display state polls this too. All zero for the overlay styles.
+    struct WatchdogStats {
+        uint32_t hides         = 0;   // force-hides by the watchdog
+        uint32_t ended         = 0;   // hides whose stall ended (the heartbeat came back)
+        int64_t  last_stall_ms = 0;   // the heartbeat gap that ended the last hide
+        int64_t  max_stall_ms  = 0;
+    };
+    [[nodiscard]] WatchdogStats watchdog_stats() const noexcept;
     // True iff the swapchain was actually created at FP16 scRGB (DXGI_FORMAT_R16G16B16A16_FLOAT).
     // When desc.present_format==1 but the FP16 create failed, create() falls back to BGRA8 and this
     // returns false — the consumer reads it to decide whether to widen its producer bridge texture to

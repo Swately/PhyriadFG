@@ -230,6 +230,12 @@ add_executable(pfg_frame_vram_test tests/core/test_frame_vram.cpp)
 target_compile_features(pfg_frame_vram_test PRIVATE cxx_std_23)
 target_include_directories(pfg_frame_vram_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_test(NAME frame_vram COMMAND pfg_frame_vram_test)
+# The OwnWindow present watchdog (framework PlaneWatchdog.hpp): the force-hide, its end and the stall it measures,
+# no window, no GPU. W10 replays the 2026-09-25 defect (a stall > 250 ms left the plane hidden to the end of the run).
+add_executable(pfg_plane_watchdog_test tests/core/test_plane_watchdog.cpp)
+target_compile_features(pfg_plane_watchdog_test PRIVATE cxx_std_23)
+target_include_directories(pfg_plane_watchdog_test PRIVATE "${_fw}/render/present/include")
+add_test(NAME plane_watchdog COMMAND pfg_plane_watchdog_test)
 set_tests_properties(site_book PROPERTIES PASS_REGULAR_EXPRESSION "OK: site_book -- all checks passed")
 
 # 2b. The same oracle over the two dimensions the first fixture cannot reach (4.3's honesty ledger named this gap):

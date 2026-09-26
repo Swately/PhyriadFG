@@ -1776,6 +1776,7 @@ void run_present(FgContext& ctx){
                 // yielded (present-nothing passthrough, no-lock-out), así que sin estas líneas una
                 // corrida own-window con el juego nunca-en-foco se ve sana mostrando NADA.
                 bool own_yld_prev=false, own_yld_init=false;
+                uint32_t own_wd_hides=0, own_wd_ended=0;   // the watchdog's hides / ended hides already logged (is_yielded() cannot see them)
                 // ── the CONTENT CLOCK (NCO + 2nd-order PLL), the D calibration, the set selection, the phase
                 // and the content-order guard are STAGE 4: src/clock/phase_clock.{hpp,cpp} (R1/X14). The state
                 // and the loop gains (--sc-freq-alpha / --sc-phase-gain / --sc-reseat) live in PhaseClock; the
@@ -1886,6 +1887,13 @@ void run_present(FgContext& ctx){
                             std::printf(_y?"[ra] own-window: plane YIELDED (foreground is neither the game nor us) -> passthrough, presents are no-ops. Focus the CAPTURED window to display.\n"
                                           :"[ra] own-window: plane DISPLAYED (game/our window in front) -> we own the panel.\n");
                         }
+                        // The watchdog's force-hide is invisible to is_yielded(): log each hide and each end, with its stall.
+                        const auto _wd=ra_surface.watchdog_stats();
+                        if(_wd.hides!=own_wd_hides){ own_wd_hides=_wd.hides;
+                            std::printf("[ra] own-window: WATCHDOG hid the plane (hide #%u): the present thread did not submit for > 250 ms\n",_wd.hides); }
+                        if(_wd.ended!=own_wd_ended){ own_wd_ended=_wd.ended;
+                            std::printf("[ra] own-window: WATCHDOG hide #%u ended after a %lld ms present stall -> %s\n",_wd.ended,(long long)_wd.last_stall_ms,
+                                        ra_surface.is_yielded()?"the plane stays YIELDED (the foreground is elsewhere)":"plane re-asserted"); }
                     }
                     // ── 1. tick boundary ──────────────────────────────────────
                     // timer: paced_wait_P spins to the next k·tick_period target (the clock).
@@ -3077,6 +3085,9 @@ void run_present(FgContext& ctx){
                         stat_t=now_ms(); last_stat_presents=total_frames.load();
                     }
                 }
+                if(cfg.present_own_window && surface_ready){   // the watchdog's record at loop exit (a later teardown hide is not counted)
+                    const auto _wd=ra_surface.watchdog_stats();
+                    std::printf("[ra] own-window watchdog: hides=%u ended=%u max_stall_ms=%lld\n",_wd.hides,_wd.ended,(long long)_wd.max_stall_ms); }
                 if(alog){ std::fclose(alog); std::printf("[ra] --arrival-log: %llu tick lines -> %s\n",(unsigned long long)alog_n,cfg.arrival_log); }   // (R1) the replay oracle
                 gdump.stop(total_frames.load());   // --gdump (CR3): join the writer + summary.txt with the FG's own present count, BEFORE any device teardown
                 if(pdhQuery) PdhCloseQuery(pdhQuery);   // release the PDH query on P exit
