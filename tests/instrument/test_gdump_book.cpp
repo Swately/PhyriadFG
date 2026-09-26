@@ -228,6 +228,18 @@ static void run() {
 }
 }  // namespace t5
 
+// T6 (--gdump-live, LEVER1_RECORD s4.12): with the live frames off, a captured tick writes no live bytes and advances
+// live_off by 0; on, it is the logical frame size, as before.
+namespace t6 {
+static void run() {
+    std::printf("[T6] --gdump-live: the live-frame bytes a captured tick writes\n");
+    const uint64_t fb = 1920ull * 1061ull * 4ull;
+    check(GdumpBook::live_frame_bytes(true, fb) == fb, "live on: the logical frame size (today's tap)");
+    check(GdumpBook::live_frame_bytes(false, fb) == 0, "live off: 0 bytes written, live_off does not advance");
+    check(GdumpBook::live_frame_bytes(false, 0) == 0 && GdumpBook::live_frame_bytes(true, 0) == 0, "a zero-size frame is 0 either way");
+}
+}  // namespace t6
+
 int main() {
     std::printf("pfg_gdump_test -- GdumpBook, GDUMP_PLAN.md S6 / RR1 / RR2\n");
     t1::run();
@@ -235,6 +247,7 @@ int main() {
     t3::run();
     t4::run();
     t5::run();
+    t6::run();
     if (g_fail) std::printf("RESULT: %d CHECK(S) FAILED\n", g_fail);
     else        std::printf("RESULT: PASS -- all checks green\n");
     return g_fail ? 1 : 0;

@@ -127,6 +127,7 @@ GdumpTap::GdumpTap(VDev& A, const char* dir, uint32_t ring_n, uint32_t pair_sets
     slots_.resize(N);
     for (uint32_t i = 0; i < N; ++i) {
         Slot& s = slots_[i];
+        if (!info_.live) { s.push.resize(dims_.push_bytes); continue; }   // --gdump-live 0: no frame staging (no live copy, no live write)
         s.ptr = _aligned_malloc((size_t)frame_bytes, (size_t)align);
         if (!s.ptr || !hbuf_import(A_, s.ptr, frame_bytes, s.buf, VK_BUFFER_USAGE_TRANSFER_DST_BIT)) {
             std::printf("[ra] gdump: staging slot %u/%u alloc/import failed (%.1f MB) -- DISARMED\n",
@@ -186,16 +187,16 @@ GdumpTap::GdumpTap(VDev& A, const char* dir, uint32_t ring_n, uint32_t pair_sets
     // live.rgba: unbuffered when every frame is a sector multiple from a sector-aligned slot (PR2); the fallback
     // is the stdio stream. The choice is made ONCE here from the first slot (all slots share the alignment).
     live_raw_ = INVALID_HANDLE_VALUE;
-    if (N > 0 && unbuffered_ok(slots_[0].ptr, (uint64_t)dims_.WW_warp * dims_.WH_warp * 4u)) {
+    if (info_.live && N > 0 && unbuffered_ok(slots_[0].ptr, (uint64_t)dims_.WW_warp * dims_.WH_warp * 4u)) {
         live_raw_ = open_raw((dir_ + "\\live.rgba").c_str(), /*append_stream=*/true);
         if (live_raw_ == INVALID_HANDLE_VALUE) std::printf("[ra] gdump: live.rgba unbuffered open failed (%lu) -- falling back to stdio\n", (unsigned long)GetLastError());
     }
-    f_live_  = (live_raw_ == INVALID_HANDLE_VALUE) ? std::fopen((dir_ + "\\live.rgba").c_str(), "wb") : nullptr;
+    f_live_  = (info_.live && live_raw_ == INVALID_HANDLE_VALUE) ? std::fopen((dir_ + "\\live.rgba").c_str(), "wb") : nullptr;
     f_push_  = std::fopen((dir_ + "\\push.bin").c_str(),        "wb");
     f_ticks_ = std::fopen((dir_ + "\\ticks.tsv").c_str(),       "wb");
     f_pairs_ = std::fopen((dir_ + "\\pairs.tsv").c_str(),       "wb");
     f_xref_  = std::fopen((dir_ + "\\qdump_xref.tsv").c_str(),  "wb");
-    if ((!f_live_ && live_raw_ == INVALID_HANDLE_VALUE) || !f_push_ || !f_ticks_ || !f_pairs_ || !f_xref_) {
+    if ((info_.live && !f_live_ && live_raw_ == INVALID_HANDLE_VALUE) || !f_push_ || !f_ticks_ || !f_pairs_ || !f_xref_) {
         std::printf("[ra] gdump: failed to open live.rgba/push.bin/ticks.tsv/pairs.tsv/qdump_xref.tsv under '%s' -- DISARMED\n",
                     dir_.c_str());
         if (live_raw_ != INVALID_HANDLE_VALUE) { CloseHandle(live_raw_); live_raw_ = INVALID_HANDLE_VALUE; }
@@ -223,6 +224,7 @@ GdumpTap::GdumpTap(VDev& A, const char* dir, uint32_t ring_n, uint32_t pair_sets
         std::fprintf(h, "xfer %d\n", info_.xfer ? 1 : 0);
         std::fprintf(h, "async %d\n", info_.async_present ? 1 : 0);
         std::fprintf(h, "ring %u pairs %u\n", N, M);
+        if (!info_.live) std::fprintf(h, "live 0\n");   // --gdump-live 0 (absent = 1, so a default header is unchanged)
         std::fprintf(h, "qpc_hz %.6f\n", info_.qpc_hz);
         // §1.6: the three refused flags, recorded as 0 BY CONSTRUCTION — resolve_config() (S2) never
         // lets the tap arm with any of them on, so this file has no other truth to record.
@@ -239,8 +241,12 @@ GdumpTap::GdumpTap(VDev& A, const char* dir, uint32_t ring_n, uint32_t pair_sets
     // on_*/record_*/note_qdump/stop methods).
     writer_ = std::thread(&GdumpTap::writer_main, this);
     armed_ = true;
-    std::printf("[ra] gdump: ARMED -> %s (ring %u x %.1f MB, pairs %u, %s)\n",
-                dir_.c_str(), N, frame_bytes / 1048576.0, M, info_.kernel ? info_.kernel : "?");
+    if (info_.live)
+        std::printf("[ra] gdump: ARMED -> %s (ring %u x %.1f MB, pairs %u, %s)\n",
+                    dir_.c_str(), N, frame_bytes / 1048576.0, M, info_.kernel ? info_.kernel : "?");
+    else
+        std::printf("[ra] gdump: ARMED -> %s (ring %u, LIVE FRAMES OFF (--gdump-live 0): index + pairs only, pairs %u, %s)\n",
+                    dir_.c_str(), N, M, info_.kernel ? info_.kernel : "?");
 }
 
 GdumpTap::~GdumpTap() {
@@ -262,7 +268,7 @@ GdumpTap::~GdumpTap() {
 // (b) the frame copy: `out` is already TRANSFER_SRC_OPTIMAL at the call site (inside the blit pass /
 // between present.cpp's blit and back-barrier) — no barrier here, the caller guarantees the layout (§1.2).
 void GdumpTap::record_frame_copy(VkCommandBuffer c, VkImage out, int slot) noexcept {
-    if (!armed_ || slot < 0) return;
+    if (!armed_ || slot < 0 || !info_.live) return;   // --gdump-live 0: no live copy (the pair copies are separate)
     VkBufferImageCopy cp = full_bic(dims_.WW_warp, dims_.WH_warp);
     vkCmdCopyImageToBuffer(c, out, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slots_[(size_t)slot].buf.buf, 1, &cp);
     host_read_barrier(c, slots_[(size_t)slot].buf.buf);
@@ -363,9 +369,10 @@ void GdumpTap::writer_main() noexcept {
             continue;   // a live-but-slow tick: retry the same descriptor next lap (still at the ring head)
         }
 
-        // RR5: the LOGICAL frame size, never the rounded staging allocation.
-        const uint64_t frame_bytes = (uint64_t)dims_.WW_warp * dims_.WH_warp * 4u;
-        if (live_raw_ != INVALID_HANDLE_VALUE) {
+        // RR5: the LOGICAL frame size, never the rounded staging allocation. --gdump-live 0: 0 bytes, nothing written.
+        const uint64_t frame_bytes = GdumpBook::live_frame_bytes(info_.live, (uint64_t)dims_.WW_warp * dims_.WH_warp * 4u);
+        if (frame_bytes == 0) {
+        } else if (live_raw_ != INVALID_HANDLE_VALUE) {
             if (!write_raw(live_raw_, slots_[d.slot].ptr, frame_bytes)) ++book_.counters().writer_timeouts;   // counted under the same "the disk did not take it" bucket
         } else {
             std::fwrite(slots_[d.slot].ptr, 1, (size_t)frame_bytes, f_live_);

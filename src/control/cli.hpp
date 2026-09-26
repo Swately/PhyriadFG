@@ -396,6 +396,9 @@ struct Config {
                                    // everything but record no copy — the third arm of the observer gate (GDUMP_PLAN CR5).
                                    // 256 = 1.07 s at 240 fps: the writer's measured cache-flush stalls are 0.26–0.73 s (PR2).
     int   gdump_pairs=16;           // --gdump-pairs M: pair staging sets (prev/next/mv1/mvb1 + the host planes); 16 = the max.
+    int   gdump_live=1;             // --gdump-live 0|1: 0 = record NO live warp frame (no staging, no per-tick copy, no live.rgba;
+                                   // the index + the pair sets unchanged), so the one serial writer spends the disk on the pairs
+                                   // (LEVER1_RECORD s4.11-4.12). 1 = the default, byte-identical.
     int   phaselog_n=0;             // --phaselog N: for N consecutive PAIRS, collect the t_use of EVERY presented WAP
                                     // tick of that pair; on pair-advance print one ladder line `[ra] phase pair_c=K
                                     // span=S n=T t=[...]` (two decimals, ≤40 values). The fluidity probe: does the

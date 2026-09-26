@@ -917,7 +917,7 @@ void run_present(FgContext& ctx){
             pfg::instrument::GdumpTap gdump(A, cfg.gdump_dir, cfg.gdump_dir[0]?(uint32_t)cfg.gdump_ring:0u, (uint32_t)cfg.gdump_pairs,
                 pfg::instrument::GdumpDims{ WW, WH, WW_warp, WH_warp, warp_div, wap_mvw, wap_mvh, pfg::instrument::kGdumpPushBytes },
                 pfg::instrument::GdumpInfo{ (cfg.fg_core&&fgPipeA.pipe!=VK_NULL_HANDLE)?"fg_core":"wap_warp", pfg::layers::layer_contract_hash(cfg),
-                                            use_bidir, xfer_on, cfg.async_present, sg5_want, (double)gd_qf.QuadPart });
+                                            use_bidir, xfer_on, cfg.async_present, sg5_want, (double)gd_qf.QuadPart, cfg.gdump_live!=0 });
             int gd_slot=-1; uint64_t gd_pair_c=0, gd_tick=0;
             auto wap_warp_present=[&](float t,float extrap,const float* gme6,bool bwd_ok,float thr_eff,uint32_t* presented_out,bool do_warp=true){
                 // --qdump+ (S2.T1): a byte copy of the push block AS SUBMITTED. `pcw` lives in a nested

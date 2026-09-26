@@ -116,6 +116,8 @@ void print_help(const char* a0) {
         "                        counts). Refused with --afill/--fps-overlay/--ts-smooth. Default off.\n"
         "  --gdump-ring N        Frame staging slots (default 256 = 1.07 s at 240 fps; 0 = arm without copying,\n"
         "                        the observer gate's third arm).  --gdump-pairs M  pair staging sets (default 16).\n"
+        "  --gdump-live 0|1      0 = no live warp frames (no live.rgba): the index + the pair sets only, so the\n"
+        "                        writer spends the disk on the pairs. Default 1.\n"
         "  --phaselog N          Log the presented t_use ladder for the next N pairs\n"
         "  --sync-clock          Frame-ladder cadence (DEFAULT ON): free-running content-clock NCO + 2nd-order PLL\n"
         "  --no-sync-clock       Disable the cadence fix (per-pair phase pacing)\n"
@@ -338,6 +340,7 @@ bool parse_args(int argc, char** argv, Config& c) {
                 std::printf("[ra] --gdump %s: EVERY-TICK capture tap ARMED (the shipping async path; a writer thread streams every recorded warp + the pair planes once per pair; P never waits). Refused with --afill/--fps-overlay/--ts-smooth.\n", v); return 0; } return 1; }
             if(!std::strcmp(arg,"--gdump-ring")){ if(auto v=next(arg)){ c.gdump_ring=std::atoi(v); return 0; } return 1; }
             if(!std::strcmp(arg,"--gdump-pairs")){ if(auto v=next(arg)){ c.gdump_pairs=std::atoi(v); return 0; } return 1; }
+            if(!std::strcmp(arg,"--gdump-live")){ if(auto v=next(arg)){ c.gdump_live=(std::atoi(v)!=0)?1:0; return 0; } return 1; }
             // ── STABLE WINDOW IDENTITY (QoL I-1 / E-1 / E-3). The launcher enumerates HWND + pid and today emits
             // only a title; the FG then re-derives a handle from that string with a first-match substring search.
             // These two flags carry the identity across the hop. Resolution order in capture_init:

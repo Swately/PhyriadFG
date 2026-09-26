@@ -118,6 +118,9 @@ public:
     static std::string summary_text(const Counters& c, uint64_t total_presents);
     // The reconciliation identity of §2: captured + ring_full == recorded. False = a bookkeeping defect.
     static bool identity_holds(const Counters& c) noexcept { return c.captured + c.ring_full == c.recorded; }
+    // --gdump-live: the live-frame bytes one captured tick writes (and advances live_off by). 0 when the tap records no
+    // live frames: the writer then spends the disk on the push/index and the pair sets only.
+    static uint64_t live_frame_bytes(bool live, uint64_t frame_bytes) noexcept { return live ? frame_bytes : 0u; }
 
 private:
     Ring     ring_;
@@ -137,7 +140,8 @@ private:
 
 // ── GdumpTap — the Vulkan + thread glue ─────────────────────────────────────────────────────────────────────
 struct GdumpDims { uint32_t WW, WH, WW_warp, WH_warp, warp_div, mvw, mvh; uint32_t push_bytes; };
-struct GdumpInfo { const char* kernel; uint64_t contract; bool bidir, xfer, async_present, sg; double qpc_hz; };
+struct GdumpInfo { const char* kernel; uint64_t contract; bool bidir, xfer, async_present, sg; double qpc_hz;
+                   bool live = true; };   // live: --gdump-live (false = no live warp frames; LEVER1_RECORD s4.12)
 
 class GdumpTap {
 public:
