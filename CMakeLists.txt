@@ -241,6 +241,11 @@ add_executable(pfg_stall_trace_test tests/core/test_stall_trace.cpp)
 target_compile_features(pfg_stall_trace_test PRIVATE cxx_std_23)
 target_include_directories(pfg_stall_trace_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_test(NAME stall_trace COMMAND pfg_stall_trace_test)
+# The log pipe (src/core/log_pipe.hpp) on a real anonymous pipe: a slow sink never slows the writer; order, EOF, bounded drain.
+add_executable(pfg_log_pipe_test tests/core/test_log_pipe.cpp)
+target_compile_features(pfg_log_pipe_test PRIVATE cxx_std_23)
+target_include_directories(pfg_log_pipe_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_test(NAME log_pipe COMMAND pfg_log_pipe_test)
 set_tests_properties(site_book PROPERTIES PASS_REGULAR_EXPRESSION "OK: site_book -- all checks passed")
 
 # 2b. The same oracle over the two dimensions the first fixture cannot reach (4.3's honesty ledger named this gap):

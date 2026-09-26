@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include "core/frame_vram.hpp"   // --frame-vram: the post-init route check (the lever of O0_FREEZE_LEVER1.md)
+#include "core/log_pipe.hpp"     // a redirected stdout through an in-memory pipe + one drainer (LEVER1_RECORD s4.9)
 #include <windows.h>
 // WDA_EXCLUDEFROMCAPTURE (Win10 2004+) — older MinGW winuser.h omits it.
 #ifndef WDA_EXCLUDEFROMCAPTURE
@@ -170,6 +171,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+#ifdef _WIN32
+    // The log pipe (docs/planning/records/LEVER1_RECORD.md s4.9): with stdout redirected to a file on a disk another
+    // writer saturates, every unbuffered printf blocked its thread for 0.1-0.8 s -- on the present thread that stopped
+    // the ticks. A redirected stdout now goes through an in-memory pipe that one drainer thread writes out, so no FG
+    // thread waits on the disk to print. An interactive console stays direct (core/log_pipe.hpp).
+    if (pfg::core::log_pipe_stdout_start())
+        std::printf("[ra] stdout: redirected -> routed through a 1 MB in-memory log pipe (one drainer thread writes it; no FG thread waits on the disk to print)\n");
+#endif
 #ifdef _MSC_VER
     // FG high-DPI: make the process Per-Monitor-Aware-V2 BEFORE any DPI-dependent / WinRT / window call
     // (init_apartment + all WGC/present init are below). On a SCALED display a DPI-UNAWARE process gets
@@ -1102,6 +1111,7 @@ int main(int argc, char** argv) {
                 std::printf("[ra] device lost: worker(s) still alive 3 s after the quit --%s%s%s%s -- a driver/DXGI call never returned; terminating the process so the panel is released (no CSV finalize on this path)\n",
                     c_done.load()?"":" C(capture)", cw_done.load()?"":" CW(convert)", f_done.load()?"":" F(flow)", p_done.load()?"":" P(present)");
                 std::fflush(stdout);
+                pfg::core::log_pipe_stdout_drain(200);   // the log pipe: let the drainer write these lines out first (bounded)
                 TerminateProcess(GetCurrentProcess(), 3);
             }
         }
