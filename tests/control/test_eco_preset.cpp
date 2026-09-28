@@ -20,7 +20,9 @@
 //                     hashes.
 //   3. THE CASCADE ROUTE — { --eco --matte } against { --frame-vram --no-bidir --matte }: matte is off after the cascade
 //                     in both (the no-bidir cascade runs off c.no_bidir, which the preset sets).
-//   4. SEEN RED     — the default argv differs from A on frame_vram and bidir, so the comparator is not vacuous.
+//   4. SEEN RED     — the default argv differs from A on frame_vram and bidir (read directly, not through same_fields).
+//                     The registry half of same_fields was seen red by removing the layer_shadow_parse alias; the hand
+//                     half is pinned by the direct expects in section 1.
 //
 // WHAT IT DOES NOT COVER, named: the init-time prints (the frame-vram ARMED line, and "flow rows resolved ... bidir=0"
 // with its eff mask). They depend on the devices a run finds, so they need a live run (the operator's call).

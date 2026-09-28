@@ -49,9 +49,17 @@ DDA (Desktop Duplication) is the default capture path; `--capture-api wgc` selec
 Capture (window-only). The launcher UI (`ui\run.bat`) wraps the same flags with a target-window picker.
 
 `--eco` is an opt-in power preset, exactly `--frame-vram --no-bidir` (default off; it does not set the diagnostic
-`--gme-sub2-force`). Measured basis: -40.5 to -41.3 W board at 1920x1061 k=2 (two draws, with the latch pinned); a
-2-9 % per-frame quality regression in the t~0.75 frame at 640x360 (Q1, `docs/planning/records/Q1_NOBIDIR_QUALITY.md`);
-1080p quality unverified.
+`--gme-sub2-force`).
+
+- **Route.** It needs the single-GPU route: on a multi-GPU rig, add `--force-single-gpu`.
+- **Refusal.** As with `--frame-vram`, a refused arm is fatal. It will not arm with the iGPU convert, `--upscale`,
+  `--upload-xfer`, `--real-fast-path`, `--rfp-fresh`, `--motion-fallback`, `--dump` or `--pairdump`, or without
+  warp-at-presenter.
+- **Power.** −40.5 to −41.3 W board at 1920x1061 k=2 (two draws, with the latch pinned).
+- **Quality at 640x360.** A 2–9 % regression per presented frame (the mean over both phase slots), all of it in the
+  t≈0.75 frame. There the affected terms move +7 to +50 %, and some others improve: the flag trades hallucinated
+  mass for missing mass (Q1, `docs/planning/records/Q1_NOBIDIR_QUALITY.md`).
+- **1080p quality:** unverified.
 
 The intended workflow on a multi-GPU rig: the primary GPU owns the display and does the warp + present,
 a second GPU runs the optical flow, and the integrated GPU does the zero-copy convert.
