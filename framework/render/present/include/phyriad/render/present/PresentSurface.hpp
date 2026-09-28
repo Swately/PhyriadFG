@@ -88,6 +88,8 @@ struct PresentSurfaceDesc {
     // (that needs the own-window mode).
     bool     waitable      = false; // true → create with DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT
                                     //   + SetMaximumFrameLatency(1) + WaitForSingleObject before present
+                                    //   (OwnWindow: only on a tick that presents; a yielded submit() pauses
+                                    //   50 ms instead)
                                     //   (render on current data, queue when the system is ready).
     uint8_t  sync_interval = 0;     // Present(sync_interval, 0). 0 = present-immediately (over-presents
                                     //   past refresh). 1 = pace to the compositor (stops over-presenting).
@@ -184,7 +186,7 @@ public:
     [[nodiscard]] bool capture_excluded() const noexcept; // WDA call succeeded
     [[nodiscard]] bool is_click_through() const noexcept;  // DcompCt style
     // (Style::OwnWindow) true iff the displayed plane is currently YIELDED (hidden — the foreground
-    // is neither the game nor our window; submit() early-returns SUCCESS in that state, so ps-ok
+    // is neither the game nor our window; submit() pauses 50 ms and early-returns SUCCESS in that state, so ps-ok
     // counters can NOT distinguish displayed from hidden). The consumer polls this per tick to log
     // yield/re-assert transitions and expose the display state in its stats — without it an own-window
     // run that never had the game focused reads as "working" while presenting NOTHING. Always false

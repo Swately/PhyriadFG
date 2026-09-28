@@ -131,6 +131,10 @@ const wchar_t* make_class_name(wchar_t* out, size_t cap, unsigned seq) noexcept 
     return out;
 }
 
+// (Style::OwnWindow) the pause a yielded submit() takes instead of the latency wait (see submit()): bounds a yielded
+// FG's tick rate and the delay before it re-asserts the plane when the foreground returns.
+constexpr DWORD kYieldedTickMs = 50;
+
 // The watchdog stall threshold: if the present thread stops bumping its heartbeat for this long
 // WHILE the OwnWindow plane is displayed, the watchdog force-hides our window so a wedged FG can
 // never hold the user's panel. A couple of frames at 60-240 Hz; conservative (the no-lock-out
@@ -632,11 +636,6 @@ PresentSurface::submit(const SharedFrameHandle& s) noexcept {
         TranslateMessage(&m); DispatchMessage(&m);
     }
 
-    // Block until the system is ready to accept a frame (the waitable swapchain — minimizes the
-    // composed-path wait). Bounded 1 s so a stalled compositor degrades rather than hangs.
-    // Default-off → waitable_obj null → no wait.
-    if (impl_->waitable_obj) WaitForSingleObjectEx(impl_->waitable_obj, 1000, FALSE);
-
     // ── (Style::OwnWindow) — foreground-yield + heartbeat ────────────────────
     // OwnWindow is NON-ACTIVATING, so it never gets its own WM_KILLFOCUS — the yield is driven by
     // polling the foreground window each present tick (cheap: one GetForegroundWindow + compares).
@@ -701,8 +700,20 @@ PresentSurface::submit(const SharedFrameHandle& s) noexcept {
             impl_->yielded.store(false);
             impl_->reassert_plane();
         }
-        if (impl_->yielded.load()) return {};  // present nothing → passthrough
+        // Present nothing → passthrough. The yielded tick pauses kYieldedTickMs instead of waiting on the latency
+        // waitable: nothing is presented to retire a frame, so that wait would run to its 1 s timeout on every yielded
+        // tick, and the first tick back would pay it too (a 1 s gap per foreground flap: 5 of the lever-1 campaign's 64
+        // FG runs, PhyriadFG docs/planning/records/LEVER1_RECORD.md s4.25). The pause bounds a yielded FG to at most ~20 ticks/s
+        // and its resume to ~one pause.
+        if (impl_->yielded.load()) { Sleep(kYieldedTickMs); return {}; }
     }
+
+    // Block until the system is ready to accept a frame (the waitable swapchain — minimizes the
+    // composed-path wait). Bounded 1 s so a stalled compositor degrades rather than hangs. ONLY on a tick that
+    // is meant to present (after the yield check above), so a wait is followed by a Present, whose retirement signals
+    // the next one, except on the import/acquire failure returns below. desc.waitable is off by default here; the FG
+    // turns it on (--present-waitable, its default).
+    if (impl_->waitable_obj) WaitForSingleObjectEx(impl_->waitable_obj, 1000, FALSE);
 
     if (!impl_->ensure_imported(s)) return fail(phyriad::ErrorCode::SystemError);
 
