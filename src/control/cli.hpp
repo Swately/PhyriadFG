@@ -1131,7 +1131,7 @@ inline bool wants_window_target(const Config& c){
     return c.window_substr[0] != 0 || c.window_pid != 0 || c.window_hwnd != 0;
 }
 
-bool parse_args(int argc, char** argv, Config& c);
+bool parse_args(int argc, char** argv, Config& c, bool resolve = true);   // resolve=false: stop after capture_layer_old (pre-cascade; tests only)
 // The central resolver.
 // apply_cascades: the order-independent dependency cascades (the post-parse normalization) PLUS the
 //   derived `c.d.*` predicates. Idempotent → re-callable from a runtime degrade (main.cpp's no-iGPU-

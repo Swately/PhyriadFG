@@ -69,6 +69,9 @@ static void apply_param_value(LayerConfig& lc, size_t p, float raw) {
 
 bool layer_shadow_parse(int argc, char** argv, int i, LayerConfig& lc) {
     const char* a = argv[i];
+    // the --eco preset (cli.cpp parse_extra = --frame-vram --no-bidir): its registry half IS BIDIR's off token. An alias
+    // here, not a table row, so the layer contract hash is unchanged; --frame-vram has no row.
+    if (!std::strcmp(a, "--eco")) a = "--no-bidir";
     // row on/off tokens. R5 (FLOW_ROW_MAP §2.2): a token may drive SEVERAL rows (--no-inertia: the MVCOND consumer
     // and the FLOW producer; --no-memory: the three memory rows; --no-ambig / --no-objects likewise) — every row
     // that carries the token takes it, exactly as the hand parser's single field cascades to all of them.

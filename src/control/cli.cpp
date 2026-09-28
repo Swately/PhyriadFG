@@ -127,6 +127,11 @@ void print_help(const char* a0) {
         "                        (rel-diff ~1e-6, 0/32400 dis-mask flips). Auto CPU-gme fallback\n"
         "                        if device B / the B-side pipeline is unavailable. --no-gme-gpu forces the CPU path.\n"
         "  --output-clock MODE   timer ONLY\n\n"
+        "PRESETS:\n"
+        "  --eco                 = --frame-vram --no-bidir (the no-bidir cascade applies; does NOT set --gme-sub2-force).\n"
+        "                        DEFAULT OFF. Measured: -40.5 to -41.3 W board at 1920x1061 k=2 (two draws, with the latch\n"
+        "                        pinned); a 2-9 %% per-frame quality regression in the t~0.75 frame at 640x360 (Q1,\n"
+        "                        docs/planning/records/Q1_NOBIDIR_QUALITY.md); 1080p quality unverified.\n\n"
         "LEGACY NO-OP FLAGS (accepted, already default):\n"
         "  --warp-at-presenter, --soft-gate, --commit-warp, --commit-real, --bidir,\n"
         "  --rescue, --mv-guided, --gme, --stasis, --inertia,\n"
@@ -295,7 +300,10 @@ void resolve_config(Config& c, bool announce) {
     }
 }
 
-bool parse_args(int argc, char** argv, Config& c) {
+// The ONE body of --no-bidir's hand fields. --eco calls it too, so the preset cannot drift from the flag it names.
+static void set_no_bidir_fields(Config& c) { c.bidir=false; c.occl_thresh=0.f; c.no_bidir=true; }
+
+bool parse_args(int argc, char** argv, Config& c, bool resolve) {
     for (int i=1;i<argc;++i) {
         const char* a=argv[i];
         pfg::layers::layer_shadow_parse(argc, argv, i, c.layers);   // R0: the registry parses as a SHADOW (peeks, never consumes; parity checks it)
@@ -310,6 +318,12 @@ bool parse_args(int argc, char** argv, Config& c) {
                 std::printf("[ra] --arrival-log %s: R1 instrument — one line per WAP tick with the clock inputs+outputs in exact hex-float (the PhaseClock replay oracle). Measurement runs only.\n",v); return 0; } return 1; }
             if(!std::strcmp(arg,"--warp-timing")){ c.warp_timing=true; return 0; }   // R4b: GPU timestamps around the warp batch
             if(!std::strcmp(arg,"--frame-vram")){ c.frame_vram=true; return 0; }   // the lever of O0_FREEZE_LEVER1.md (default off); armed or refused in init_devices
+            // --eco (the operator's opt-in power preset, 2026-09-28): EXACTLY --frame-vram --no-bidir, with no-bidir's
+            // cascade (apply_cascades keys off c.no_bidir). It does NOT set --gme-sub2-force, a diagnostic pin. Its registry
+            // half is layer_shadow_parse's "--eco" alias of BIDIR's off token (layer_registry.cpp), so the R0 parity oracle
+            // still compares two independent parsers. tests/control/test_eco_preset.cpp proves the equivalence pre-cascade.
+            if(!std::strcmp(arg,"--eco")){ c.frame_vram=true; set_no_bidir_fields(c);
+                std::printf("[ra] --eco: power preset = --frame-vram + --no-bidir (the no-bidir cascade applies; --gme-sub2-force is NOT set). DEFAULT OFF\n"); return 0; }
             if(!std::strcmp(arg,"--gme-sub2-force")){ c.gme_sub2_force=true;   // P-054: the gme sub-sample latched from pair 0
                 std::printf("[ra] --gme-sub2-force: DIAGNOSTIC -- the gme fit starts in its step-2 sub-sampled state (the state its one-way CPU-time latch reaches mid-run in almost every run), so equivalence runs do not depend on when the latch fires.\n"); return 0; }
             if(!std::strcmp(arg,"--site-timing")){ c.site_timing=true; c.warp_timing=true;   // the OAP site profile; P.warp IS the --warp-timing pair
@@ -648,7 +662,7 @@ bool parse_args(int argc, char** argv, Config& c) {
         }
         else if (!std::strcmp(a,"--no-bidir")) {
             std::printf("[ra] --no-bidir: bidirectional flow disabled\n");
-            c.bidir=false; c.occl_thresh=0.f; c.no_bidir=true;
+            set_no_bidir_fields(c);
         }
         else if (!std::strcmp(a,"--no-fill-div")) {
             std::printf("[ra] --no-fill-div: divergence-directed disocclusion disabled\n");
@@ -857,7 +871,7 @@ bool parse_args(int argc, char** argv, Config& c) {
     // (re-callable from the runtime degrade in main.cpp). See cli.hpp. This is the central "decode" —
     // every layer reads the resolved flags + c.d.* instead of re-deriving a gate.
     c.layers_old = pfg::layers::capture_layer_old(c);   // R0: the pre-cascade snapshot layer_config_parity() compares against
-    resolve_config(c);
+    if (resolve) resolve_config(c);   // resolve=false (tests only): stop at the pre-cascade state
     return true;
 }
 // Made with my soul - Swately <3

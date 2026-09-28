@@ -163,6 +163,12 @@ add_executable(pfg_arm_test tests/layers/test_arm_parity.cpp src/control/layer_r
 target_compile_features(pfg_arm_test PRIVATE cxx_std_23)
 target_include_directories(pfg_arm_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
+# --eco (2026-09-28): the preset == --frame-vram --no-bidir, proven on the parsed Config BEFORE the cascade and on the
+# registry rows. GPU-free and Vulkan-free: the real hand parser + the real registry shadow parser, nothing else.
+add_executable(pfg_eco_test tests/control/test_eco_preset.cpp src/control/cli.cpp src/control/layer_registry.cpp)
+target_compile_features(pfg_eco_test PRIVATE cxx_std_23)
+target_include_directories(pfg_eco_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
 # --gdump (GDUMP_PLAN.md S6 / RR1 / RR2): the tap's CPU bookkeeping — the SPSC descriptor ring, the staging-slot
 # cursor, the pair-set state machine, the reconciliation identity — tested without a GPU. Vulkan headers only.
 add_executable(pfg_gdump_test tests/instrument/test_gdump_book.cpp src/instrument/gdump_book.cpp)
@@ -275,6 +281,10 @@ set_tests_properties(clock_replay_missing_log_fails PROPERTIES WILL_FAIL TRUE)
 add_test(NAME layer_arm_parity COMMAND pfg_arm_test)
 set_tests_properties(layer_arm_parity PROPERTIES PASS_REGULAR_EXPRESSION "OK: all [0-9]+ checks passed")
 
+# 4b'. --eco is exactly --frame-vram --no-bidir before the cascade, after it, and in the registry (tests/control/).
+add_test(NAME eco_preset COMMAND pfg_eco_test)
+set_tests_properties(eco_preset PROPERTIES PASS_REGULAR_EXPRESSION "OK: all [0-9]+ checks passed")
+
 # 4c. R7: a LIVE document may not say a gated phase is unbuilt. On 2026-09-06 a session wrote
 #     "MOTION_TRUTH T2-T5 have no code" into five live documents; all four phases had closed two days
 #     earlier with gate records in the same folder it was reading. A note had already been written about
@@ -294,7 +304,10 @@ set(_parity_cases
     "--no-mv-consensus" "--mv-consensus" "--no-mv-consensus|--mv-consensus"
     "--no-inertia|--inertia" "--no-ambig|--ambig" "--no-objects|--objects" "--no-memory|--memory"
     "--no-bidir|--bidir" "--no-gme|--gme" "--no-shapefield|--shapefield"
-    "--no-gme|--no-objects|--no-memory|--no-bidir|--no-ambig|--no-inertia|--no-mv-consensus|--mv-smooth|0.3")
+    "--no-gme|--no-objects|--no-memory|--no-bidir|--no-ambig|--no-inertia|--no-mv-consensus|--mv-smooth|0.3"
+    # --eco (appended, so the existing layer_parity_1..34 keep their numbers): without layer_shadow_parse's alias it
+    # prints PARITY FAIL bidir.on old=0 new=1 and exits 3
+    "--eco" "--eco|--matte" "--eco|--no-bidir")
 set(_pc 0)
 foreach(_case IN LISTS _parity_cases)
     math(EXPR _pc "${_pc}+1")
