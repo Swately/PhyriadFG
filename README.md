@@ -57,11 +57,11 @@ Capture (window-only). The launcher UI (`ui\run.bat`) wraps the same flags with 
   warp-at-presenter.
 - **Power against the default** (1920x1061 k=2, two draws, as shipped): −43.1 to −43.5 W board. The GPU
   drops from the top clock bin to 2610 MHz, and median latency is unchanged.
-- **Memory.** +236 MiB of VRAM (the frame-vram mirror), and about +240 MiB of host commit (private bytes) with no
-  resident-RAM increase.
+- **Memory.** +236 MiB of VRAM (the frame-vram mirror), and about +240 MiB of host commit (private bytes); the working set
+  stayed at the default's level in 7 of the 8 runs measured.
 - **Quality at 640x360** (measured with the latch pinned): a 2–9 % regression per presented frame (the mean over
-  both phase slots), all of it in the t≈0.75 frame. There the affected terms move +7 to +50 %, and some others
-  improve: the flag trades hallucinated mass for missing mass. On one of the synthetic test scenes the loss comes
+  both phase slots), all of it in the t≈0.75 frame. There the affected terms move +7.5 to +50 %, and some others
+  improve: the error moves between hallucinated and missing area, differently per object and per speed. On one of the synthetic test scenes the loss comes
   from the phase anchor.
 - **1080p quality:** unverified.
 
