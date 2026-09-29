@@ -143,7 +143,7 @@ const GROUPS = [
       {
         flag: "--present-gpu", type: "text", default: "",
         name: "Presentation GPU", placeholder: "(inherited)",
-        desc: "INHERITED / IGNORED: presentation is the adapter that owns the panel since STAGE-45b.",
+        desc: "INHERITED / IGNORED: presentation is the adapter that owns the panel.",
       },
       {
         flag: "--force-single-gpu", type: "switch", default: false,
@@ -182,7 +182,7 @@ const GROUPS = [
           { value: "4", label: "4 (1/4 res)" },
           { value: "auto", label: "auto" },
         ],
-        desc: "DRS coin-3: runs the flow + CPU tail per pair over an MV grid at 1/N resolution (~N^2 cheaper; WAP only).",
+        desc: "Runs the flow + CPU tail per pair over an MV grid at 1/N resolution (~N^2 cheaper; WAP only).",
       },
       {
         flag: "--warp-scale", type: "select", default: "1",
@@ -192,7 +192,7 @@ const GROUPS = [
           { value: "2", label: "2" },
           { value: "4", label: "4" },
         ],
-        desc: "Runs OUR warp at WW/N and rescales (PARKED-NEGATIVE: blurry to the operator's eye on BF6 4K; doesn't touch latency).",
+        desc: "Runs OUR warp at WW/N and rescales (NOT RECOMMENDED: visibly blurry by eye on BF6 4K; doesn't touch latency).",
       },
       {
         flag: "--nvofa-cost-scale", type: "number", default: "0.5", min: 0, max: 16, step: 0.1,
@@ -220,7 +220,7 @@ const GROUPS = [
     note: "--eco = --frame-vram --no-bidir, measured at 1920x1061 x2: about -43 W board, 2610 MHz. Single-GPU route only.",
     controls: [
       { flag: "--eco", type: "switch", default: false, name: "Eco mode (power preset)",
-        desc: "Exactly --frame-vram --no-bidir (the no-bidir cascade applies). About -43 W board against the default at 1920x1061 x2 (C1), with the GPU at 2610 MHz; median latency unchanged. Single-GPU route only; a refused arm is fatal (iGPU convert, --upscale, --upload-xfer, --rfp, --motion-fallback, --dump). Quality: the t~0.75 frame regresses (Q1). DEFAULT OFF." },
+        desc: "Exactly --frame-vram --no-bidir (the no-bidir cascade applies). About -43 W board against the default at 1920x1061 x2, with the GPU at 2610 MHz; median latency unchanged. Single-GPU route only; a refused arm is fatal (iGPU convert, --upscale, --upload-xfer, --rfp, --motion-fallback, --dump). Quality: the t~0.75 frame regresses. DEFAULT OFF." },
     ],
   },
   {
@@ -234,12 +234,12 @@ const GROUPS = [
       {
         flag: "--no-present-own-window", type: "switch-off", default: true,
         name: "Own window",
-        desc: "Presents our own borderless flip HWND (Independent-Flip plane, LSFG topology). Click-through.",
+        desc: "Presents our own borderless flip HWND (Independent-Flip plane, overlay-window topology). Click-through.",
       },
       {
         flag: "--no-async-present", type: "switch-off", default: false,
         name: "Asynchronous present",
-        desc: "DEFAULT ON (PART-A). Decouples present from the warp fence (non-blocking present + drop-interpolated; ~1 frame of latency). Off = blocking SYNCHRONOUS path (byte-identical). Auto-enabled by --target-output-fps/--fdrop/--upload-xfer/--rfp/--motion-fallback/--shallow-queue.",
+        desc: "DEFAULT ON. Decouples present from the warp fence (non-blocking present + drop-interpolated; ~1 frame of latency). Off = blocking SYNCHRONOUS path (byte-identical). Auto-enabled by --target-output-fps/--fdrop/--upload-xfer/--rfp/--motion-fallback/--shallow-queue.",
       },
       {
         flag: "--cap-fps", type: "number", default: "", min: 1, step: 1,
@@ -259,7 +259,7 @@ const GROUPS = [
           { value: "high", label: "high (WDDM high — measured no-op vs the game)" },
           { value: "realtime", label: "realtime (the saturation cure — see desc)" },
         ],
-        desc: "GPU scheduling priority for the saturated-game regime. realtime CURES the 99%-load collapse (present locks to the full panel rate, latency ~20ms) by winning GPU slices over the game — at a game-fps cost (~20-33% on the test rig; the honest external-capture tax). high is a measured no-op on this NVIDIA driver. Off = default. May need elevation on some systems (honest print).",
+        desc: "GPU scheduling priority for the saturated-game regime. realtime CURES the 99%-load collapse (present locks to the full panel rate, latency ~20ms) by winning GPU slices over the game — at a game-fps cost (~20-33% on the test rig; the cost of capturing externally). high is a measured no-op on this NVIDIA driver. Off = default. May need elevation on some systems.",
       },
       {
         flag: "--target-output-fps", type: "number", default: "", min: 1, step: 1,
@@ -285,7 +285,7 @@ const GROUPS = [
       },
       {
         flag: "--no-present-waitable", type: "switch-off", default: true, name: "Swapchain waitable",
-        desc: "SetMaximumFrameLatency(1) + wait-before-present: reduces jitter WITHIN DWM composition (PARTIAL; doesn't reach Independent Flip). DEFAULT ON — the OFF position emits --no-present-waitable, like every other default-on control. As a plain 'switch' the OFF position emitted NOTHING and cli.hpp's present_waitable=true survived, so the waitable swapchain stayed armed and the XR15 A/B was unreachable from the UI (C-3).",
+        desc: "SetMaximumFrameLatency(1) + wait-before-present: reduces jitter WITHIN DWM composition (PARTIAL; doesn't reach Independent Flip). DEFAULT ON — the OFF position emits --no-present-waitable, like every other default-on control.",
       },
       {
         flag: "--present-colorspace", type: "select", default: "off", name: "Overlay colorspace",
@@ -316,7 +316,7 @@ const GROUPS = [
       { flag: "--no-warp-at-presenter", type: "switch-off", default: true, name: "Warp-at-presenter (WAP)",
         desc: "Per-tick re-warp to the exact phase. Off = grid mode (disables bidir/fill-div/rescue/mv-guided/gme/matte/inertia/single-track/bg-reclaim)." },
       { flag: "--matte", type: "switch-on", default: false, name: "Fluid matte",
-        desc: "Two-layer fluid composite. DEFAULT OFF (the operator's A/B found --no-matte better: it doubled the figure). --matte re-enables it (needs gme + bidir)." },
+        desc: "Two-layer fluid composite. DEFAULT OFF (a visual A/B found --no-matte better: it doubled the figure). --matte re-enables it (needs gme + bidir)." },
       { flag: "--no-rescue", type: "switch-off", default: true, name: "Candidate rescue",
         desc: "Rescue via neighbor-block MVs. Off = byte-identical." },
     ],
@@ -341,7 +341,7 @@ const GROUPS = [
       { flag: "--div-eps", type: "number", default: "0.05", min: 0.005, max: 1, step: 0.01, name: "Divergence eps",
         desc: "Divergence band (px/texel [0.005,1]); used by fill-div." },
       { flag: "--fill-div", type: "switch", default: false, name: "Fill-div",
-        desc: "Divergence-driven disocclusion pick. DEFAULT OFF (WASH audit); requires bidir." },
+        desc: "Divergence-driven disocclusion pick. DEFAULT OFF; requires bidir." },
     ],
   },
   {
@@ -362,7 +362,7 @@ const GROUPS = [
       { flag: "--no-onepos", type: "switch-off", default: true, name: "One-position",
         desc: "DEFAULT ON. One-position-per-pixel collapse (anti double-exposure of the warp itself)." },
       { flag: "--onepos-band", type: "number", default: "1.0", min: 0.05, max: 4, step: 0.05, name: "One-pos: band",
-        desc: "Collapse onset scale ([0.05,4]; 1.0 = STAGE-81, lower = collapses faint crescents)." },
+        desc: "Collapse onset scale ([0.05,4]; 1.0 = default, lower = collapses faint crescents)." },
       { flag: "--no-member-commit", type: "switch-off", default: true, name: "Member-commit",
         desc: "DEFAULT ON. Membership-beats-the-blend in flat object interiors (anti ghost-step)." },
       { flag: "--no-bg-snap", type: "switch-off", default: true, name: "BG-snap",
@@ -401,7 +401,7 @@ const GROUPS = [
       { flag: "--no-crescent", type: "switch-off", default: true, name: "Crescent (bg)",
         desc: "DEFAULT ON. Crescent-driven background fetch (matte). Off = blend (1-t,t)." },
       { flag: "--no-travel", type: "switch-off", default: true, name: "Travel (occupancy)",
-        desc: "DEFAULT ON. Traveling-silhouette occupancy (matte). Off = STAGE-59 lerp." },
+        desc: "DEFAULT ON. Traveling-silhouette occupancy (matte). Off = plain lerp." },
       { flag: "--no-contour", type: "switch-off", default: true, name: "Contour marriage",
         desc: "DEFAULT ON. Contour-band arbitration by color affinity (matte). Off = binary." },
       { flag: "--no-obj-crescent", type: "switch-off", default: true, name: "Obj-crescent",
@@ -434,7 +434,7 @@ const GROUPS = [
       { flag: "--no-igpu-field", type: "switch-off", default: true, name: "iGPU contour field",
         desc: "Contour Sobel on the iGPU (binding 11). DEFAULT ON. Off emits --no-igpu-field and (cascade) turns off bg-snap/band-xfade/afill, which read it." },
       { flag: "--igpu-field-verify", type: "switch", default: false, name: "iGPU field verify",
-        desc: "CPU Sobel oracle vs the GPU field (D-13 byte gate). Implies --igpu-field." },
+        desc: "CPU Sobel oracle vs the GPU field (byte gate). Implies --igpu-field." },
       { flag: "--afill", type: "switch", default: false, name: "A-fill (visualizer)",
         desc: "A tints the contour band over wapOutA in-place (eye-validates iGPU<->boundary). Auto-enables --igpu-field." },
       { flag: "--afill-strength", type: "number", default: "0.5", min: 0, max: 1, step: 0.1, name: "A-fill: strength",
@@ -453,7 +453,7 @@ const GROUPS = [
       { flag: "--no-sc-select", type: "switch-off", default: true, name: "SC-select",
         desc: "DEFAULT ON. The content_clock also drives pair SELECTION (full 0->1 sweep). Implies sync-clock." },
       { flag: "--no-phasefix", type: "switch-off", default: true, name: "Phasefix",
-        desc: "DEFAULT ON. Phase-ladder coverage fix (recomputes the D anchor). Off = pre-STAGE-78 anchor." },
+        desc: "DEFAULT ON. Phase-ladder coverage fix (recomputes the D anchor). Off = the previous anchor." },
       { flag: "--sc-phase-gain", type: "number", default: "0.10", min: 0, max: 1, step: 0.01, name: "PLL phase-gain",
         desc: "PLL phase-correction fraction per arrival [0,1]." },
       { flag: "--sc-freq-alpha", type: "number", default: "0.05", min: 0, max: 1, step: 0.01, name: "PLL freq-alpha",
@@ -525,13 +525,13 @@ const GROUPS = [
     title: "Make-space / Throughput",
     controls: [
       { flag: "--no-load-governor", type: "switch-off", default: true, name: "Load governor",
-        desc: "DEFAULT ON (PART-A). 4090-util tier-5 floor for the multiplier collapse in combat. Keeps flow+warp; sheds optional work." },
+        desc: "DEFAULT ON. 4090-util tier-5 floor for the multiplier collapse in combat. Keeps flow+warp; sheds optional work." },
       { flag: "--gov-util", type: "number", default: "92", min: 50, max: 100, step: 1, name: "Gov-util (%)",
         desc: "4090-util threshold that triggers tier-5 [50,100]. Only with load-governor." },
       { flag: "--no-deficit-tier", type: "switch-off", default: true, name: "Deficit-tier",
         desc: "DEFAULT ON. Sheds object_repair/memory in heavy scenes under sustained deficit. Off = no tier-4." },
       { flag: "--no-tiers", type: "switch-off", default: true, name: "Pressure tiers",
-        desc: "DEFAULT ON. STAGE-84 pressure tiers (bwd-skip + graduated shed). Off = bwd-skip only." },
+        desc: "DEFAULT ON. Pressure tiers (bwd-skip + graduated shed). Off = bwd-skip only." },
       { flag: "--no-fdrop", type: "switch-off", default: true, name: "F-drop (exact dups)",
         desc: "Drops EXACT duplicate frames at present (elides redundant warp). Implies async. DEFAULT OFF." },
       { flag: "--fdrop-quiet-ms", type: "number", default: "0", min: 0, step: 0.5, name: "F-drop quiet (DEFERRED)",
@@ -557,7 +557,7 @@ const GROUPS = [
     note: "Turning a switch off emits its --no-X. --no-fg-protect doesn't touch pin/async (they use their own switches).",
     controls: [
       { flag: "--no-pin", type: "switch-off", default: true, name: "Thread pin",
-        desc: "DEFAULT ON (PART-A). Pins C/F/P to cores (P elevated RT). Off = bare OS threads (byte-identical). Does NOT fix the GPU-bound slip." },
+        desc: "DEFAULT ON. Pins C/F/P to cores (P elevated RT). Off = bare OS threads (byte-identical). Does NOT fix the GPU-bound slip." },
       { flag: "--pin-test", type: "select", default: "0", name: "Pin-test (ablation)",
         options: [
           { value: "0", label: "0 FULL (pin C/F/P + elevate P+F)" },
@@ -568,8 +568,8 @@ const GROUPS = [
           { value: "5", label: "5 MMCSS-COMPOSITE" },
         ],
         desc: "Ablation selector for the pin policy (only with --pin). fg-protect forces mode-5 by default." },
-      { flag: "--no-fg-protect", type: "switch-off", default: true, name: "FG protect (S3)",
-        desc: "DEFAULT ON (PART-A). S3 package against GPU99%+CPU100%: MMCSS-composite mode-5 + async-present + GAME_FLOOR (never touches the game's affinity). (async-present lives in Presentation.)" },
+      { flag: "--no-fg-protect", type: "switch-off", default: true, name: "FG protect",
+        desc: "DEFAULT ON. Protection package against GPU99%+CPU100%: MMCSS-composite mode-5 + async-present + GAME_FLOOR (never touches the game's affinity). (async-present lives in Presentation.)" },
     ],
   },
   {
@@ -580,7 +580,7 @@ const GROUPS = [
       // own --fps-overlay print says so). It is not drawn on dropped (fdrop/async-drop) ticks, and --gdump
       // refuses it.
       { flag: "--fps-overlay", type: "switch", default: false, name: "FPS overlay",
-        desc: "LSFG-style 'in -> out' fps counter drawn top-left on the presented frame, on the default path. The re-shown frame of a dropped tick keeps the last counter." },
+        desc: "An 'in -> out' fps counter drawn top-left on the presented frame, on the default path. The re-shown frame of a dropped tick keeps the last counter." },
       { flag: "--csv", type: "text", default: "", name: "Telemetry CSV", placeholder: "output.csv",
         desc: "Exports per-present telemetry to this CSV." },
       { flag: "--latency-trace", type: "switch", default: false, name: "Latency trace",
@@ -588,7 +588,7 @@ const GROUPS = [
       { flag: "--wsub", type: "switch", default: false, name: "W-sub (warp timings)",
         desc: "Per-tick sub-timings of the warp-lambda (up/rec/gpu/prs ms) in the stats line." },
       { flag: "--fsub", type: "switch", default: false, name: "F-sub (flow split)",
-        desc: "Per-pair F split fsub(flow/pair/cpu) ms in the stats line (STAGE-85 premise)." },
+        desc: "Per-pair F split fsub(flow/pair/cpu) ms in the stats line." },
       { flag: "--dump", type: "number", default: "0", min: 0, step: 1, name: "Dump frames",
         desc: "Dumps the next N presented frames to frames\\ as BMP (diagnostic)." },
       { flag: "--objdump", type: "number", default: "0", min: 0, step: 1, name: "Obj-dump (grids)",
@@ -598,7 +598,7 @@ const GROUPS = [
       { flag: "--outdump", type: "number", default: "0", min: 0, step: 1, name: "Out-dump (warp out)",
         desc: "Dumps N presented WARP outputs (wapOutA after the fence, phase t in the name)." },
       { flag: "--phaselog", type: "number", default: "0", min: 0, step: 1, name: "Phase-log",
-        desc: "Logs the presented t_use ladder for the next N pairs (STAGE-78)." },
+        desc: "Logs the presented t_use ladder for the next N pairs." },
       { flag: "--duration", type: "number", default: "0", min: 0, step: 1, name: "Duration (s)", placeholder: "0 = unlimited",
         desc: "Wall-clock-bounded run: after ~N s, clean teardown (= --exit-after). 0 = unlimited." },
       { flag: "--max-frames", type: "number", default: "0", min: 0, step: 1, name: "Max frames", placeholder: "0 = unlimited",
@@ -1539,7 +1539,7 @@ function classify(line) {
   if (line.startsWith("[ra] REASON")) return "exit";
   if (line.startsWith("[ra-cap]")) return "cap";
   if (line.startsWith("[ra]")) return "ra";
-  if (line.startsWith("[nota]")) return "sys"; // eco de la nota del operador (observer)
+  if (line.startsWith("[note]")) return "sys"; // eco de la nota del operador (observer)
   return "";
 }
 
@@ -1618,7 +1618,7 @@ async function doRestart() {
     logLine(
       "[ui] auto-restart SKIPPED: " +
         clash.join(" ") +
-        " write run-scoped files that a restart would truncate or interleave (C-8). " +
+        " write run-scoped files that a restart would truncate or interleave. " +
         "Stop and Start manually to apply the new config.",
       "exit"
     );

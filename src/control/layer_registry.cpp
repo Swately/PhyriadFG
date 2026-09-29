@@ -352,7 +352,7 @@ void layer_dump(const Config& c) {
     uint16_t order[kLayerCount]; layer_exec_order(order);
     int enabled = 0, real = 0;
     for (uint16_t i = 0; i < kLayerCount; ++i) if (kLayers[i].kind != Kind::X) { ++real; if (c.layers.on[i]) ++enabled; }
-    std::printf("[layertab] contract=0x%016llX  (%d rows enabled of %d; %zu params; R7a 2026-09-06: fg_core.comp IS the default product path; --legacy-warp selects wap_warp.comp)\n",
+    std::printf("[layertab] contract=0x%016llX  (%d rows enabled of %d; %zu params; since 2026-09-06 fg_core.comp IS the default product path; --legacy-warp selects wap_warp.comp)\n",
                 (unsigned long long)layer_contract_hash(c), enabled, real, (size_t)kParamCount);
     bool sample_printed = false, blend_printed = false;
     for (uint16_t k = 0; k < kLayerCount; ++k) {
@@ -444,13 +444,13 @@ void print_layer_help() {
             if (P.flag_alias) std::printf("  %-24s alias of %s (value required).\n", P.flag_alias, P.flag);
         }
     }
-    std::printf("  R3 (stage 5, shaders/fg_core.comp — the rows above as ONE generated kernel; opt-in until its M4 gate passes):\n"
-                "    --fg-core            pin fg_core.comp as the product path -- THE DEFAULT since 2026-09-06 (R7a); this flag now only makes it explicit\n"
-                "    --fg-core-ab         run BOTH kernels every tick from the same inputs and count differing pixels (the M4 instrument).\n"
+    std::printf("  FG CORE (stage 5, shaders/fg_core.comp — the rows above as ONE generated kernel):\n"
+                "    --fg-core            pin fg_core.comp as the product path -- THE DEFAULT since 2026-09-06; this flag now only makes it explicit\n"
+                "    --fg-core-ab         run BOTH kernels every tick from the same inputs and count differing pixels (the kernel parity check).\n"
                 "                         Since 90c9ee8 (2026-09-11) the kernels differ BY DESIGN in single_track's hold ramp (fg_core 1.0/1.6,\n"
-                "                         wap_warp 1.2/3.0): add --st-hold-lo 1.2 --st-hold-hi 3.0 for a parity run (LEARNING_LOG P-066)\n"
-                "    --fg-core-clean-sim  mv_guided.sim = the exact --mv-sim (default: the legacy's packed (1+sim)-1, XR1)\n"
-                "    --legacy-warp        select shaders/wap_warp.comp instead -- THE REVERT for the R7a default; the legacy shader stays in the tree\n"
+                "                         wap_warp 1.2/3.0): add --st-hold-lo 1.2 --st-hold-hi 3.0 for a parity run\n"
+                "    --fg-core-clean-sim  mv_guided.sim = the exact --mv-sim (default: the legacy's packed (1+sim)-1)\n"
+                "    --legacy-warp        select shaders/wap_warp.comp instead -- THE REVERT for the fg_core default; the legacy shader stays in the tree\n"
                 "    --eco-anchor-ab      with --eco-anchor N: the product runs with the eco row OFF, a second fg_core with it ON runs beside it\n"
                 "                         from the same inputs, and the differing pixels are counted per slot (t <= 0.35 must be 0)\n");
 }

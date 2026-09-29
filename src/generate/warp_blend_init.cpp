@@ -382,18 +382,18 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
                         cfg.eco_anchor_ab=false; }
                     // R7a: this is the DEFAULT path now, so a setup failure is a silent downgrade of the product
                     // unless the line says so. It names the fallback instead of naming the flags.
-                    if(!fg_ok){ std::printf("[layertab] R3: fg_core pipeline setup FAILED -- FALLING BACK to wap_warp.comp for this run (the R7a default could not be created)\n"); cfg.fg_core=false; cfg.fg_core_ab=false; cfg.eco_anchor_ab=false; }
+                    if(!fg_ok){ std::printf("[layertab] fg_core pipeline setup FAILED -- FALLING BACK to wap_warp.comp for this run (the fg_core default could not be created)\n"); cfg.fg_core=false; cfg.fg_core_ab=false; cfg.eco_anchor_ab=false; }
                     else {
                         if(cfg.eco_anchor_ab)
                             std::printf("[layertab] --eco-anchor-ab: the product runs with eco_anchor OFF; a second fg_core pipeline with eco_anchor ON (mode %d) runs beside it from the same inputs; differing pixels are counted per slot (t <= 0.35 must be 0)\n",cfg.eco_anchor);
                         else if(cfg.eco_anchor>0)
                             std::printf("[layertab] eco_anchor ON (mode %d, MVCOND rank 42, arm GME) in the product fg_core\n",cfg.eco_anchor);
-                        std::printf("[layertab] R3: fg_core.comp %s -- contract=0x%016llX, %u spec constants, LayerParams %zu B (mv_guided.sim %s), push %zu B = CorePush 20 + gen-scalars 24\n",
-                                    cfg.fg_core?"drives the PRODUCT (the R7a default; --legacy-warp reverts)":"runs BESIDE the legacy warp (--fg-core-ab byte-diff)",
-                                    (unsigned long long)pfg::layers::layer_contract_hash(cfg),sn,pfg::layers::layer_params_bytes(),cfg.fg_core_clean_sim?"CLEAN":"PACKED, XR1",sizeof(pfg::layers::FgPush));
+                        std::printf("[layertab] fg_core.comp %s -- contract=0x%016llX, %u spec constants, LayerParams %zu B (mv_guided.sim %s), push %zu B = CorePush 20 + gen-scalars 24\n",
+                                    cfg.fg_core?"drives the PRODUCT (the default; --legacy-warp reverts)":"runs BESIDE the legacy warp (--fg-core-ab byte-diff)",
+                                    (unsigned long long)pfg::layers::layer_contract_hash(cfg),sn,pfg::layers::layer_params_bytes(),cfg.fg_core_clean_sim?"CLEAN":"PACKED",sizeof(pfg::layers::FgPush));
                         // the envelope: fg_core reproduces the shipping DEFAULT set; these legacy features have no row in R3.
                         if(cfg.matte||cfg.blend_solo||cfg.camera_twarp||cfg.ts_smooth>0.f||(cfg.igpu_field&&cfg.bg_snap)||cfg.band_xfade>0.f||cfg.mc_on||!cfg.single_track)
-                            std::printf("[layertab] R3 envelope: a legacy feature outside the R3 row set is armed (matte / blend-solo / camera-twarp / ts-smooth / bg-snap / band-xfade / multicand / no-single-track) -- the two kernels are NOT expected to be byte-identical on this configuration\n");
+                            std::printf("[layertab] fg_core envelope: a legacy feature outside the fg_core row set is armed (matte / blend-solo / camera-twarp / ts-smooth / bg-snap / band-xfade / multicand / no-single-track) -- the two kernels are NOT expected to be byte-identical on this configuration\n");
                     }
                 }
                 // Initial layouts: sampled inputs → SHADER_READ_ONLY (the per-pair upload

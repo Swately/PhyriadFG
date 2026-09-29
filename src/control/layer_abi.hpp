@@ -158,7 +158,7 @@ struct CorePush {
     float    t;
     uint32_t arm_mask;
 };
-static_assert(sizeof(CorePush) == 20, "CorePush is the 20-byte core contract (A0 M2c)");
+static_assert(sizeof(CorePush) == 20, "CorePush is the 20-byte core contract");
 
 // The per-generation SCALAR block of FlowSet[gen] that rides with the core push: the gme affine model
 // (mv(gx,gy) = (a + b·gx + c·gy, d + e·gx + f·gy), gx,gy = mv-grid coords), read by the bg_reclaim /

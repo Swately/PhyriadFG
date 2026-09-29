@@ -633,9 +633,9 @@ fn observer_note(app: AppHandle, note: String) -> Result<(), String> {
         return Ok(());
     }
     if let Some(o) = observer(&app) {
-        o.write("operator", &text);
+        o.write("note", &text);
     }
-    let _ = app.emit("fg-log", format!("[nota] {}", text));
+    let _ = app.emit("fg-log", format!("[note] {}", text));
     Ok(())
 }
 

@@ -88,9 +88,9 @@ int init_vk_pick(Config& cfg, D3D& d, VkPickInit& o_pick){
         std::string vlo=nvNameA; for(auto& c2:vlo) c2=(char)std::tolower((unsigned char)c2);
         const bool is_nv=(vlo.find("nvidia")!=std::string::npos||vlo.find("geforce")!=std::string::npos);
         const bool is_amd=(vlo.find("amd")!=std::string::npos||vlo.find("radeon")!=std::string::npos);
-        if(is_nv)      std::printf("[ra] F2/VRR (honest): NVIDIA — G-Sync stays OFF for the captured game while PhyriadFG presents (a non-hooking overlay can't drive the game's VRR; a permanent class floor shared with LSFG). Windowed-G-Sync = the partial mitigation. We never hook the game swapchain.\n");
-        else if(is_amd)std::printf("[ra] F2/VRR (honest): AMD — FreeSync MAY persist with the overlay (verify the monitor OSD); on NVIDIA it would not. We never degrade the baseline + never hook the game swapchain.\n");
-        else           std::printf("[ra] F2/VRR (honest): a non-hooking external overlay cannot drive the captured game's VRR (G-Sync off on NVIDIA; AMD/Intel FreeSync may persist — verify the OSD). We never hook the game swapchain.\n");
+        if(is_nv)      std::printf("[ra] VRR (honest): NVIDIA — G-Sync stays OFF for the captured game while PhyriadFG presents (a non-hooking overlay can't drive the game's VRR; a permanent limit of that class). Windowed-G-Sync = the partial mitigation. We never hook the game swapchain.\n");
+        else if(is_amd)std::printf("[ra] VRR (honest): AMD — FreeSync MAY persist with the overlay (verify the monitor OSD); on NVIDIA it would not. We never degrade the baseline + never hook the game swapchain.\n");
+        else           std::printf("[ra] VRR (honest): a non-hooking external overlay cannot drive the captured game's VRR (G-Sync off on NVIDIA; AMD/Intel FreeSync may persist — verify the OSD). We never hook the game swapchain.\n");
     }
     const bool single_gpu = cfg.force_single_gpu || (pA && !pB);   // the single-GPU switch
     if(cfg.force_single_gpu){ pB=VK_NULL_HANDLE; pG=VK_NULL_HANDLE; nvNameB.clear(); luidB_ok=false; }   // drive the TRUE degenerate (no B/G aliasing)

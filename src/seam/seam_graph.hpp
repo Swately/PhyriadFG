@@ -72,7 +72,7 @@
 #include <vulkan/vulkan.h>
 
 #if !defined(VK_VERSION_1_3)
-#  error "minimal_fg/seam_graph.hpp requires Vulkan 1.3 (synchronization2 core: VkImageMemoryBarrier2 / VkDependencyInfo / vkCmdPipelineBarrier2)."
+#  error "seam/seam_graph.hpp requires Vulkan 1.3 (synchronization2 core: VkImageMemoryBarrier2 / VkDependencyInfo / vkCmdPipelineBarrier2)."
 #endif
 
 #include <algorithm>

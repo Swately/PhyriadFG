@@ -33,8 +33,8 @@ build-release.bat    ->  build-release\phyriad_fg.exe   (distributable, no debug
 build.bat            ->  build\phyriad_fg.exe            (debug build)
 ```
 
-Four targets (`phyriad_fg`, `pfg_seam_test`, `pfg_clock_test`, `pfg_layer_gen`); LTO on `phyriad_fg`
-only. (Corrected 2026-09-04 — this line said "one target".) Both scripts detect Visual Studio automatically via
+`phyriad_fg` is the one shipping target; the others are its test binaries and the `pfg_layer_gen` code
+generator. LTO is on `phyriad_fg` only. Both scripts detect Visual Studio automatically via
 `vswhere.exe` — no hardcoded paths.
 
 ## Run
@@ -55,16 +55,15 @@ Capture (window-only). The launcher UI (`ui\run.bat`) wraps the same flags with 
 - **Refusal.** As with `--frame-vram`, a refused arm is fatal. It will not arm with the iGPU convert, `--upscale`,
   `--upload-xfer`, `--real-fast-path`, `--rfp-fresh`, `--motion-fallback`, `--dump` or `--pairdump`, or without
   warp-at-presenter.
-- **Power against the default** (C1, 1920x1061 k=2, two draws, as shipped): −43.1 to −43.5 W board. The GPU
+- **Power against the default** (1920x1061 k=2, two draws, as shipped): −43.1 to −43.5 W board. The GPU
   drops from the top clock bin to 2610 MHz, and median latency is unchanged.
 - **Memory.** +236 MiB of VRAM (the frame-vram mirror), and about +240 MiB of host commit (private bytes) with no
   resident-RAM increase.
 - **Quality at 640x360** (measured with the latch pinned): a 2–9 % regression per presented frame (the mean over
   both phase slots), all of it in the t≈0.75 frame. There the affected terms move +7 to +50 %, and some others
-  improve: the flag trades hallucinated mass for missing mass. On `sc_v4` the loss is the phase anchor's (Q1b).
+  improve: the flag trades hallucinated mass for missing mass. On one of the synthetic test scenes the loss comes
+  from the phase anchor.
 - **1080p quality:** unverified.
-
-The basis for all of the above is `docs/planning/records/Q1_NOBIDIR_QUALITY.md`.
 
 `--eco-anchor N` (with `--eco`; default off) adds a phase anchor that needs only the forward field: 1 = FP1, 2 = lean
 bilateral candidate re-selection, the mode the offline validation selected.
@@ -79,15 +78,13 @@ bilateral candidate re-selection, the mode the offline validation selected.
   - sphere missing **+70 %**, at the loop seam and where the sphere exits the frame, through the row's fallback to the
     global-motion vector.
 
-  That is a FAIL of the pre-registered bar against `--eco`. On the same positions it scores below the default's own
-  range on every term, but by the noise rule that holds for 5 of 7 terms.
-- **Its instrument.** `--eco-anchor-ab` runs the row OFF (the product) and ON (beside it) from the same inputs and
+  That is a FAIL of the acceptance threshold set before the test, against `--eco`. On the same positions it scores
+  below the default's own range on every term, but only 5 of 7 terms clear the run-to-run noise.
+- **A/B check.** `--eco-anchor-ab` runs the row OFF (the product) and ON (beside it) from the same inputs and
   counts the differing pixels per phase slot.
-- **Cost of mode 2 over `--eco`** (C3P): +2.3 GPU-ms/s of warp time, about +0.7 W on the board, and `--eco`'s
+- **Cost of mode 2 over `--eco`**: +2.3 GPU-ms/s of warp time, about +0.7 W on the board, and `--eco`'s
   2610 MHz regime kept.
 - **Validated at x2 only.** At x3 a third of the generated frames sit mid-ramp (w = 0.5), which is untested.
-
-Basis: `docs/planning/records/ECO_ANCHOR_VALIDATION.md`.
 
 The intended workflow on a multi-GPU rig: the primary GPU owns the display and does the warp + present,
 a second GPU runs the optical flow, and the integrated GPU does the zero-copy convert.
@@ -124,3 +121,5 @@ i.e. to **credit Eduardo Ramos Mendoza (Swately)**. A visible mention in your pr
 documentation, or about screen is appreciated.
 
 © 2026 Eduardo Ramos Mendoza (Swately).
+
+*Made with my soul - Swately <3*

@@ -447,7 +447,7 @@ inline void TelemetryCsv::write_stats() {
     std::fprintf(sf, "frame_count,%llu,presented frames\n", (unsigned long long)n_present_);
     std::fprintf(sf, "freeze_count,%llu,real lap-freezes (re-shows; distinct from fdrop)\n", (unsigned long long)n_freeze_);
     std::fprintf(sf, "fdrop_count,%llu,--fdrop exact-duplicate discriminator drops (elided redundant warps; make-space density)\n", (unsigned long long)n_fdrop_);
-    std::fprintf(sf, "fresh_count,%llu,presents that carried a NEW warp (R4b; frame_count - fresh_count = re-shows of the previous image)\n", (unsigned long long)n_fresh_);
+    std::fprintf(sf, "fresh_count,%llu,presents that carried a NEW warp (frame_count - fresh_count = re-shows of the previous image)\n", (unsigned long long)n_fresh_);
     std::fprintf(sf, "dropped_rows,%llu,ring overflow (telemetry only; not presents)\n", (unsigned long long)drops_.load());
     std::fprintf(sf, "max_stall_ms,%s,watchdog: longest present-thread stall (gap>100ms = freeze/hang)\n", F(max_stall_ms_).c_str());
     std::fprintf(sf, "stall_count,%llu,present stalls/freezes/hangs detected (gap>100ms; see # STALL_ lines in raw csv)\n", (unsigned long long)stall_count_);

@@ -103,7 +103,7 @@ inline constexpr const char* advisory(ReasonCode r) {
                "IsSupported()==false; needs >= 1803). Falling back to Desktop Duplication.";
     case ReasonCode::VRR_WILL_BE_DISABLED:
         return "a non-hooking external overlay cannot drive the captured game's VRR (G-Sync off on "
-               "NVIDIA; AMD/Intel FreeSync may persist — verify the OSD). FLOOR shared with LSFG; we "
+               "NVIDIA; AMD/Intel FreeSync may persist — verify the OSD). FLOOR for any non-hooking overlay; we "
                "never hook the game swapchain.";
     case ReasonCode::ANTICHEAT_UNVERIFIED:
         return "the target matches a known kernel-anti-cheat title not in the verified set — capture "

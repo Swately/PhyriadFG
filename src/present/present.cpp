@@ -1614,7 +1614,7 @@ void run_present(FgContext& ctx){
                         if(mf){
                             if(!qdump_man_open){
                                 std::fprintf(mf,"# qdump (--qdump) HSR FG-quality test-field — TRUTH-LESS held-out triples (live FG, no mid=)\n");
-                                std::fprintf(mf,"# sampler: coverage (S2.T1b) - least-covered phase bin of %d, ring slot of %d;"
+                                std::fprintf(mf,"# sampler: coverage - least-covered phase bin of %d, ring slot of %d;"
                                                 " min gap %u ticks, slot condition dropped after %u skips\n",
                                                 kQdBins,kGenRing,kQdumpMinGap,kQdumpStarve);
                                 std::fprintf(mf,"size %u %u\n",WW,WH);

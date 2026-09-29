@@ -214,7 +214,7 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
             gp_armed=false;
             cr=vkCreateDevice(phys,&dci,nullptr,&d.dev);
         }
-    std::printf("[ra] device '%s': synchronization2=%s (R2 seam: %s)\n", d.name,
+    std::printf("[ra] device '%s': synchronization2=%s (seam graph: %s)\n", d.name,
     d.has_sync2?"ENABLED":"unavailable", d.has_sync2?"the graph may record barriers":"hand-written barriers only");
         if(cr!=VK_SUCCESS) return false;
         if(gp_armed) std::printf("[ra] --gpu-priority: '%s' queues created with VK global priority (requested %s; any per-family downgrade printed above) — lever 2 ACTIVE\n",
@@ -269,3 +269,4 @@ bool vdev_create(VkPhysicalDevice phys,VDev& d,bool want_swap,bool want_extmem_w
     return true;
 }
 void vdev_destroy(VDev& d){ if(d.semUpTL) vkDestroySemaphore(d.dev,d.semUpTL,nullptr); if(d.semWarpTL) vkDestroySemaphore(d.dev,d.semWarpTL,nullptr); if(d.ofaPool) vkDestroyCommandPool(d.dev,d.ofaPool,nullptr); if(d.poolT) vkDestroyCommandPool(d.dev,d.poolT,nullptr); if(d.pool2&&d.pool2!=d.pool) vkDestroyCommandPool(d.dev,d.pool2,nullptr); if(d.pool) vkDestroyCommandPool(d.dev,d.pool,nullptr); if(d.dev) vkDestroyDevice(d.dev,nullptr); d=VDev{}; }
+// Made with my soul - Swately <3

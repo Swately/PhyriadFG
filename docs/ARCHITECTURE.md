@@ -8,8 +8,9 @@ indirection).
 
 ## Build (one command)
 
-`build.bat` → `build\phyriad_fg.exe`. Requires MSVC, the Vulkan SDK, and Ninja. One target, one `build\`,
-LTO enabled (splitting into modules costs no performance).
+`build.bat` → `build\phyriad_fg.exe`. Requires MSVC, the Vulkan SDK, and Ninja. One shipping target
+(`phyriad_fg`, LTO enabled; splitting into modules costs no performance), plus its test binaries and the
+`pfg_layer_gen` code generator.
 
 ## Thread model and multi-GPU split
 
@@ -96,40 +97,23 @@ src/
   warp_blend/  the warp-at-presenter + the field/fill + stat helpers
   present/     run_present [thread P]: PresentSurface, pacing, bridge, the present loop
   instrument/  dump/diagnostic helpers
-  clock/       (R1, 2026-09-03) PhaseClock: the content-clock NCO + PLL + set selection, extracted
+  clock/       PhaseClock: the content-clock NCO + PLL + set selection, extracted
                from present.cpp as a CPU value type with its own replay test
-  seam/        (R2, 2026-09-03) the seam graph: declared per-pass reads/writes -> DERIVED sync2
+  seam/        the seam graph: declared per-pass reads/writes -> DERIVED sync2
                barriers, backward-reachability cull, deterministic dump. Opt-in behind --sg-barriers
-  layers/      (R0, 2026-09-03) the layer registry: layer_table.def (the X-macro rows) + the ABI +
-               the generated config/parser/help/JSON model. Today a SHADOW of the hand parser;
-               wap_warp.comp still drives the product until R3
+  control/     the layer registry: layer_table.def (the X-macro rows) + the ABI +
+               the generated config/parser/help/JSON model and the GLSL the fg_core.comp kernel includes
 framework/     supporting pillars: render/present (PresentSurface), render/vulkan (optical-flow
                pipeline + shaders), hal, topology, schema
 shaders/       the frame generator's .comp shaders
-tools/         capture_dump (unwired: no CMakeLists, in no build script) · fg_quality_scorer ·
-               ref_warp.py · check_qdump_plus.py · check_flag_roundtrip.py · layer_gen.cpp ·
-               ball_zoo.ps1 / gate_zoo.ps1 / gpu_load
-bench/         (repo ROOT, not under tools/) nvofa_bench, copy_bench, gme_fit_bench — ~92 KB of
-               sources with NO CMake target and in no build script
-tests/         seam/ (pfg_seam_test) and clock/ (pfg_clock_test) — built, but see the note below
+tools/         layer_gen.cpp · spv_nocontract.py · build-nocontract.bat · run_tests.bat ·
+               check_flag_roundtrip.py
+tests/         the unit tests (seam, clock, layers, control, instrument, core)
 ```
 
-> **Corrected 2026-09-04.** The block above previously omitted `src/clock/`, `src/seam/` and
-> `src/control/` (the three directories R0/R1/R2 created) and filed `bench/` under `tools/`.
-> **There is no CTest and no CI**: `grep -c "enable_testing\|add_test" CMakeLists.txt` returns 0 and
-> there is no `.github/`, so `pfg_seam_test` and `pfg_clock_test` are built but never run automatically
-> — and `pfg_clock_test` exits 0 printing `SKIP` when given no arrival-log
-> (`tests/clock/test_phase_clock.cpp:249`). Treat "the tests pass" as unproven unless someone ran them.
+The tests are registered with CTest in `CMakeLists.txt` (`ctest --test-dir build-release`); there is no CI.
 
 ## Performance — why the structure doesn't risk it
-
-> **Note 2026-09-04:** where this document says "one target", the build now has **four**
-> `add_executable` targets (`phyriad_fg`, `pfg_seam_test`, `pfg_clock_test`, `pfg_layer_gen`).
-> `INTERPROCEDURAL_OPTIMIZATION` is set on `phyriad_fg` ALONE (`CMakeLists.txt:157`), so
-> `pfg_clock_test` — the target that produces XR14's bit-parity oracle — compiles `phase_clock.cpp`
-> under different whole-program-optimization settings than the shipping binary. Stated hazard, not a
-> measured defect (R1 reports the same result from debug and release), but it is exactly the
-> "across a call boundary" class XR14 names.
 
 - The **hot** work (per-pixel / per-frame) lives in the **shaders** (GPU) and **inside each `run_X`**
   (thread body, one translation unit → normal inlining).
@@ -138,4 +122,6 @@ tests/         seam/ (pfg_seam_test) and clock/ (pfg_clock_test) — built, but 
 - `FgContext` is references → the same indirection as a `[&]` capture. No new allocations, locks, or
   copies on the hot path.
 - LTO covers any remaining cross-translation-unit inlining.
+
+*Made with my soul - Swately <3*
 </content>

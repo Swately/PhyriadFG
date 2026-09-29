@@ -63,12 +63,12 @@ about three flags that have been doing nothing.
   it. Proven twice: an A/B across those flags moved zero pixels, and a CPU reference that omits the
   gate entirely reproduces the GPU output at 99.47 %. The flags are left in place, and documented
   here, rather than silently removed.
-- Numbers published in `docs/evidence/` before 2026-09-11 describe the previous default. Each of
-  those files now carries a banner saying so and how to reproduce the old value.
+- Measurement numbers published before 2026-09-11 describe the previous default;
+  `--st-hold-lo 1.2 --st-hold-hi 3.0` reproduces the old value.
 
 ## [0.5.2-experimental] - 2026-09-06
 
-**Three regressions from 0.5.0/0.5.1, all found in the operator's own session log.** If you are on
+**Three regressions from 0.5.0/0.5.1, all found in the author's own session log.** If you are on
 0.5.0 or 0.5.1, upgrade: the first one makes the launcher unusable after a single Stop.
 
 ### Fixed
@@ -120,7 +120,7 @@ separation.
 
 ## [0.5.0-experimental] — 2026-09-06
 
-Two arcs land together: the CONVERGENCE restructure (R0–R7) that made the frame-generation kernel a
+Two arcs land together: a convergence restructure that made the frame-generation kernel a
 single pure path, and a 40-finding quality-of-life audit whose fixes touch nearly every surface a
 person actually operates.
 
@@ -128,8 +128,8 @@ person actually operates.
 
 **The pure kernel `fg_core.comp` is now the shipping default.** `--legacy-warp` selects the previous
 `wap_warp.comp`, which stays in the tree — the revert is one token. The default was flipped only
-after the acceptance criterion was found unmeetable by the incumbent, amended in the plan *before*
-being used, and then measured on two scenes and two instruments (`docs/planning/records/R7_GATE.md`).
+after the acceptance criterion was found unmeetable by the incumbent, amended *before*
+being used, and then measured on two scenes and two instruments.
 
 ### Behaviour changes — read this section before upgrading
 
@@ -159,7 +159,7 @@ claimed one thing and the code did another, or where a failure was silent.
    `--list-monitors` printed, rather than a different enumeration's N.
 6. **The "Swapchain waitable" switch works in both directions.** Turning it off previously did
    nothing. Anyone who believed they had disabled it will now actually get the non-waitable path —
-   measured at 49.9 % fresh versus 99.9 % (XR15), so their frame freshness will drop. The switch is
+   measured at 49.9 % fresh versus 99.9 %, so their frame freshness will drop. The switch is
    finally doing what it says.
 7. **Stop asks for a clean shutdown first.** A run stopped from the launcher now produces its
    `<csv>-stats.csv`, which never appeared before. Stop can take up to 4 s before the UI flips.
