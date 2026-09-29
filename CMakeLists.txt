@@ -1,11 +1,9 @@
 # PhyriadFG/CMakeLists.txt
 # Standalone single-target build of phyriad_fg.exe.
 #
-# One SHIPPING target, one build-dir, one command (build.bat). No add_subdirectory, no libraries:
-# (corrected 2026-09-04: there are four add_executable targets now — phyriad_fg plus the two test
-#  binaries and the layer generator. There is still no enable_testing()/add_test(), so nothing runs
-#  the tests automatically.)
-# the framework .cpp sources are compiled by direct inclusion, so there is no build explosion.
+# One SHIPPING target (phyriad_fg), one build-dir, one command (build.bat), plus the layer generator and the
+# test binaries that ctest runs (enable_testing() below). No add_subdirectory, no libraries: the framework .cpp
+# sources are compiled by direct inclusion, so there is no build explosion.
 #
 # Build (MSVC + WGC):
 #   build.bat
@@ -38,7 +36,7 @@ set(_gen "${CMAKE_CURRENT_BINARY_DIR}/gen")
 # attribute the 1-level --fg-core-ab residual: with BOTH kernels contraction-free the residual is either gone
 # (= contraction) or not (= something else). It runs INSIDE the glslc rules so Ninja's depfile log cannot
 # silently recompile one module without it (that happened on the first attempt, 2026-09-05).
-option(PFG_NOCONTRACT "EXPERIMENT: NoContraction on every float op of every .spv (R3 M4 attribution); never ship" OFF)
+option(PFG_NOCONTRACT "EXPERIMENT: NoContraction on every float op of every .spv (FMA-contraction attribution for --fg-core-ab); never ship" OFF)
 find_program(PFG_PYTHON NAMES python python3)
 set(_nocontract "${CMAKE_CURRENT_SOURCE_DIR}/tools/spv_nocontract.py")
 if(PFG_NOCONTRACT)
@@ -186,10 +184,13 @@ target_link_libraries(pfg_site_test PRIVATE Vulkan::Vulkan)
 # --site-timing's D3D11 bracket (D3d11StampRing), tested on copies of KNOWN sizes with a deliberately wrong bracket as
 # its red (OV1 on SITE_TIMING_GATE section 9). It creates a D3D11 device on the GPU, so it is NOT a ctest case: every
 # run is a GPU run (SAFETY 5). Exit 0 = the bracket encloses its copy AND the checks catch one that does not.
-add_executable(pfg_d3d_bracket_test tools/d3d_bracket_test/d3d_bracket_test.cpp)
-target_compile_features(pfg_d3d_bracket_test PRIVATE cxx_std_23)
-target_include_directories(pfg_d3d_bracket_test PRIVATE "${_fw}/render/present/include")
-target_link_libraries(pfg_d3d_bracket_test PRIVATE d3d11 dxgi)
+# The measurement tools are not part of the public repository; the target exists only where the tool does.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/d3d_bracket_test/d3d_bracket_test.cpp")
+    add_executable(pfg_d3d_bracket_test tools/d3d_bracket_test/d3d_bracket_test.cpp)
+    target_compile_features(pfg_d3d_bracket_test PRIVATE cxx_std_23)
+    target_include_directories(pfg_d3d_bracket_test PRIVATE "${_fw}/render/present/include")
+    target_link_libraries(pfg_d3d_bracket_test PRIVATE d3d11 dxgi)
+endif()
 
 # R3: the row bodies are inputs of the generator (it checks them) and of fg_core.spv (it includes them).
 file(GLOB _layer_bodies CONFIGURE_DEPENDS "${_sh}/layers/*.glsl")
@@ -289,8 +290,12 @@ set_tests_properties(eco_preset PROPERTIES PASS_REGULAR_EXPRESSION "OK: all [0-9
 #     "MOTION_TRUTH T2-T5 have no code" into five live documents; all four phases had closed two days
 #     earlier with gate records in the same folder it was reading. A note had already been written about
 #     that exact mistake and did not stop it, so this is the mechanical form (LEARNING_LOG P-018).
-add_test(NAME docs_gate_parity COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/doc_gate_parity.py")
-set_tests_properties(docs_gate_parity PROPERTIES PASS_REGULAR_EXPRESSION "no live document contradicts a gate record")
+#     The project's working documents are not part of the public repository: the test exists only where they do.
+if(Python3_Interpreter_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/doc_gate_parity.py"
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/docs/planning/records")
+    add_test(NAME docs_gate_parity COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/doc_gate_parity.py")
+    set_tests_properties(docs_gate_parity PROPERTIES PASS_REGULAR_EXPRESSION "no live document contradicts a gate record")
+endif()
 
 # 5. The registry's parity oracle over a token corpus. `--dump-config` parses, runs layer_config_parity() and exits
 #    (exit 3 on a mismatch) before any device is created — a pure CPU test. These are the combinations that broke
