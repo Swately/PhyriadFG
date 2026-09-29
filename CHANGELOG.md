@@ -4,6 +4,111 @@ PhyriadFG is student-built and LLM-assisted, and every release is tagged `-exper
 that is what it is. Numbers in this file are quoted from the run that produced them, or the entry
 says they were not measured.
 
+## [0.6.0-experimental] - 2026-09-29
+
+**No default setting changed, and a default run generates the same frames. What changed is how reliably those frames reach the screen.** Three present-path fixes apply to every run. A present stall no longer turns the output off for the rest of the session. A focus change no longer costs a whole second. A redirected log no longer makes the presenter wait on the disk. Everything else in this release is opt-in and off by default: an `--eco` power preset, an experimental phase anchor for it, a device-resident frame route, measurement instruments, and a reorganized launcher.
+
+### Changed
+
+- **The default path.** No flag default changed, and no default layer changed. The layer contract hash, printed in the log and in the launcher, moves from `0xBF27BBBA9109A3E3` to `0x0291FB5481748A07`. The hash covers every row of the layer table, and one row was appended (`eco_anchor`, off by default, see Added). A row that is off is folded out of the kernel at pipeline creation. This was measured on the GPU with a build compiled for byte-exact kernel comparison: with the row compiled in but off, the default configuration matched the unchanged legacy kernel on the same tick with 0 differing pixels over 7190 ticks. Both kernels had the hold ramp set by flag to the legacy value, the only way the two can be compared since 0.5.3. `--eco` with the same two flags gave 0 differing pixels over 7187 ticks.
+- **Delivery against a 0.5.3 build, default flags.** The test used a synthetic 120 fps source whose captured area is 1920x1061, 2x at 240 Hz, single GPU, with the FG's log redirected to a file. Two draws each:
+  - displayed frames per second went from 204.8 to 233.7, and from 206.3 to 233.6;
+  - the 99th-percentile display interval went from 25.02 to 8.34 ms;
+  - board power rose +3.2 / +1.9 W, and FG GPU time rose +6.0 / +5.1 GPU-ms/s, with the extra presents.
+
+  The build measured predates the focus-change fix below, so that fix is not a candidate. Of the changes in that build, only the log pipe does any work in a run without a capture tap, which makes it the likeliest cause. No run isolates it, and the 0.5.3 binary's build toolchain was not compared with this one's. Through the launcher's pipe, and with an interactive console, this was **not measured**.
+- **Every run logs more at exit and when things go wrong.**
+  - One `present stall trace: N tick gaps > 100 ms` line. Each gap over 100 ms gets its own line that splits the time between the parts of the loop.
+  - An own-window run adds a `watchdog: hides=H ended=E max_stall_ms=S` line, and each watchdog hide and its end are logged with their time.
+  - A redirected run adds one line saying its stdout goes through the in-memory pipe.
+- **The repository no longer carries the project's working documents or its measurement tools.** The product -- source, shaders, the launcher, build files, tests and the user documentation -- is unchanged. Help texts no longer point at documents that are not in the repository.
+- **`--fg-core-ab`'s help now says what it measures.** Since 0.5.3 the two kernels differ on purpose in `single_track`'s hold ramp, so the instrument counts differing pixels under every configuration. For a parity run, add `--st-hold-lo 1.2 --st-hold-hi 3.0`.
+
+### Fixed
+
+- **One present stall longer than 250 ms turned the FG's output off for the rest of the session, and nothing said so.**
+  - What happened: the own-window watchdog hides the plane when the present thread stops for longer than 250 ms, so that a wedged FG never holds the panel. Nothing ever brought the plane back. The FG kept presenting to a hidden window while the game or desktop showed through, and the log still reported the plane as displayed.
+  - The fix: a hide now ends at the first present after the stall. The stall is measured, and the plane is re-asserted unless the foreground has moved elsewhere.
+  - Verified live in two runs under an artificial disk load: 6 and 8 hides, all ended with a re-assert, longest stalls 906 and 1047 ms.
+- **Every focus change cost one second of output.**
+  - What happened: while the own-window plane was yielded (the foreground was neither the game nor the FG), each tick still waited up to 1000 ms on the frame-latency waitable. Nothing was being presented, so nothing could signal it. A yielded FG ticked about once per second, and every return to the game waited up to a second before the plane came back.
+  - The fix: the wait now happens only on a tick that will present. A yielded tick pauses 50 ms instead.
+  - Diagnostic A/B, 20 s, three forced focus changes:
+    - before: five tick gaps of about 1 s each and 3591 presents;
+    - after: no gap over 100 ms and 4023 presents.
+  - The cost of a yielded FG now ticking 10 to 20 times per second instead of once is **not measured**.
+- **With stdout redirected, the presenter could wait on the disk to print a line.**
+  - What happened: stdout is unbuffered, so every log line from the present thread was a synchronous write. When the log's disk was busy, one line could take 0.1 to 0.8 s.
+  - The fix: a stdout redirected to a file or a pipe now goes through a 1 MB in-memory pipe that one thread writes out, in order. An interactive console is left as it was.
+  - Measured in 20 s runs with a capture tap streaming to the log's disk: 23 tick gaps over 100 ms and 14 watchdog hides before the fix, 0 and 0 after.
+- **`--warp-timing` destroyed its timestamp pool while the last warp batch could still be in flight.** The validation layer reported one error at teardown. The teardown now waits for that batch. This only happens with the flag on.
+
+### Added
+
+- **`--eco`**, an opt-in power preset, off by default. It is exactly `--frame-vram --no-bidir`, including `--no-bidir`'s cascade.
+  - Route: single GPU only (a multi-GPU rig needs `--force-single-gpu`). As with `--frame-vram`, a refused arm ends the run.
+  - Power, 1920x1061, 2x, two draws against the default:
+    - board power -43.1 and -43.5 W;
+    - the GPU drops from its top clock bin to 2610 MHz;
+    - median latency changed by +0.01 and +0.09 ms, within noise.
+  - Memory:
+    - device memory +236 MiB;
+    - host commit +235 to +243 MiB, with the working set flat in 19 of 20 runs.
+  - Quality was scored against an analytically exact rendering of a synthetic scene at 640x360, 2x, one scene at two speeds, with `--frame-vram` and `--gme-sub2-force` set on both arms, so the comparison isolates `--no-bidir`. Result: a regression of 2 to 9 % per presented frame (averaged over both phase slots), all of it in the t~0.75 frame, where the affected terms move +7 to +50 %. A few other terms improve: it trades hallucinated area for missing area.
+  - 1080p quality: **not measured**.
+- **`--eco-anchor {1|2}`**: EXPERIMENTAL and off by default. It is a phase anchor for `--eco` that re-selects the high-t motion vector from the forward field alone. 1 = one fixed-point tap, 2 = lean candidate re-selection (the mode chosen for validation).
+  - It is a parse error with bidir on, with `--legacy-warp`, or with `--fg-core-ab`. Any value other than 1 or 2 turns it off and says so.
+  - At start it prints the mode it runs in.
+  - At t <= 0.35 it returns its input before any texture read. On the GPU that frame was byte-identical to `--eco`: 0 pixels over 3591 ticks. At t~0.75 it changed about 1.85 % of the frame per tick.
+  - The GPU output matched a CPU reference implementation within 1 LSB on at least 99.961 % of pixels per frame, over 1190 frames.
+  - Cost of mode 2 over `--eco`: +2.3 GPU-ms/s of warp time (+15 % of the warp pass), read from the FG's own logs; about +0.7 W board with `--eco`'s 2610 MHz clock kept, read from the same power analyzer as the `--eco` figures.
+  - Quality was measured offline only, as a CPU replay of `--eco` captures at 640x360 with one scene at two speeds. Against `--eco` at t~0.75 on the faster scene:
+    - sphere hallucination -57 % and sphere shape error -50 %;
+    - box hallucination -28 % and box missing -7 %;
+    - but sphere missing **+70 %**, at the loop seam and where the sphere leaves the frame, through the row's fallback to the global-motion vector.
+
+    That fails the acceptance bar set before the test. On the slower scene it is better than `--eco` on every term.
+- **`--eco-anchor-ab`**, a measurement instrument that requires `--eco-anchor N`. The product runs with the row off, and a second kernel with the row on runs beside it from the same inputs. Differing pixels are counted per phase slot. If its second kernel cannot be set up, it logs that the instrument is off and the product keeps running.
+- **`--frame-vram`**, off by default, not listed in `--help` on its own (`--eco`'s help names it). The converted frame stays on the GPU: a device mirror of the capture ring feeds the flow and the presenter, with no round trip through host memory.
+  - Single GPU only (a multi-GPU rig needs `--force-single-gpu`). It is also refused, and the run ends, wherever the host ring is still read: iGPU convert, `--upscale`, `--upload-xfer`, `--real-fast-path`, `--rfp-fresh`, `--motion-fallback`, `--dump`, `--pairdump`, or without warp-at-presenter.
+  - Its planned evaluation could not be completed, because runs in it hit the focus-change stall fixed above. Its effect is therefore **not measured** under that plan.
+  - Informative deltas from two draws, not a verdict:
+    - FG GPU busy time -174 / -175 GPU-ms/s, about -30 %;
+    - board power -1.25 / -1.21 W, with the GPU held at its top clock;
+    - device memory +236 / +237 MiB;
+    - host commit +237 MiB, with resident memory flat.
+- **`--site-timing`**, a measurement instrument, off by default, not listed in `--help`. It places GPU timestamps at the named sites of a frame's path (convert, forward and backward flow, bridge upload, the D3D11 capture and present copies) and records host wall times. After a 5 s warm-up it prints distributions and cost per second at teardown, and it implies `--warp-timing`.
+  - Its own cost is not settled. One pair of draws read the FG's GPU busy time +11 % with it on; a later one read about zero on whole-process counters and 1.4 % fewer interpolated frames; counting only displayed presents, the displayed rate was about 6 to 9 per second higher with it on in every pair measured. Do not compare a `--site-timing` run with a run without it.
+- **`--gdump-live 0|1`** (default 1, unchanged): 0 makes the capture tap record no live warp frames, so its writer spends the disk on the pair sets. In one pair of 20 s runs, pairs written went from 381 of 2360 (16 %) to 1384 of 2359 (59 %), and the record from 39 to 23 GB.
+- **Diagnostic formats.** Every `--qdump` manifest line now carries `eco=N eco_h=H`; the `--gdump` header adds `live 0` and `eco_anchor N H` lines when those are not default; `--dump-config`'s `[old2]` line adds `eco_anchor=`.
+- **Tests.** New ctest cases cover the `--eco` preset, the site-timing book, `--frame-vram`'s arming, the plane watchdog, the stall trace, the log pipe and the `--eco-anchor` refusals; the layer contract pin moved with the new row.
+- **`--gme-sub2-force`**, a diagnostic, off by default, not listed in `--help`. The global-motion fit starts in the sub-sampled state that its one-way CPU-time latch otherwise reaches mid-run, so equivalence runs do not depend on when the latch fires.
+- **Launcher: an "Essentials" card first, and everything else in one folded "Advanced options" section.**
+  - Essentials holds: target window, window title, monitor, multiplier, frame-gen GPU, single GPU, FPS overlay, HDR, refresh rate and output FPS cap.
+  - Advanced holds every other group, the layer registry, raw flags, and the executable path (moved out of the sidebar).
+  - Each flag still has exactly one control, and the command it builds is unchanged.
+  - The multiplier list is now 2x / 3x / 4x / auto. 5x, 6x and 8x are still accepted by the FG through Raw flags (`--fg-factor 6`).
+  - A new "Eco (power)" group carries `--eco`, which had no control before, and the eco anchor as a select marked experimental.
+  - The note field and its Mark button are removed from the live output.
+  - The FPS overlay's description no longer says the default path skips it. It is drawn there (by the code; not re-verified live in this release).
+  - The native dropdowns that remain get themed option colours in light and dark.
+- **Launcher: the target-window picker is a themed list instead of a native dropdown.**
+  - Each window has two lines: its caption, then exe, pid and minimized state.
+  - It works in light and dark themes, stays open while the list refreshes, and supports type-ahead.
+  - Minimized windows are listed but cannot be picked.
+  - A pick still passes `--window-pid` / `--hwnd`, and picking the window already bound no longer schedules a restart.
+
+### Known issues
+
+- **`--eco-anchor` is experimental in the plain sense.**
+  - The live A/B against `--eco` has **not been run**.
+  - It was validated at 2x only. At 3x, a third of the generated frames sit in the middle of its blend ramp, which is untested. At 4x the row is nearly off at t~0.375 and nearly full at t~0.625.
+  - At 1080p its candidate ring spans 3 motion-vector texels against 1 in every validated frame, so it is a different candidate set, and its 1080p quality is **not measured**.
+  - It fails its own offline acceptance bar on sphere missing (above).
+- **`--eco`'s quality was measured at 640x360 only**, and its 1080p quality is **not measured**. Its power figures come from one synthetic scene on one machine.
+- **A hard crash can lose the last log lines.** With the log pipe armed, a crash waits at most 200 ms for the pipe to drain. Lines still in it after that are lost.
+- **The launcher changes were checked in a browser with the launcher's backend stubbed**, including real mouse and keyboard input on the window picker. The built launcher was not exercised against live windows before this release.
+
 ## [0.5.3-experimental] - 2026-09-13
 
 **A default moved, and the measurement that moved it is printed below including the case where it
