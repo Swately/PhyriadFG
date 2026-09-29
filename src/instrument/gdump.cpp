@@ -225,6 +225,7 @@ GdumpTap::GdumpTap(VDev& A, const char* dir, uint32_t ring_n, uint32_t pair_sets
         std::fprintf(h, "async %d\n", info_.async_present ? 1 : 0);
         std::fprintf(h, "ring %u pairs %u\n", N, M);
         if (!info_.live) std::fprintf(h, "live 0\n");   // --gdump-live 0 (absent = 1, so a default header is unchanged)
+        if (info_.eco_anchor > 0) std::fprintf(h, "eco_anchor %d %.9g\n", info_.eco_anchor, (double)info_.eco_hyst);   // absent = off (default header unchanged)
         std::fprintf(h, "qpc_hz %.6f\n", info_.qpc_hz);
         // §1.6: the three refused flags, recorded as 0 BY CONSTRUCTION — resolve_config() (S2) never
         // lets the tap arm with any of them on, so this file has no other truth to record.

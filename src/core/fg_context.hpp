@@ -325,6 +325,12 @@ struct FgContext {
     HBuf& devAb;          // R3 (--fg-core-ab): the stats SSBO + its host copy
     HBuf& hAb_a;
     void*& hostAb;
+    FgPipe& ecoPipeA;     // --eco-anchor-ab: the eco row ON (beside the row-OFF product)
+    AbPipe& abPipe0A;     // --eco-anchor-ab: the slot-0 byte-diff (slot 1 uses abPipeA / devAb)
+    HBuf& devAb0;
+    HBuf& hAb0_a;
+    void*& hostAb0;
+    uint64_t* ecoBand;    // [3] ticks by t band
     Img& wapPrevA;
     Img& wapPrevOutA;
     Img& wapSADA;

@@ -329,4 +329,29 @@ PFG_LAYER(MV_CONSENSUS, "mv_consensus", FLOW, 90, P, true, false, PFG_BIT(FLOW_S
             "Blind 3x3 component-wise vector median (no color weighting).")
 PFG_LAYER_END(MV_CONSENSUS)
 
+// ── APPENDED ROWS ──────────────────────────────────────────────────────────────────────────────
+// A row added after R7 goes HERE, at the end of the file, whatever its stage: LayerId is the .def index, it is the
+// arm_mask bit and the spec-constant id, and every earlier row keeps its id (the generator orders the chains by
+// (stage, rank), never by file position).
+//
+// MVCOND rank 42 — --eco-anchor {1|2} (2026-09-29; docs/planning/records/ECO_ANCHOR_PREREG.md + ECO_ANCHOR_VALIDATION.md).
+// DEFAULT OFF. The phase anchor for --eco: at high t it re-selects the primary MV from the FORWARD field alone (the
+// shipping phase_anchor needs the backward field, which --eco does not compute). It sits right after phase_anchor
+// (rank 40), where the offline harness patched it; the sketch said 35, and under --eco the two positions are the same
+// program because phase_anchor is never armed there. It never reads binding 5. At t <= 0.35 its weight is 0 and it
+// returns mv_in before any tap, so slot 0 is byte-identical to --eco. The CLI refuses it with bidir on (the shipping
+// anchor would run first) and with --legacy-warp (wap_warp.comp has no row). arm = GME: the no-candidate fallback is
+// the gme vector, so a generation without a model skips the row (mv_in passes through).
+PFG_LAYER(ECO_ANCHOR, "eco_anchor", MVCOND, 42, F, false, false, 0u, false, 0u,
+          CH_MV | CH_PREV | CH_CUR | CH_GME, CH_MV, SH_NONE, GME, "MV",
+          nullptr, nullptr, nullptr,
+          "Eco phase anchor (--eco only): at high t, re-select the primary MV from the forward field. 1 = FP1 (one "
+          "fixed-point tap), 2 = lean bilateral candidate re-selection (the validated mode). Default off.")
+  PFG_PARAM(ECO_ANCHOR, mode, I32, 0.f, 1.f, 2.f, "--eco-anchor", nullptr, PF_IMPLIES_ON | PF_ZERO_OFF, NUMBER,
+            "1 = FP1, 2 = lean BCR (ring 8 px at 640 wide, scaled by W/640; 1-tap luma cost; consistency gate; gme "
+            "fallback). 0 = off. Needs --eco (bidir off).")
+  PFG_PARAM(ECO_ANCHOR, hyst, F32, 0.9f, 0.5f, 1.0f, nullptr, nullptr, PF_NONE, HIDDEN,
+            "Mode 2 hysteresis: keep mv_in unless the best candidate costs less than hyst x mv_in's (V2 selected 0.9).")
+PFG_LAYER_END(ECO_ANCHOR)
+
 // Made with my soul - Swately <3

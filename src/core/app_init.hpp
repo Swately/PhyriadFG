@@ -367,6 +367,13 @@ struct WapInit {
     FgPipe fgPipeA{}; AbPipe abPipeA{}; Img fgOutA{};
     void* hostLP=nullptr; HBuf hLP_a{};
     HBuf devAb{}; void* hostAb=nullptr; HBuf hAb_a{};
+    // --eco-anchor-ab (2026-09-29): the second fg_core pipeline (the eco row ON; the product runs with it OFF) writes
+    // fgOutA; the diff of slot-1 ticks accumulates in the --fg-core-ab stats above (the two flags are exclusive at parse),
+    // the diff of slot-0 ticks (t <= 0.35) in its own stats below, so a slot-0 difference cannot hide in a total.
+    // ecoBand counts the ticks by t band: [0] t <= 0.35, [1] 0.35 < t < 0.65 (the ramp), [2] t >= 0.65.
+    FgPipe ecoPipeA{}; AbPipe abPipe0A{};
+    HBuf devAb0{}; void* hostAb0=nullptr; HBuf hAb0_a{};
+    uint64_t ecoBand[3]{};
     Img wapPrevA{},wapCurA{},wapMVA{},wapSADA{},wapOutA{};
     Img wapFIELDA{};        // A-side iGPU contour field image (R32_UINT, full-res; --afill OR --bg-snap)
     Img wapFIELDph{};       // 1×1 r32ui binding-11 placeholder when neither --afill nor --bg-snap owns wapFIELDA (never sampled)

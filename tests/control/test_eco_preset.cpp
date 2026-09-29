@@ -23,6 +23,10 @@
 //   4. SEEN RED     — the default argv differs from A on frame_vram and bidir (read directly, not through same_fields).
 //                     The registry half of same_fields was seen red by removing the layer_shadow_parse alias; the hand
 //                     half is pinned by the direct expects in section 1.
+//   5. THE ECO ANCHOR (2026-09-29) — --eco-anchor N: off by default and under --eco; armed only when asked, mode and
+//                     hyst in the registry, the R0 oracle true; 0 and out-of-range modes are off; the row is in the
+//                     contract hash; refused as a parse error with bidir on, --legacy-warp, --fg-core-ab, and
+//                     --eco-anchor-ab without a mode.
 //
 // WHAT IT DOES NOT COVER, named: the init-time prints (the frame-vram ARMED line, and "flow rows resolved ... bidir=0"
 // with its eff mask). They depend on the devices a run finds, so they need a live run (the operator's call).
@@ -116,6 +120,43 @@ int main() {
     Config D = parse({}, false);
     expect(D.frame_vram != A.frame_vram && D.bidir != A.bidir, "default differs (not vacuous)", "default vs --eco");
     expect(D.layers.on[BIDIR], "default registry BIDIR on", "default");
+
+    // 5. THE ECO ANCHOR ROW (2026-09-29, --eco-anchor N): off by default and under --eco; on only when asked, with the
+    //    mode in the registry and the hand field agreeing (the R0 oracle); refused, as a parse ERROR, with bidir on,
+    //    --legacy-warp, --fg-core-ab, and --eco-anchor-ab without a mode.
+    const auto ECO = (uint16_t)LayerId::ECO_ANCHOR;
+    const float hyst_dflt = pfg::layers::layer_param_value(D, LayerId::ECO_ANCHOR, "hyst");
+    expect(!D.layers.on[ECO] && D.eco_anchor == 0, "eco_anchor off by default", "default");
+    Config Ae = parse({"--eco"}, false);
+    expect(!Ae.layers.on[ECO] && Ae.eco_anchor == 0, "--eco does not arm eco_anchor", "--eco");
+    Config E2 = parse({"--eco", "--eco-anchor", "2"}, false);
+    expect(E2.eco_anchor == 2 && E2.layers.on[ECO], "--eco-anchor 2 arms the row", "--eco --eco-anchor 2");
+    expect(pfg::layers::layer_param_value(E2, LayerId::ECO_ANCHOR, "mode") == 2.f, "registry mode 2", "--eco --eco-anchor 2");
+    expect(feq(hyst_dflt, 0.9f) && feq(pfg::layers::layer_param_value(E2, LayerId::ECO_ANCHOR, "hyst"), 0.9f),
+           "hyst is 0.9 (V2's selection)", "default / --eco-anchor 2");
+    expect(pfg::layers::layer_config_parity(E2), "R0 parity oracle", "--eco --eco-anchor 2");
+    Config E1 = parse({"--no-bidir", "--eco-anchor", "1"}, false);
+    expect(E1.eco_anchor == 1 && E1.layers.on[ECO] && pfg::layers::layer_config_parity(E1), "--eco-anchor 1 (FP1)", "--no-bidir --eco-anchor 1");
+    Config E0 = parse({"--eco", "--eco-anchor", "0"}, false);
+    Config E3 = parse({"--eco", "--eco-anchor", "3"}, false);
+    expect(E0.eco_anchor == 0 && !E0.layers.on[ECO] && pfg::layers::layer_config_parity(E0), "--eco-anchor 0 is off", "--eco --eco-anchor 0");
+    expect(E3.eco_anchor == 0 && !E3.layers.on[ECO] && pfg::layers::layer_config_parity(E3), "out-of-range mode is off", "--eco --eco-anchor 3");
+    expect(pfg::layers::layer_contract_hash(E2) != pfg::layers::layer_contract_hash(Ae), "the row is in the contract hash", "--eco vs --eco --eco-anchor 2");
+    Config E2r = parse({"--eco", "--eco-anchor", "2"}, true);
+    expect(E2r.eco_anchor == 2 && E2r.layers.on[ECO] && !E2r.bidir, "post-cascade: the row stays armed", "--eco --eco-anchor 2 (resolved)");
+    Config Eab = parse({"--eco", "--eco-anchor", "2", "--eco-anchor-ab"}, false);
+    expect(Eab.eco_anchor_ab && Eab.eco_anchor == 2, "--eco-anchor-ab accepted with a mode", "--eco --eco-anchor 2 --eco-anchor-ab");
+    auto refused = [&](std::vector<const char*> args, const char* what) {
+        std::vector<char*> argv; argv.push_back(const_cast<char*>("phyriad_fg"));
+        for (const char* a : args) argv.push_back(const_cast<char*>(a));
+        Config c;
+        const bool ok = parse_args((int)argv.size(), argv.data(), c, false);
+        expect(!ok && c.parse_failed, "refused as a parse error", what);
+    };
+    refused({"--eco-anchor", "2"}, "--eco-anchor 2 with bidir on");
+    refused({"--eco", "--eco-anchor", "2", "--legacy-warp"}, "--eco --eco-anchor 2 --legacy-warp");
+    refused({"--eco", "--eco-anchor", "2", "--fg-core-ab"}, "--eco --eco-anchor 2 --fg-core-ab");
+    refused({"--eco", "--eco-anchor-ab"}, "--eco --eco-anchor-ab (no mode)");
 
     if (g_fail == 0) { std::fprintf(stderr, "OK: all %d checks passed\n", g_checks); return 0; }
     std::fprintf(stderr, "FAILED: %d/%d checks failed\n", g_fail, g_checks);

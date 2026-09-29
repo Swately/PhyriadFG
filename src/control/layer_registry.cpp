@@ -136,6 +136,7 @@ LayerOldShadow capture_layer_old(const Config& c) {
     s.objects = c.objects; s.shapefield = c.shapefield; s.obj_fill_rim = c.obj_fill_rim; s.expire = c.expire; s.persist_reset = c.persist_reset;
     s.scene_memory = c.scene_memory; s.bidir = c.bidir; s.mv_median = c.mv_median; s.mv_smooth = c.mv_smooth; s.nvofa = c.nvofa;
     s.mv_consensus = c.mv_consensus;
+    s.eco_anchor = c.eco_anchor;
     return s;
 }
 
@@ -145,6 +146,7 @@ static size_t pidx(LayerId L, const char* pname) {
     std::printf("[layertab] INTERNAL: param %s not found\n", pname);
     return 0;
 }
+float layer_param_value(const Config& c, LayerId L, const char* pname) { return c.layers.val[pidx(L, pname)]; }
 #define PFG_ON(L)      (lc.on[(uint16_t)LayerId::L])
 #define PFG_V(L, name) (lc.val[pidx(LayerId::L, #name)])
 
@@ -197,6 +199,9 @@ bool layer_config_parity(const Config& c) {
     chk_b("objects.persist_reset", o.persist_reset,             PFG_V(OBJECTS, persist_reset) != 0.f);
     chk_b("mv_consensus.on (eff)", o.mv_consensus && (o.mv_guided || o.mv_median), PFG_ON(MV_CONSENSUS) && (PFG_ON(MV_GUIDED) || PFG_V(MV_CONSENSUS, blind) != 0.f));
     chk_b("mv_consensus.blind",    o.mv_median,                 PFG_V(MV_CONSENSUS, blind) != 0.f);
+    // 2026-09-29: the appended eco_anchor row (hyst is HIDDEN: no hand field, the registry's default is the value)
+    chk_b("eco_anchor.on",         o.eco_anchor != 0,           PFG_ON(ECO_ANCHOR));
+    chk_f("eco_anchor.mode",       (float)o.eco_anchor,         PFG_V(ECO_ANCHOR, mode));
     return ok;
 }
 
@@ -397,9 +402,9 @@ void dump_config(const Config& c) {
                 (int)o.mv_guided, (double)o.mv_sim, o.mv_edge_snap, (double)o.mv_edge_snap_sim, (int)o.inertia, (double)o.inertia_thresh, (double)o.bg_reclaim,
                 (int)o.phase_anchor, (int)o.ambig, (int)o.vblend, (double)o.vblend_t0, (double)o.vblend_strength, (int)o.vblend_exact,
                 (int)o.stasis, (double)o.stasis_thresh, (int)o.single_track, (int)o.st_no_stasis);
-    std::printf("[old2] gme=%d gme_gpu=%d gme_gpu_verify=%d gme_irls2=%d objects=%d shapefield=%d obj_fill_rim=%d expire=%d persist_reset=%d scene_memory=%d bidir=%d mv_median=%d mv_smooth=%.9g nvofa=%d mv_consensus=%d\n",
+    std::printf("[old2] gme=%d gme_gpu=%d gme_gpu_verify=%d gme_irls2=%d objects=%d shapefield=%d obj_fill_rim=%d expire=%d persist_reset=%d scene_memory=%d bidir=%d mv_median=%d mv_smooth=%.9g nvofa=%d mv_consensus=%d eco_anchor=%d\n",
                 (int)o.gme, (int)o.gme_gpu, (int)o.gme_gpu_verify, (int)o.gme_irls2, (int)o.objects, (int)o.shapefield, (int)o.obj_fill_rim, (int)o.expire, (int)o.persist_reset,
-                (int)o.scene_memory, (int)o.bidir, (int)o.mv_median, (double)o.mv_smooth, (int)o.nvofa, (int)o.mv_consensus);
+                (int)o.scene_memory, (int)o.bidir, (int)o.mv_median, (double)o.mv_smooth, (int)o.nvofa, (int)o.mv_consensus, o.eco_anchor);
     std::printf("[new]");
     for (uint16_t i = 0; i < kLayerCount; ++i) if (kLayers[i].kind != Kind::X) std::printf(" %s=%d", kLayers[i].name, (int)c.layers.on[i]);
     for (size_t p = 0; p < kParamCount; ++p) std::printf(" %s.%s=%.9g", kLayers[kParams[p].layer].name, kParams[p].name, (double)c.layers.val[p]);
@@ -443,7 +448,9 @@ void print_layer_help() {
                 "    --fg-core            pin fg_core.comp as the product path -- THE DEFAULT since 2026-09-06 (R7a); this flag now only makes it explicit\n"
                 "    --fg-core-ab         run BOTH kernels every tick from the same inputs and count differing pixels (the M4 instrument)\n"
                 "    --fg-core-clean-sim  mv_guided.sim = the exact --mv-sim (default: the legacy's packed (1+sim)-1, XR1)\n"
-                "    --legacy-warp        select shaders/wap_warp.comp instead -- THE REVERT for the R7a default; the legacy shader stays in the tree\n");
+                "    --legacy-warp        select shaders/wap_warp.comp instead -- THE REVERT for the R7a default; the legacy shader stays in the tree\n"
+                "    --eco-anchor-ab      with --eco-anchor N: the product runs with the eco row OFF, a second fg_core with it ON runs beside it\n"
+                "                         from the same inputs, and the differing pixels are counted per slot (t <= 0.35 must be 0)\n");
 }
 
 // ── --layer-model-json (the UI renders THIS; ui/src/main.js keeps no layer literal) ─────────────

@@ -139,7 +139,13 @@ void print_help(const char* a0) {
         "                        Quality at 640x360, measured with the latch pinned: a 2-9 %% regression per presented\n"
         "                        frame (mean over both phase slots), all of it in the t~0.75 frame, where the affected\n"
         "                        terms move +7 to +50 %% (Q1). 1080p quality unverified.\n"
-        "                        Basis: docs/planning/records/Q1_NOBIDIR_QUALITY.md.\n\n"
+        "                        Basis: docs/planning/records/Q1_NOBIDIR_QUALITY.md.\n"
+        "  --eco-anchor N        with --eco: the eco phase anchor (1 = FP1, 2 = lean BCR, the validated mode). DEFAULT OFF.\n"
+        "                        Refused with bidir on, --legacy-warp or --fg-core-ab. Offline (CPU replay, 640x360, one\n"
+        "                        scene at two speeds; GPU cost and power not yet measured): mode 2 against --eco cuts\n"
+        "                        sphere hallucination 57 %% and shape error 50 %% at t~0.75, but raises sphere missing\n"
+        "                        70 %% at the loop seam and where the sphere exits, via its gme fallback (a V3 FAIL by the\n"
+        "                        pre-registered rule). Basis: docs/planning/records/ECO_ANCHOR_VALIDATION.md.\n\n"
         "LEGACY NO-OP FLAGS (accepted, already default):\n"
         "  --warp-at-presenter, --soft-gate, --commit-warp, --commit-real, --bidir,\n"
         "  --rescue, --mv-guided, --gme, --stasis, --inertia,\n"
@@ -356,6 +362,13 @@ bool parse_args(int argc, char** argv, Config& c, bool resolve) {
             if(!std::strcmp(arg,"--fg-core-ab")){ c.fg_core_ab=true; return 0; }                 // R3: both kernels, count differing pixels
             if(!std::strcmp(arg,"--fg-core-clean-sim")){ c.fg_core_clean_sim=true; return 0; }   // XR1: the exact --mv-sim instead of the packed reproduction
             if(!std::strcmp(arg,"--legacy-warp")){ c.legacy_warp=true; return 0; }               // R7's name for the old path (today's default)
+            // --eco-anchor {1|2} (2026-09-29): the appended eco_anchor row. The --mv-edge-snap parse, token for token (n in
+            // {1,2} else 0), because the registry shadow parses the same token through the same PF_ZERO_OFF I32 rule.
+            if(!std::strcmp(arg,"--eco-anchor")){ if(auto v=next(arg)){ int n=std::atoi(v); c.eco_anchor = (n==1||n==2)?n:0;
+                std::printf("[ra] --eco-anchor %d: %s. DEFAULT OFF; needs --eco (bidir off) and the fg_core path.\n", c.eco_anchor,
+                            c.eco_anchor==1?"FP1 (one fixed-point tap of the forward field at high t)":c.eco_anchor==2?"lean BCR (the validated mode: re-select the high-t MV from the forward field)":"OFF");
+                return 0; } return 1; }
+            if(!std::strcmp(arg,"--eco-anchor-ab")){ c.eco_anchor_ab=true; return 0; }          // the eco row off vs on, same tick, per-slot byte-diff
             // --gdump (GDUMP_PLAN.md S2): the every-tick capture tap. HERE, not in the main else-if chain — that chain is at
             // MSVC's C1061 nesting limit (P-004 in docs/LEARNING_LOG.md; three more else-ifs overflowed it on 2026-09-09).
             if(!std::strcmp(arg,"--gdump")){ if(auto v=next(arg)){ std::snprintf(c.gdump_dir,sizeof(c.gdump_dir),"%s",v);
@@ -874,6 +887,23 @@ bool parse_args(int argc, char** argv, Config& c, bool resolve) {
     // never a parse error: the run is still correct, the flag just does nothing.
     if (c.fg_gpu==FG_PRIMARY && c.force_single_gpu) {
         std::printf("[ra] --fg-gpu primary + --force-single-gpu: primary-FG is INERT on the single-GPU path (want_pfg is forced off once single_gpu is derived) — the flag is accepted and changes nothing. Use --fg-gpu auto.\n");
+    }
+    // --eco-anchor's refusals (2026-09-29): a parse ERROR (exit 2), not a quiet disarm. The row's spec constant comes
+    // from the registry's pre-cascade on[], so a cascade could not switch it off without breaking the R0 parity oracle;
+    // and a run that silently drops the flag the operator typed is the failure this CLI refuses elsewhere (4.3).
+    //   bidir on: the shipping phase_anchor (rank 40) would re-anchor first, a program the offline validation never ran.
+    //   --legacy-warp: wap_warp.comp has no eco_anchor row.
+    //   --fg-core-ab: that instrument compares fg_core with wap_warp; with the row on it would count the row, not parity.
+    if (c.eco_anchor > 0 && (c.bidir || c.legacy_warp || c.fg_core_ab)) {
+        std::printf("[ra] --eco-anchor %d REFUSED: %s. Use it with --eco (or --no-bidir) on the fg_core path.\n", c.eco_anchor,
+                    c.bidir ? "it needs bidir OFF (with bidir on the shipping phase anchor already runs at high t)" :
+                    c.legacy_warp ? "--legacy-warp selects wap_warp.comp, which has no eco_anchor row" :
+                                    "--fg-core-ab compares fg_core with wap_warp; use --eco-anchor-ab for the row's own A/B");
+        c.parse_failed = true; return false;
+    }
+    if (c.eco_anchor_ab && c.eco_anchor == 0) {
+        std::printf("[ra] --eco-anchor-ab REFUSED: it needs --eco-anchor N (N = 1 or 2), the mode the second pipeline runs.\n");
+        c.parse_failed = true; return false;
     }
     // The post-parse cascades + the derived c.d.* predicates live in ONE site, resolve_config() above
     // (re-callable from the runtime degrade in main.cpp). See cli.hpp. This is the central "decode" —

@@ -234,6 +234,12 @@ void run_present(FgContext& ctx){
     auto& devAb = ctx.devAb;       // R3: its stats (VRAM) + host copy
     auto& hAb_a = ctx.hAb_a;
     auto& hostAb = ctx.hostAb;
+    auto& ecoPipeA = ctx.ecoPipeA;   // --eco-anchor-ab: the eco row ON, beside the row-OFF product
+    auto& abPipe0A = ctx.abPipe0A;   // --eco-anchor-ab: the slot-0 byte-diff (slot 1 reuses abPipeA / devAb)
+    auto& devAb0 = ctx.devAb0;
+    auto& hAb0_a = ctx.hAb0_a;
+    auto& hostAb0 = ctx.hostAb0;
+    uint64_t* ecoBand = ctx.ecoBand;
     auto& wapPrevA = ctx.wapPrevA;
     auto& wapPrevOutA = ctx.wapPrevOutA;
     auto& wapSADA = ctx.wapSADA;
@@ -917,7 +923,11 @@ void run_present(FgContext& ctx){
             pfg::instrument::GdumpTap gdump(A, cfg.gdump_dir, cfg.gdump_dir[0]?(uint32_t)cfg.gdump_ring:0u, (uint32_t)cfg.gdump_pairs,
                 pfg::instrument::GdumpDims{ WW, WH, WW_warp, WH_warp, warp_div, wap_mvw, wap_mvh, pfg::instrument::kGdumpPushBytes },
                 pfg::instrument::GdumpInfo{ (cfg.fg_core&&fgPipeA.pipe!=VK_NULL_HANDLE)?"fg_core":"wap_warp", pfg::layers::layer_contract_hash(cfg),
-                                            use_bidir, xfer_on, cfg.async_present, sg5_want, (double)gd_qf.QuadPart, cfg.gdump_live!=0 });
+                                            use_bidir, xfer_on, cfg.async_present, sg5_want, (double)gd_qf.QuadPart, cfg.gdump_live!=0,
+                                            // the PRODUCT's eco row: on only when fg_core drives the product and the row is in its
+                                            // pipeline (under --eco-anchor-ab the product runs it OFF)
+                                            (cfg.fg_core&&fgPipeA.pipe!=VK_NULL_HANDLE&&!cfg.eco_anchor_ab)?cfg.eco_anchor:0,
+                                            pfg::layers::layer_param_value(cfg,pfg::layers::LayerId::ECO_ANCHOR,"hyst") });
             int gd_slot=-1; uint64_t gd_pair_c=0, gd_tick=0;
             auto wap_warp_present=[&](float t,float extrap,const float* gme6,bool bwd_ok,float thr_eff,uint32_t* presented_out,bool do_warp=true){
                 // --qdump+ (S2.T1): a byte copy of the push block AS SUBMITTED. `pcw` lives in a nested
@@ -1242,6 +1252,38 @@ void run_present(FgContext& ctx){
                                 std::printf("[fg-core-ab]   px(%u,%u) legacy=%02X%02X%02X%02X fg_core=%02X%02X%02X%02X tick=%u\n",e[0]&0xFFFFu,e[0]>>16,
                                             e[1]&0xFFu,(e[1]>>8)&0xFFu,(e[1]>>16)&0xFFu,e[1]>>24,e[2]&0xFFu,(e[2]>>8)&0xFFu,(e[2]>>16)&0xFFu,e[2]>>24,e[3]); }
                             ab_printed=n; }
+                    }
+                    // --eco-anchor-ab: the SAME push and inputs through the eco-row-ON pipeline into fgOutA, then the byte-diff
+                    // against the row-OFF product (wapOutA) into the slot's own stats: t <= 0.35 -> devAb0 (the row's weight is 0
+                    // there, so any difference is a defect), else devAb. Both fg_core, so the governor's warp_light shed (a legacy
+                    // push knob) does not apply: every tick is compared. ecoBand counts the ticks by t band.
+                    if(cfg.eco_anchor_ab && ecoPipeA.pipe!=VK_NULL_HANDLE && abPipeA.pipe!=VK_NULL_HANDLE && abPipe0A.pipe!=VK_NULL_HANDLE){
+                        const bool s0=(t<=0.35f);
+                        ++ecoBand[s0?0:(t<0.65f?1:2)];
+                        VkMemoryBarrier mbw{}; mbw.sType=VK_STRUCTURE_TYPE_MEMORY_BARRIER;   // the product's write -> the eco pass (WAW on nothing shared; keeps the order explicit)
+                        mbw.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; mbw.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT;
+                        vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,1,&mbw,0,nullptr,0,nullptr);
+                        vkCmdBindPipeline(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,ecoPipeA.pipe);
+                        vkCmdBindDescriptorSets(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,ecoPipeA.layout,0,1,&ecoPipeA.set,0,nullptr);
+                        vkCmdPushConstants(cmdBridge,ecoPipeA.layout,VK_SHADER_STAGE_COMPUTE_BIT,0,sizeof(fgp),&fgp);
+                        vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);
+                        vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,1,&mbw,0,nullptr,0,nullptr);
+                        AbPipe& ap=s0?abPipe0A:abPipeA; HBuf& dv=s0?devAb0:devAb; HBuf& hb=s0?hAb0_a:hAb_a;
+                        vkCmdBindPipeline(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,ap.pipe);
+                        vkCmdBindDescriptorSets(cmdBridge,VK_PIPELINE_BIND_POINT_COMPUTE,ap.layout,0,1,&ap.set,0,nullptr);
+                        vkCmdDispatch(cmdBridge,(WW_warp+7)/8,(WH_warp+7)/8,1);
+                        VkBufferMemoryBarrier eb{}; eb.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                        eb.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT; eb.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+                        eb.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; eb.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+                        eb.buffer=dv.buf; eb.offset=0; eb.size=VK_WHOLE_SIZE;
+                        vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&eb,0,nullptr);
+                        VkBufferCopy ec{}; ec.srcOffset=0; ec.dstOffset=0; ec.size=kAbStatsBytes; vkCmdCopyBuffer(cmdBridge,dv.buf,hb.buf,1,&ec);
+                        eb.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT; eb.dstAccessMask=VK_ACCESS_HOST_READ_BIT; eb.buffer=hb.buf;
+                        vkCmdPipelineBarrier(cmdBridge,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&eb,0,nullptr);
+                        static uint32_t eco_ticks=0;
+                        if(hostAb && hostAb0 && (++eco_ticks % 240u)==0u){ const uint32_t* s0v=(const uint32_t*)hostAb0; const uint32_t* s1v=(const uint32_t*)hostAb;   // ~1 Hz; totals lag <= one tick
+                            std::printf("[eco-anchor-ab] slot0(t<=0.35) compared=%u diff_px=%u max_delta=%u | slot1 compared=%u diff_px=%u max_delta=%u | ticks t<=0.35 %llu, 0.35<t<0.65 %llu, t>=0.65 %llu\n",
+                                        s0v[0],s0v[1],s0v[2],s1v[0],s1v[1],s1v[2],(unsigned long long)ecoBand[0],(unsigned long long)ecoBand[1],(unsigned long long)ecoBand[2]); }
                     }
                 }
                 // the field VISUALIZER pass — A reads the iGPU contour field (wapFIELDA,
@@ -1589,7 +1631,7 @@ void run_present(FgContext& ctx){
                             std::fprintf(mf,"triple q%06d prev=q%06d_prev.rgba next=q%06d_next.rgba live=q%06d_live.rgba t=%.4f"
                                             " gen=%d mvw=%u mvh=%u mv=q%06d_mv.rg16f sad=q%06d_sad.rg16f push=q%06d_push.bin pushsz=%zu"
                                             " gme_valid=%d gme=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g"
-                                            " tgen=%d mvb=%s c2=%s dis=%s disb=%s per=%s mvt=%s mv0=%s mvt0=%s mv1=%s mvb1=%s core=%s contract=0x%016llX ab=%s\n",
+                                            " tgen=%d mvb=%s c2=%s dis=%s disb=%s per=%s mvt=%s mv0=%s mvt0=%s mv1=%s mvb1=%s core=%s contract=0x%016llX ab=%s eco=%d eco_h=%.9g\n",
                                 qdump_idx,qdump_idx,qdump_idx,qdump_idx,t,
                                 qd_gen,qd_mvw,qd_mvh,qdump_idx,qdump_idx,qdump_idx,qd_pushsz,
                                 qd_gv,
@@ -1604,7 +1646,10 @@ void run_present(FgContext& ctx){
                                 qd_nm(qd_has_mv1,qb8,"mv1.rg16f"),
                                 qd_nm(qd_has_mvb1,qb9,"mvb1.rg16f"),
                                 // R3: which kernel produced `live`, the layer contract hash, and the --fg-core-ab totals so far
-                                (cfg.fg_core&&fgPipeA.pipe!=VK_NULL_HANDLE)?"fg_core":"wap_warp",(unsigned long long)pfg::layers::layer_contract_hash(cfg),qbab);
+                                (cfg.fg_core&&fgPipeA.pipe!=VK_NULL_HANDLE)?"fg_core":"wap_warp",(unsigned long long)pfg::layers::layer_contract_hash(cfg),qbab,
+                                // 2026-09-29: the PRODUCT's eco_anchor mode (0 = off) and its hyst -- what ref_warp replays
+                                (cfg.fg_core&&fgPipeA.pipe!=VK_NULL_HANDLE&&!cfg.eco_anchor_ab)?cfg.eco_anchor:0,
+                                (double)pfg::layers::layer_param_value(cfg,pfg::layers::LayerId::ECO_ANCHOR,"hyst"));
                             std::fclose(mf);
                         }
                         ++qd_bin_hits[qd_b]; ++qd_gen_hits[qd_g];   // this bin/slot is now covered - ineligible until the rest catch up

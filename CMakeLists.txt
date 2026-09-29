@@ -307,7 +307,10 @@ set(_parity_cases
     "--no-gme|--no-objects|--no-memory|--no-bidir|--no-ambig|--no-inertia|--no-mv-consensus|--mv-smooth|0.3"
     # --eco (appended, so the existing layer_parity_1..34 keep their numbers): without layer_shadow_parse's alias it
     # prints PARITY FAIL bidir.on old=0 new=1 and exits 3
-    "--eco" "--eco|--matte" "--eco|--no-bidir")
+    "--eco" "--eco|--matte" "--eco|--no-bidir"
+    # --eco-anchor (2026-09-29, appended): the appended eco_anchor row's hand field against the registry's I32 rule
+    "--eco|--eco-anchor|2" "--no-bidir|--eco-anchor|1" "--eco|--eco-anchor|0" "--eco|--eco-anchor|3"
+    "--eco|--eco-anchor|2|--eco-anchor-ab")
 set(_pc 0)
 foreach(_case IN LISTS _parity_cases)
     math(EXPR _pc "${_pc}+1")
@@ -319,14 +322,23 @@ endforeach()
 # 6. The contract hash of the DEFAULT resolved chain. Pinned deliberately: any edit to layer_table.def / the ABI
 #    that changes the chain fails this test, and updating the pin in the same commit is the point (touchpoints move
 #    together). The value below was read from this build's own `--layer-dump`.
+#    2026-09-29: 0xBF27BBBA9109A3E3 -> 0x0291FB5481748A07. The appended eco_anchor row (default OFF) enters the hash, which
+#    walks every row in execution order; no existing row, rank, default or parameter changed.
 add_test(NAME layer_contract_hash COMMAND phyriad_fg --layer-dump)
-set_tests_properties(layer_contract_hash PROPERTIES PASS_REGULAR_EXPRESSION "contract=0xBF27BBBA9109A3E3")
+set_tests_properties(layer_contract_hash PROPERTIES PASS_REGULAR_EXPRESSION "contract=0x0291FB5481748A07")
 
 # 7. The CLI's exit codes (4.3's own fix): an unknown option and a missing value are ERRORS (2); --help is not.
 add_test(NAME cli_unknown_option_exits_2 COMMAND phyriad_fg --no-such-flag)
 set_tests_properties(cli_unknown_option_exits_2 PROPERTIES WILL_FAIL TRUE)
 add_test(NAME cli_missing_value_exits_2 COMMAND phyriad_fg --mv-smooth)
 set_tests_properties(cli_missing_value_exits_2 PROPERTIES WILL_FAIL TRUE)
+# 7a. --eco-anchor's refusals are parse ERRORS with a reason (2026-09-29): the line is the check, the exit code is 2.
+add_test(NAME eco_anchor_refused_with_bidir COMMAND phyriad_fg --dump-config --eco-anchor 2)
+set_tests_properties(eco_anchor_refused_with_bidir PROPERTIES PASS_REGULAR_EXPRESSION "--eco-anchor 2 REFUSED: it needs bidir OFF")
+add_test(NAME eco_anchor_refused_with_legacy_warp COMMAND phyriad_fg --dump-config --eco --eco-anchor 2 --legacy-warp)
+set_tests_properties(eco_anchor_refused_with_legacy_warp PROPERTIES PASS_REGULAR_EXPRESSION "REFUSED: --legacy-warp selects wap_warp.comp")
+add_test(NAME eco_anchor_ab_refused_without_mode COMMAND phyriad_fg --dump-config --eco --eco-anchor-ab)
+set_tests_properties(eco_anchor_ab_refused_without_mode PROPERTIES PASS_REGULAR_EXPRESSION "--eco-anchor-ab REFUSED")
 add_test(NAME cli_help_exits_0 COMMAND phyriad_fg --help)
 set_tests_properties(cli_help_exits_0 PROPERTIES PASS_REGULAR_EXPRESSION "LAYERS \\(the registry")
 

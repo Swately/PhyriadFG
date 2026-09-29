@@ -28,6 +28,8 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
     auto& fgPipeA=o_wap.fgPipeA; auto& abPipeA=o_wap.abPipeA; auto& fgOutA=o_wap.fgOutA;   // R3
     auto& hostLP=o_wap.hostLP; auto& hLP_a=o_wap.hLP_a;
     auto& devAb=o_wap.devAb; auto& hostAb=o_wap.hostAb; auto& hAb_a=o_wap.hAb_a;
+    auto& ecoPipeA=o_wap.ecoPipeA; auto& abPipe0A=o_wap.abPipe0A;   // --eco-anchor-ab
+    auto& devAb0=o_wap.devAb0; auto& hostAb0=o_wap.hostAb0; auto& hAb0_a=o_wap.hAb0_a;
     auto& wapPrevA=o_wap.wapPrevA; auto& wapCurA=o_wap.wapCurA; auto& wapMVA=o_wap.wapMVA;
     auto& wapSADA=o_wap.wapSADA; auto& wapOutA=o_wap.wapOutA;
     auto& wapFIELDA=o_wap.wapFIELDA; auto& wapFIELDph=o_wap.wapFIELDph;
@@ -319,12 +321,20 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
                            if(!hbuf_import(WD,hostLP,lpb,hLP_a,VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)) fg_ok=false; }
                     // 2. the specialization map: one VkBool32 per fused row, constant_id = layer id — the registry's on[]
                     //    (post-cascade) folded at pipeline creation. A disabled row's body is dead code in this pipeline.
-                    VkSpecializationMapEntry sme[pfg::layers::kLayerCount]; VkBool32 sval[pfg::layers::kLayerCount]; uint32_t sn=0;
+                    //    --eco-anchor-ab: the PRODUCT's map has the eco row OFF (sval); the beside pipeline's map (sval_eco) is the
+                    //    same with the eco row ON, so the two pipelines differ in that one constant and nothing else.
+                    VkSpecializationMapEntry sme[pfg::layers::kLayerCount]; VkBool32 sval[pfg::layers::kLayerCount]; VkBool32 sval_eco[pfg::layers::kLayerCount]; uint32_t sn=0;
+                    const uint16_t eco_id=(uint16_t)pfg::layers::LayerId::ECO_ANCHOR;
                     for(uint16_t i=0;i<pfg::layers::kLayerCount;++i){ if(pfg::layers::kLayers[i].kind!=pfg::layers::Kind::F) continue;
-                        sme[sn].constantID=(uint32_t)i; sme[sn].offset=sn*4u; sme[sn].size=4u; sval[sn]=cfg.layers.on[i]?VK_TRUE:VK_FALSE; ++sn; }
+                        sme[sn].constantID=(uint32_t)i; sme[sn].offset=sn*4u; sme[sn].size=4u; sval[sn]=cfg.layers.on[i]?VK_TRUE:VK_FALSE;
+                        sval_eco[sn]=sval[sn];
+                        if(i==eco_id && cfg.eco_anchor_ab){ sval[sn]=VK_FALSE; sval_eco[sn]=VK_TRUE; }
+                        ++sn; }
                     VkSpecializationInfo si{}; si.mapEntryCount=sn; si.pMapEntries=sme; si.dataSize=(size_t)sn*4u; si.pData=sval;
+                    VkSpecializationInfo si_eco=si; si_eco.pData=sval_eco;
                     // 3. the output: --fg-core → wOut (the product image); --fg-core-ab → fgOutA (a second rgba8 STORAGE image, GENERAL).
-                    if(fg_ok && cfg.fg_core_ab){
+                    //    --eco-anchor-ab → the product stays on wOut and the eco pipeline writes fgOutA.
+                    if(fg_ok && (cfg.fg_core_ab || cfg.eco_anchor_ab)){
                         if(!img_create(WD,WW_warp,WH_warp,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_USAGE_STORAGE_BIT,fgOutA)) fg_ok=false;
                         else oneshot(WD,[&](VkCommandBuffer c){ img_barrier(c,fgOutA.img,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL,0,VK_ACCESS_SHADER_WRITE_BIT); });
                     }
@@ -333,22 +343,51 @@ void init_wap(Config& cfg, uint32_t WW, uint32_t WH, uint32_t WW_warp, uint32_t 
                         fg_ok=fgcore_create(WD,wPrev.view,wCur.view,wMV.view,wSAD.view,cfg.fg_core_ab?fgOutA.view:wOut.view,wMVB.view,dis_view,disb_view,per_view,devMass.buf,cand_view,field_view,mvt_view,prevout_view,
                                             hLP_a.buf,lpb,&si,(uint32_t)sizeof(pfg::layers::FgPush),spvf,fgPipeA);
                     }
+                    // 3b. --eco-anchor-ab: the second fg_core pipeline, the eco row ON, same set layout and inputs, output fgOutA.
+                    bool eco_ab_ok=cfg.eco_anchor_ab;
+                    if(fg_ok && eco_ab_ok){
+                        const std::vector<uint32_t> spve(kFgCoreSpv.begin(),kFgCoreSpv.end());
+                        eco_ab_ok=fgcore_create(WD,wPrev.view,wCur.view,wMV.view,wSAD.view,fgOutA.view,wMVB.view,dis_view,disb_view,per_view,devMass.buf,cand_view,field_view,mvt_view,prevout_view,
+                                                hLP_a.buf,lpb,&si_eco,(uint32_t)sizeof(pfg::layers::FgPush),spve,ecoPipeA);
+                    }
                     // 4. the byte-diff instrument: the stats SSBO in VRAM (running totals, never reset) + the host copy.
-                    if(fg_ok && cfg.fg_core_ab){
+                    //    --eco-anchor-ab uses it for its slot-1 ticks and adds a second one (devAb0 / abPipe0A) for slot 0.
+                    if(fg_ok && cfg.eco_anchor_ab && eco_ab_ok){
+                        const VkDeviceSize abb=((VkDeviceSize)kAbStatsBytes+mass_al-1)/mass_al*mass_al;
+                        hostAb0=_aligned_malloc((size_t)abb,(size_t)mass_al);
+                        if(!hostAb0) eco_ab_ok=false;
+                        else { std::memset(hostAb0,0,(size_t)abb);
+                            if(!hbuf_import(WD,hostAb0,abb,hAb0_a,VK_BUFFER_USAGE_TRANSFER_DST_BIT)) eco_ab_ok=false;
+                            else if(!dbuf_create(WD,abb,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,devAb0)) eco_ab_ok=false;
+                            else { oneshot(WD,[&](VkCommandBuffer c){ vkCmdFillBuffer(c,devAb0.buf,0,VK_WHOLE_SIZE,0u); });
+                                   const std::vector<uint32_t> spva0(kFgAbDiffSpv.begin(),kFgAbDiffSpv.end());
+                                   eco_ab_ok=abdiff_create(WD,wOut.view,fgOutA.view,devAb0.buf,spva0,abPipe0A); } }
+                    }
+                    if(fg_ok && (cfg.fg_core_ab || (cfg.eco_anchor_ab && eco_ab_ok))){
+                        // a failure here downgrades what asked for it: --fg-core-ab's product (the legacy fallback below), or
+                        // only --eco-anchor-ab (the fg_core product keeps running)
+                        bool& ok_ab = cfg.fg_core_ab ? fg_ok : eco_ab_ok;
                         const VkDeviceSize abb=((VkDeviceSize)kAbStatsBytes+mass_al-1)/mass_al*mass_al;
                         hostAb=_aligned_malloc((size_t)abb,(size_t)mass_al);
-                        if(!hostAb) fg_ok=false;
+                        if(!hostAb) ok_ab=false;
                         else { std::memset(hostAb,0,(size_t)abb);
-                            if(!hbuf_import(WD,hostAb,abb,hAb_a,VK_BUFFER_USAGE_TRANSFER_DST_BIT)) fg_ok=false;
-                            else if(!dbuf_create(WD,abb,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,devAb)) fg_ok=false;
+                            if(!hbuf_import(WD,hostAb,abb,hAb_a,VK_BUFFER_USAGE_TRANSFER_DST_BIT)) ok_ab=false;
+                            else if(!dbuf_create(WD,abb,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,devAb)) ok_ab=false;
                             else { oneshot(WD,[&](VkCommandBuffer c){ vkCmdFillBuffer(c,devAb.buf,0,VK_WHOLE_SIZE,0u); });
                                    const std::vector<uint32_t> spva(kFgAbDiffSpv.begin(),kFgAbDiffSpv.end());
-                                   fg_ok=abdiff_create(WD,wOut.view,fgOutA.view,devAb.buf,spva,abPipeA); } }
+                                   ok_ab=abdiff_create(WD,wOut.view,fgOutA.view,devAb.buf,spva,abPipeA); } }
                     }
+                    if(cfg.eco_anchor_ab && fg_ok && !eco_ab_ok){
+                        std::printf("[layertab] --eco-anchor-ab setup FAILED -- the instrument is OFF for this run and the product runs with the eco row OFF (the A arm)\n");
+                        cfg.eco_anchor_ab=false; }
                     // R7a: this is the DEFAULT path now, so a setup failure is a silent downgrade of the product
                     // unless the line says so. It names the fallback instead of naming the flags.
-                    if(!fg_ok){ std::printf("[layertab] R3: fg_core pipeline setup FAILED -- FALLING BACK to wap_warp.comp for this run (the R7a default could not be created)\n"); cfg.fg_core=false; cfg.fg_core_ab=false; }
+                    if(!fg_ok){ std::printf("[layertab] R3: fg_core pipeline setup FAILED -- FALLING BACK to wap_warp.comp for this run (the R7a default could not be created)\n"); cfg.fg_core=false; cfg.fg_core_ab=false; cfg.eco_anchor_ab=false; }
                     else {
+                        if(cfg.eco_anchor_ab)
+                            std::printf("[layertab] --eco-anchor-ab: the product runs with eco_anchor OFF; a second fg_core pipeline with eco_anchor ON (mode %d) runs beside it from the same inputs; differing pixels are counted per slot (t <= 0.35 must be 0)\n",cfg.eco_anchor);
+                        else if(cfg.eco_anchor>0)
+                            std::printf("[layertab] eco_anchor ON (mode %d, MVCOND rank 42, arm GME) in the product fg_core\n",cfg.eco_anchor);
                         std::printf("[layertab] R3: fg_core.comp %s -- contract=0x%016llX, %u spec constants, LayerParams %zu B (mv_guided.sim %s), push %zu B = CorePush 20 + gen-scalars 24\n",
                                     cfg.fg_core?"drives the PRODUCT (the R7a default; --legacy-warp reverts)":"runs BESIDE the legacy warp (--fg-core-ab byte-diff)",
                                     (unsigned long long)pfg::layers::layer_contract_hash(cfg),sn,pfg::layers::layer_params_bytes(),cfg.fg_core_clean_sim?"CLEAN":"PACKED, XR1",sizeof(pfg::layers::FgPush));

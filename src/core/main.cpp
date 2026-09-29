@@ -109,7 +109,7 @@
 #include "core/fg_context.hpp"
 // E1: the init-seq ownership structs (the former hoisted declaration block).
 #include "core/app_init.hpp"
-#include "flow/flow_set.hpp"      // R5: FlowRing / FlowSet (STAGE_CONTRACT §1)
+#include "flow/flow_set.hpp"      // R5: FlowRing / FlowSet (STAGE_CONTRACT §1)
 #include "ingest/frames.hpp"    // R6: FrameRing / RawRing + RealFrame / RawFrame (STAGE_CONTRACT §1)
 // ─── kGenRing lives in flow/flow.{hpp,cpp} ──
 
@@ -496,6 +496,8 @@ int main(int argc, char** argv) {
     auto& fgPipeA=o_wap.fgPipeA; auto& abPipeA=o_wap.abPipeA; auto& fgOutA=o_wap.fgOutA;   // R3
     auto& hostLP=o_wap.hostLP; auto& hLP_a=o_wap.hLP_a;
     auto& devAb=o_wap.devAb; auto& hostAb=o_wap.hostAb; auto& hAb_a=o_wap.hAb_a;
+    auto& ecoPipeA=o_wap.ecoPipeA; auto& abPipe0A=o_wap.abPipe0A;   // --eco-anchor-ab
+    auto& devAb0=o_wap.devAb0; auto& hostAb0=o_wap.hostAb0; auto& hAb0_a=o_wap.hAb0_a;
     auto& fillPipeA=o_wap.fillPipeA;
     auto& wapPrevA=o_wap.wapPrevA; auto& wapCurA=o_wap.wapCurA; auto& wapMVA=o_wap.wapMVA;
     auto& wapSADA=o_wap.wapSADA; auto& wapOutA=o_wap.wapOutA;
@@ -1035,6 +1037,12 @@ int main(int argc, char** argv) {
             .devAb = devAb,
             .hAb_a = hAb_a,
             .hostAb = hostAb,
+            .ecoPipeA = ecoPipeA,
+            .abPipe0A = abPipe0A,
+            .devAb0 = devAb0,
+            .hAb0_a = hAb0_a,
+            .hostAb0 = hostAb0,
+            .ecoBand = o_wap.ecoBand,
             .wapPrevA = wapPrevA,
             .wapPrevOutA = wapPrevOutA,
             .wapSADA = wapSADA,
@@ -1207,9 +1215,18 @@ done:
         if(cfg.fg_core_ab && hostAb){ const uint32_t* s=(const uint32_t*)hostAb;
             std::printf("[fg-core-ab] TOTAL compared=%u diff_px=%u max_delta=%u sum_delta=%u  (%s)\n",s[0],s[1],s[2],s[3],
                         s[1]==0u?"BYTE-IDENTICAL on every compared tick":"NOT identical"); }
+        // --eco-anchor-ab: the per-slot totals. Slot 0 (t <= 0.35) is the row's identity claim; slot 1 is its effect.
+        if(cfg.eco_anchor_ab && hostAb && hostAb0){ const uint32_t* s0=(const uint32_t*)hostAb0; const uint32_t* s1=(const uint32_t*)hostAb;
+            std::printf("[eco-anchor-ab] TOTAL slot0 (t<=0.35) compared=%u diff_px=%u max_delta=%u sum_delta=%u  (%s)\n",s0[0],s0[1],s0[2],s0[3],
+                        s0[0]==0u?"NOTHING COMPARED":(s0[1]==0u?"BYTE-IDENTICAL on every slot-0 tick":"NOT identical -- a slot-0 difference is a DEFECT"));
+            std::printf("[eco-anchor-ab] TOTAL slot1 (t>0.35)  compared=%u diff_px=%u max_delta=%u sum_delta=%u  (the row's effect)\n",s1[0],s1[1],s1[2],s1[3]);
+            std::printf("[eco-anchor-ab] ticks by t band: t<=0.35 %llu, 0.35<t<0.65 %llu (the ramp), t>=0.65 %llu\n",
+                        (unsigned long long)o_wap.ecoBand[0],(unsigned long long)o_wap.ecoBand[1],(unsigned long long)o_wap.ecoBand[2]); }
         fgcore_destroy(A,fgPipeA); abdiff_destroy(A,abPipeA); img_destroy(A,fgOutA);
+        fgcore_destroy(A,ecoPipeA); abdiff_destroy(A,abPipe0A);   // --eco-anchor-ab (null-safe)
         hbuf_destroy(A,hLP_a);  if(hostLP) _aligned_free(hostLP);
         hbuf_destroy(A,devAb);  hbuf_destroy(A,hAb_a); if(hostAb) _aligned_free(hostAb);
+        hbuf_destroy(A,devAb0); hbuf_destroy(A,hAb0_a); if(hostAb0) _aligned_free(hostAb0);
         fillpipe_destroy(A,fillPipeA);   // the field VISUALIZER pipeline (created only with --afill; null-safe)
         img_destroy(A,wapFIELDA);        // A-side iGPU contour field image (created with --afill OR --bg-snap; null-safe)
         img_destroy(A,wapFIELDph);       // the 1×1 r32ui binding-11 placeholder (created when neither owns wapFIELDA; null-safe)

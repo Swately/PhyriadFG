@@ -66,6 +66,26 @@ Capture (window-only). The launcher UI (`ui\run.bat`) wraps the same flags with 
 
 The basis for all of the above is `docs/planning/records/Q1_NOBIDIR_QUALITY.md`.
 
+`--eco-anchor N` (with `--eco`; default off) adds a phase anchor that needs only the forward field: 1 = FP1, 2 = lean
+bilateral candidate re-selection, the mode the offline validation selected.
+
+- **Refusal.** A parse error with bidir on (the shipping anchor already runs there), `--legacy-warp` (no row in
+  `wap_warp.comp`) or `--fg-core-ab`.
+- **Slot 0.** At t ≤ 0.35 the row returns its input before any texture read, so `--eco`'s t≈0.25 frame is unchanged.
+- **Offline quality** (CPU replay of `--eco` captures, 640x360, one scene at two speeds; GPU cost, power and 1080p not
+  measured). Mode 2 against `--eco` at t≈0.75:
+  - sphere hallucination −57 %, shape error −50 %;
+  - box hallucination −28 %, box missing −7 %;
+  - sphere missing **+70 %**, at the loop seam and where the sphere exits the frame, through the row's fallback to the
+    global-motion vector.
+
+  That is a FAIL of the pre-registered bar against `--eco`. On the same positions it scores below the default's own
+  range on every term, but by the noise rule that holds for 5 of 7 terms.
+- **Its instrument.** `--eco-anchor-ab` runs the row OFF (the product) and ON (beside it) from the same inputs and
+  counts the differing pixels per phase slot.
+
+Basis: `docs/planning/records/ECO_ANCHOR_VALIDATION.md`.
+
 The intended workflow on a multi-GPU rig: the primary GPU owns the display and does the warp + present,
 a second GPU runs the optical flow, and the integrated GPU does the zero-copy convert.
 

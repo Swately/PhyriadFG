@@ -141,7 +141,9 @@ private:
 // ── GdumpTap — the Vulkan + thread glue ─────────────────────────────────────────────────────────────────────
 struct GdumpDims { uint32_t WW, WH, WW_warp, WH_warp, warp_div, mvw, mvh; uint32_t push_bytes; };
 struct GdumpInfo { const char* kernel; uint64_t contract; bool bidir, xfer, async_present, sg; double qpc_hz;
-                   bool live = true; };   // live: --gdump-live (false = no live warp frames; LEVER1_RECORD s4.12)
+                   bool live = true;      // live: --gdump-live (false = no live warp frames; LEVER1_RECORD s4.12)
+                   int  eco_anchor = 0;   // 2026-09-29: the PRODUCT's eco_anchor mode (0 = off; the header line is absent then)
+                   float eco_hyst = 0.f; };   // its hyst, so ref_warp replays the value the GPU was given
 
 class GdumpTap {
 public:

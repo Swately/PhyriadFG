@@ -42,6 +42,7 @@ struct LayerOldShadow {
     bool  objects = false, shapefield = false, obj_fill_rim = false, expire = false, persist_reset = false;
     bool  scene_memory = false, bidir = false, mv_median = false, nvofa = false, mv_consensus = false;
     float mv_smooth = 0.f;
+    int   eco_anchor = 0;   // 2026-09-29: the appended eco_anchor row's hand field (--eco-anchor N)
 };
 
 // Called at the top of parse_args()'s loop for argv[i]. Peeks argv[i+1] when the token takes a
@@ -69,6 +70,9 @@ uint64_t layer_contract_hash(const Config& c);
 size_t   layer_params_bytes();
 void     layer_params_fill(const Config& c, void* out, bool clean_sim);
 uint32_t layer_arm_mask(const ArmInputs& in);
+// A row parameter's resolved value by name (the registry's store). 2026-09-29: the capture records name the eco_anchor
+// row's hyst from here, so the CPU twin replays the value the GPU was given.
+float    layer_param_value(const Config& c, LayerId L, const char* pname);
 
 // R5 step 3b: resolve avail / eff (above) from the raw enables and the init-time unavailable mask (rows whose
 // create-time precondition failed: no WAP → every FLOW row; gme_gpu forced off; a pipe / bridge that failed).

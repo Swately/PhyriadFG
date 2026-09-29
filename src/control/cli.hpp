@@ -1096,6 +1096,12 @@ struct Config {
     bool  fg_core_ab=false;         // --fg-core-ab: run BOTH kernels every tick from the same inputs and count differing pixels (M4 instrument); product stays legacy
     bool  fg_core_clean_sim=false;  // --fg-core-clean-sim: mv_guided.sim = the exact --mv-sim in the UBO (default: the legacy's packed (1+sim)-1, XR1)
     bool  legacy_warp=false;        // --legacy-warp: THE REVERT. Selects shaders/wap_warp.comp, which stays in the tree
+    int   eco_anchor=0;             // --eco-anchor {1|2} (2026-09-29): the eco phase anchor row (layer_table.def ECO_ANCHOR,
+                                    // MVCOND rank 42). 0 = off (DEFAULT). 1 = FP1, 2 = lean BCR (the validated mode). Needs
+                                    // bidir OFF (--eco / --no-bidir) and the fg_core path; parse_args refuses it otherwise.
+    bool  eco_anchor_ab=false;      // --eco-anchor-ab: the product runs with the eco row OFF and a second fg_core pipeline with
+                                    // it ON runs beside it from the same inputs; the byte-diff is counted per slot (t <= 0.35
+                                    // must be 0 px). Needs --eco-anchor N. A measurement instrument, like --fg-core-ab.
     bool  layer_model_json=false;   // --layer-model-json: emit the UI model (JSON), exit
     bool  dump_config_flag=false;   // --dump-config: print the parsed record (the round-trip instrument), exit
     // ── DERIVED / RESOLVED STATE (computed by resolve_config, NOT parsed) ──────
