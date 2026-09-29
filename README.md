@@ -55,11 +55,16 @@ Capture (window-only). The launcher UI (`ui\run.bat`) wraps the same flags with 
 - **Refusal.** As with `--frame-vram`, a refused arm is fatal. It will not arm with the iGPU convert, `--upscale`,
   `--upload-xfer`, `--real-fast-path`, `--rfp-fresh`, `--motion-fallback`, `--dump` or `--pairdump`, or without
   warp-at-presenter.
-- **Power.** −40.5 to −41.3 W board at 1920x1061 k=2 (two draws, with the latch pinned).
-- **Quality at 640x360.** A 2–9 % regression per presented frame (the mean over both phase slots), all of it in the
-  t≈0.75 frame. There the affected terms move +7 to +50 %, and some others improve: the flag trades hallucinated
-  mass for missing mass (Q1, `docs/planning/records/Q1_NOBIDIR_QUALITY.md`).
+- **Power against the default** (C1, 1920x1061 k=2, two draws, as shipped): −43.1 to −43.5 W board. The GPU
+  drops from the top clock bin to 2610 MHz, and median latency is unchanged.
+- **Memory.** +236 MiB of VRAM (the frame-vram mirror), and about +240 MiB of host commit (private bytes) with no
+  resident-RAM increase.
+- **Quality at 640x360** (measured with the latch pinned): a 2–9 % regression per presented frame (the mean over
+  both phase slots), all of it in the t≈0.75 frame. There the affected terms move +7 to +50 %, and some others
+  improve: the flag trades hallucinated mass for missing mass. On `sc_v4` the loss is the phase anchor's (Q1b).
 - **1080p quality:** unverified.
+
+The basis for all of the above is `docs/planning/records/Q1_NOBIDIR_QUALITY.md`.
 
 The intended workflow on a multi-GPU rig: the primary GPU owns the display and does the warp + present,
 a second GPU runs the optical flow, and the integrated GPU does the zero-copy convert.
