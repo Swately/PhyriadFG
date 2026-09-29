@@ -288,6 +288,22 @@ select {
   min-width: 120px;
 }
 
+/* 2026-09-29: the native popups of the remaining selects (multiplier, GPU, ...). Their <option>s had no colours
+   of their own and inherited the page's text colour, while WebView2 paints the popup with system colours: in
+   one theme that is light text on a light popup (the operator's screenshot of the window list). Explicit
+   token colours for every option, and the checked one in the accent. */
+select option {
+  background-color: var(--bg-2);
+  color: var(--text);
+}
+select option:checked {
+  background-color: var(--accent);
+  color: var(--phy-accent-on);
+}
+select option:disabled {
+  color: var(--text-dim);
+}
+
 .row-control input[type="number"] {
   width: 96px;
 }
@@ -320,8 +336,134 @@ select {
   gap: 10px;
 }
 
-.winsel select {
+/* 2026-09-29: the themed listbox that replaced the native <select> (main.js renderWindowSelector). The popup is page
+   DOM, so it takes the substrate tokens in both themes; each window is two lines: the caption, ellipsized, and
+   exe · pid in the mono face. */
+.winsel-box {
+  position: relative;
+}
+
+.winsel-button {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+.winsel-button:focus-visible,
+.winsel-button[aria-expanded="true"] {
+  border-color: var(--accent);
+  outline: var(--phy-rule-width) solid var(--phy-accent);
+  outline-offset: 2px;
+}
+
+.winsel-button-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winsel-button-text.placeholder {
+  color: var(--text-dim);
+}
+
+.winsel-caret {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+/* the dropdown: the status line (role=status, outside the listbox) above the scrolling listbox.
+   z-index 5, below the sticky topbar's 10: the open list passes UNDER the header when the page scrolls,
+   like all other content, and still paints over every later card (all z-index auto). */
+.winsel-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.winsel-pop[hidden] {
+  display: none;
+}
+
+.winsel-list {
+  max-height: 310px;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* a wheel past the end of the list does not scroll the page */
+}
+
+.winsel-status {
+  padding: 6px 12px;
+  font-family: var(--phy-font-prose);
+  font-size: var(--phy-text-xs);
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.winsel-item {
+  padding: 6px 12px 6px 9px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  scroll-margin: 0; /* the base sheet's [id] scroll-margin would leave a keyboard-scrolled row short of the top */
+}
+
+.winsel-item + .winsel-item {
+  border-top: 1px solid var(--border-soft);
+}
+
+.winsel-item.active {
+  background: var(--bg);
+  border-left-color: var(--accent);
+}
+
+.winsel-item-title {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.winsel-item-meta {
+  font-family: var(--phy-font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.winsel-item.selected .winsel-item-title {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* no blanket opacity: the meta line ("… · minimized") is the row's only in-place explanation, so it keeps
+   --text-dim at full strength (5.2:1 light, 6.5:1 dark on --bg-2), as `select option:disabled` does */
+.winsel-item.disabled {
+  cursor: not-allowed;
+}
+
+.winsel-item.disabled .winsel-item-title {
+  color: var(--text-dim);
+  font-style: italic;
 }
 
 .winsel-target {

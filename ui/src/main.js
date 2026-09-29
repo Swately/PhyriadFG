@@ -780,7 +780,7 @@ function renderGroup(group, parent = advancedEl) {
 
   for (const ctrl of group.controls) renderControl(ctrl, rows);
 
-  // in the document BEFORE the selector is wired: resetWindowSelect() finds the <select> by id
+  // in the document BEFORE the selector is wired: renderWindowList() finds the picker's parts by id
   parent.appendChild(g);
   if (selSlot) renderWindowSelector(selSlot);
   if (group.ecoSlot) ecoGroupEl = rows;
@@ -798,48 +798,118 @@ function windowInput() {
   return e ? e.input : null;
 }
 
+// 2026-09-29 — A THEMED LISTBOX replaces the native <select> (the operator's screenshot: a two-row popup, the
+// selected row light-on-light, long captions cut off). Three causes, all in the native widget:
+//   * L-5 re-enumerated on the select's mousedown, i.e. it rewrote the <option>s while Chromium was opening the
+//     popup, which sized itself to the one-row "loading..." list;
+//   * <option>s had no background of their own and inherited the page's light text, while WebView2 paints the
+//     popup and its selected-row highlight with the system colours;
+//   * a native popup cannot ellipsize a caption or put the exe/pid on a second line.
+// This list is page DOM: it stays open while a refresh replaces its rows, it uses the substrate tokens in both
+// themes, and each window is two lines (the caption, ellipsized, then exe · pid). The SEMANTICS are unchanged:
+// a pick keeps the whole WindowInfo (L-1 / E-1 / E-3), fills --window with its caption, and buildArgs emits
+// --window-pid / --hwnd from it; a minimized window is shown and not selectable (B-3); every row carries its pid
+// (L-4). Focus stays on the button (aria-activedescendant names the highlighted row), so the keyboard works:
+// Down/Up/Home/End move, Enter/Space pick or open, Escape/Tab close.
+let winOpen = false;      // the list is shown
+let winActive = -1;       // the keyboard-highlighted row (an index into lastWindows), -1 = none
+let winStatus = "idle";   // "idle" | "loading" | "error"
+let winTypeahead = "";    // the type-ahead buffer (windowTypeahead)
+let winTypeaheadTimer = null;
+let winSeeded = false;    // winActive is the default highlight of an open, not a row the operator moved to
+
 function renderWindowSelector(g) {
   const wrap = document.createElement("div");
   wrap.className = "winsel";
+  wrap.id = "window-picker";
 
   const head = document.createElement("div");
   head.className = "winsel-head";
   const lbl = document.createElement("span");
   lbl.className = "field-label";
   lbl.style.margin = "0";
+  lbl.id = "window-label";
   lbl.textContent = "Target window (capture)";
   const refresh = document.createElement("button");
+  refresh.type = "button";
   refresh.className = "btn btn-ghost";
   refresh.textContent = "Refresh";
   refresh.addEventListener("click", refreshWindows);
   head.appendChild(lbl);
   head.appendChild(refresh);
 
-  const sel = document.createElement("select");
-  sel.id = "window-select";
-  // L-5 — the list used to be a startup snapshot: a window opened after the launcher started
-  // never appeared, and a window that had since closed was still offered. Re-enumerate at the
-  // moment the user opens the dropdown. mousedown fires BEFORE the native popup opens, so the
-  // fresh list is the one actually shown; focus covers keyboard opening. refreshWindows()
-  // no-ops while a previous call is still in flight, so a click-drag cannot double-populate.
-  sel.addEventListener("mousedown", refreshWindows);
-  sel.addEventListener("focus", refreshWindows);
-  sel.addEventListener("change", () => {
-    const opt = sel.selectedOptions[0];
-    if (!opt || opt.value === "") return; // placeholder: keep manual value
-    const title = opt.value;
-    const exe = opt.dataset.exe || "";
-    // L-1 / E-1 / E-3 — keep the WHOLE WindowInfo, not just the caption. The pid (and the hwnd
-    // when the backend reports one) is the STABLE identity; the title is a volatile snapshot
-    // that a browser tab, a level load or a document save invalidates before the FG ever gets
-    // to resolve it, and an unanchored first-match strstr on it can bind the wrong window.
-    const idx = Number(opt.dataset.idx);
-    selectedWindow = Number.isInteger(idx) ? lastWindows[idx] || null : null;
-    const wi = windowInput();
-    if (wi) wi.value = title;
-    updateTarget(title, exe);
-    updatePreview();
+  const box = document.createElement("div");
+  box.className = "winsel-box";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "window-button";
+  btn.className = "winsel-button";
+  btn.setAttribute("role", "combobox");
+  btn.setAttribute("aria-haspopup", "listbox");
+  btn.setAttribute("aria-expanded", "false");
+  btn.setAttribute("aria-controls", "window-list");
+  btn.setAttribute("aria-labelledby", "window-label window-button-text");
+  const btxt = document.createElement("span");
+  btxt.className = "winsel-button-text";
+  btxt.id = "window-button-text";
+  const caret = document.createElement("span");
+  caret.className = "winsel-caret";
+  caret.setAttribute("aria-hidden", "true");
+  caret.textContent = "▾";
+  btn.appendChild(btxt);
+  btn.appendChild(caret);
+  // the dropdown: a status line OUTSIDE the listbox (a listbox may own only options; role=status announces the
+  // loading / error / empty states), then the scrolling listbox itself
+  const pop = document.createElement("div");
+  pop.id = "window-pop";
+  pop.className = "winsel-pop";
+  pop.hidden = true;
+  const status = document.createElement("div");
+  status.id = "window-status";
+  status.className = "winsel-status";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  const list = document.createElement("div");
+  list.id = "window-list";
+  list.className = "winsel-list";
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-labelledby", "window-label");
+  pop.appendChild(status);
+  pop.appendChild(list);
+  btn.setAttribute("aria-describedby", "window-status");
+  box.appendChild(btn);
+  box.appendChild(pop);
+
+  btn.addEventListener("click", () => (winOpen ? closeWindowList() : openWindowList()));
+  btn.addEventListener("keydown", onWindowKey);
+  // The focus must stay on the button (it carries aria-activedescendant and the key handler). A mousedown on
+  // the status line or a row would move it to <body> and leave an open list the keyboard can no longer drive:
+  // cancel those. The list's own box (its scrollbar) keeps its default so the scrollbar can be dragged, and
+  // the focus comes back to the button when the drag ends.
+  pop.addEventListener("mousedown", (e) => {
+    if (e.target !== list) e.preventDefault();
   });
+  pop.addEventListener("mouseup", () => {
+    if (winOpen && document.activeElement !== btn) btn.focus({ preventScroll: true });
+  });
+  // Refresh while the list is open: it re-enumerates the open list in place, and the focus stays on the button
+  refresh.addEventListener("mousedown", (e) => {
+    if (winOpen) e.preventDefault();
+  });
+  // A mousedown anywhere outside the button and its dropdown closes the list -- the label and the Target line
+  // included, as with the native select -- before the target takes the focus. Refresh is the one exception.
+  document.addEventListener("mousedown", (e) => {
+    if (winOpen && !box.contains(e.target) && !refresh.contains(e.target)) closeWindowList();
+  });
+  // Scrolling the page closes it too (the native popup did the same): an open list left behind by a page scroll
+  // would slide under the sticky topbar with its highlighted row hidden. A wheel inside the list scrolls the list.
+  document.addEventListener(
+    "wheel",
+    (e) => {
+      if (winOpen && !pop.contains(e.target)) closeWindowList();
+    },
+    { passive: true }
+  );
 
   const target = document.createElement("div");
   target.className = "winsel-target";
@@ -847,13 +917,13 @@ function renderWindowSelector(g) {
   target.textContent = "Target: (none)";
 
   wrap.appendChild(head);
-  wrap.appendChild(sel);
+  wrap.appendChild(box);
   wrap.appendChild(target);
   g.appendChild(wrap);
 
-  resetWindowSelect("Click \"Refresh\" to list windows");
+  renderWindowList();
 
-  // Keep the prominent "Objetivo:" line in sync with manual edits of the text field.
+  // Keep the prominent "Target:" line in sync with manual edits of the text field.
   const wi = windowInput();
   if (wi) {
     wi.addEventListener("input", () => {
@@ -866,18 +936,254 @@ function renderWindowSelector(g) {
       if (!selectedWindow || selectedWindow.title !== v) {
         selectedWindow = match || null;
       }
+      renderWindowList();
     });
   }
 }
 
-function resetWindowSelect(placeholderLabel) {
-  const sel = document.getElementById("window-select");
-  if (!sel) return;
-  sel.innerHTML = "";
-  const ph = document.createElement("option");
-  ph.value = "";
-  ph.textContent = placeholderLabel;
-  sel.appendChild(ph);
+// Is `w` the window `ref` names? By HANDLE when `ref` has one, else by pid -- never "hwnd OR pid" in one test:
+// Chrome, Explorer and Electron own every top-level window from ONE pid, so a pid match would name the first
+// sibling of the window that was actually picked.
+function sameWindow(ref, w) {
+  return ref.hwnd ? w.hwnd === ref.hwnd : w.pid === ref.pid;
+}
+
+// the row the picker shows as chosen: the picked identity, else the first row whose caption is the typed text
+function windowCurrentIndex() {
+  if (selectedWindow) {
+    const i = lastWindows.findIndex((w) => sameWindow(selectedWindow, w));
+    if (i >= 0) return i;
+  }
+  const wi = windowInput();
+  const cur = wi ? wi.value.trim() : "";
+  return cur ? lastWindows.findIndex((w) => w.title === cur) : -1;
+}
+
+function windowMeta(w) {
+  return (w.exe ? w.exe + " · " : "") + "pid " + w.pid + (w.iconic ? " · minimized" : "");
+}
+
+// The signature of the rows last rendered: renderWindowList rebuilds them only when it changes. A refresh runs
+// on EVERY open (L-5) and usually returns the same windows; rebuilding identical rows under the pointer would
+// reset the scroll and lose a click whose mousedown and mouseup straddle the swap.
+let winRowsSig = null;
+
+// Rebuilds the button text, the status line and (only when they changed) the rows. Cheap: a few dozen rows.
+function renderWindowList() {
+  const btxt = document.getElementById("window-button-text");
+  const list = document.getElementById("window-list");
+  const status = document.getElementById("window-status");
+  const btn = document.getElementById("window-button");
+  if (!btxt || !list || !status || !btn) return;
+  const curIdx = windowCurrentIndex();
+  const wi = windowInput();
+  const typed = wi ? wi.value.trim() : "";
+  if (curIdx >= 0) {
+    const w = lastWindows[curIdx];
+    btxt.textContent = w.title + " — " + windowMeta(w);
+    btxt.classList.remove("placeholder");
+  } else if (typed) {
+    btxt.textContent = typed + (winStatus === "error" ? "  (window list unavailable)" : "  (typed, not in the list)");
+    btxt.classList.remove("placeholder");
+  } else {
+    btxt.textContent = lastWindows.length ? `Select a window (${lastWindows.length})` : "Select a window";
+    btxt.classList.add("placeholder");
+  }
+
+  status.textContent =
+    winStatus === "loading"
+      ? (lastWindows.length ? `${lastWindows.length} windows · refreshing…` : "Loading windows…")
+      : winStatus === "error"
+        ? "Could not list the windows (see the live output)"
+        : lastWindows.length
+          ? `${lastWindows.length} windows`
+          : invoke
+            ? "No titled windows — press Refresh"
+            : "Window list unavailable (no launcher backend)";
+
+  const sig = curIdx + "\u0000" + JSON.stringify(lastWindows.map((w) => [w.hwnd, w.pid, w.title, w.exe, !!w.iconic]));
+  if (sig !== winRowsSig) {
+    winRowsSig = sig;
+    const top = list.scrollTop; // a real change still keeps the scroll position
+    renderWindowRows(list, curIdx);
+    list.scrollTop = top;
+  }
+  for (const r of list.querySelectorAll(".winsel-item")) r.classList.toggle("active", r.id === "winopt-" + winActive);
+  if (winOpen && winActive >= 0 && winActive < lastWindows.length) btn.setAttribute("aria-activedescendant", "winopt-" + winActive);
+  else btn.removeAttribute("aria-activedescendant");
+}
+
+function renderWindowRows(list, curIdx) {
+  list.innerHTML = "";
+  for (let i = 0; i < lastWindows.length; i++) {
+    const w = lastWindows[i];
+    const row = document.createElement("div");
+    row.className = "winsel-item" + (i === curIdx ? " selected" : "") + (w.iconic ? " disabled" : "");
+    row.id = "winopt-" + i;
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", i === curIdx ? "true" : "false");
+    if (w.iconic) row.setAttribute("aria-disabled", "true");
+    row.title = w.title + "\n" + windowMeta(w) + (w.iconic ? "\nMinimized windows cannot be captured: restore it first." : "");
+    const t = document.createElement("div");
+    t.className = "winsel-item-title";
+    t.textContent = w.title;
+    const m = document.createElement("div");
+    m.className = "winsel-item-meta";
+    m.textContent = windowMeta(w);
+    row.appendChild(t);
+    row.appendChild(m);
+    // the pop's mousedown handler keeps the focus on the button; click picks
+    row.addEventListener("click", () => pickWindow(i));
+    row.addEventListener("mousemove", () => {
+      if (winActive !== i && !w.iconic) {
+        winSeeded = false;
+        setWindowActive(i, false);
+      }
+    });
+    list.appendChild(row);
+  }
+}
+
+function setWindowActive(i, scroll = true) {
+  winActive = i >= 0 && i < lastWindows.length ? i : -1;
+  i = winActive;
+  const list = document.getElementById("window-list");
+  const btn = document.getElementById("window-button");
+  if (!list || !btn) return;
+  for (const r of list.querySelectorAll(".winsel-item")) r.classList.toggle("active", r.id === "winopt-" + i);
+  if (i >= 0) {
+    btn.setAttribute("aria-activedescendant", "winopt-" + i);
+    const r = document.getElementById("winopt-" + i);
+    if (r && scroll) r.scrollIntoView({ block: "nearest" });
+  } else {
+    btn.removeAttribute("aria-activedescendant");
+  }
+}
+
+// the next selectable row from `from` in direction `dir` (+1 / -1); `from` itself when it is a real row and
+// nothing further is selectable; -1 when no row is selectable at all (empty or all-minimized list)
+function windowStep(from, dir) {
+  for (let i = from + dir; i >= 0 && i < lastWindows.length; i += dir) if (!lastWindows[i].iconic) return i;
+  return from >= 0 && from < lastWindows.length ? from : -1;
+}
+
+function openWindowList() {
+  const pop = document.getElementById("window-pop");
+  const btn = document.getElementById("window-button");
+  if (!pop || !btn) return;
+  winOpen = true;
+  pop.hidden = false;
+  btn.setAttribute("aria-expanded", "true");
+  const cur = windowCurrentIndex();
+  const onPick = cur >= 0 && !lastWindows[cur].iconic;
+  winActive = onPick ? cur : windowStep(-1, +1);
+  winSeeded = !onPick; // a default highlight, not a position the operator chose (type-ahead starts AT it)
+  renderWindowList();
+  if (winActive >= 0) setWindowActive(winActive);
+  // L-5 — the list must be CURRENT when it is looked at: re-enumerate on every open. The list stays open and
+  // its rows are replaced in place when the backend answers (the native popup could not survive that).
+  refreshWindows();
+}
+
+function closeWindowList() {
+  const pop = document.getElementById("window-pop");
+  const btn = document.getElementById("window-button");
+  winOpen = false;
+  winActive = -1;
+  winSeeded = false;
+  winTypeahead = "";
+  if (pop) pop.hidden = true;
+  if (btn) {
+    btn.setAttribute("aria-expanded", "false");
+    btn.removeAttribute("aria-activedescendant");
+  }
+}
+
+function pickWindow(i) {
+  const w = lastWindows[i];
+  if (!w || w.iconic) return; // B-3: a minimized window is not selectable
+  // L-1 / E-1 / E-3 — keep the WHOLE WindowInfo, not just the caption. The pid (and the hwnd
+  // when the backend reports one) is the STABLE identity; the title is a volatile snapshot
+  // that a browser tab, a level load or a document save invalidates before the FG ever gets
+  // to resolve it, and an unanchored first-match strstr on it can bind the wrong window.
+  const wi = windowInput();
+  // Re-picking the window the field is ALREADY bound to (open with Enter, close with Enter) changes no identity:
+  // like the native <select>, whose 'change' fired only on a real change, it must not schedule an auto-restart.
+  const rebind = !(selectedWindow && sameWindow(selectedWindow, w) && wi && wi.value.trim() === selectedWindow.title);
+  selectedWindow = w;
+  if (wi) wi.value = w.title;
+  updateTarget(w.title, w.exe);
+  closeWindowList();
+  renderWindowList();
+  if (rebind) updatePreview();
+  else renderPreview(); // same window, at most a newer caption: preview only
+}
+
+// type-ahead (the native <select> had it): printable keys accumulate for 700 ms and move the highlight to the
+// first selectable row whose caption starts with them; one repeated letter cycles through its rows
+function windowTypeahead(ch) {
+  clearTimeout(winTypeaheadTimer);
+  winTypeaheadTimer = setTimeout(() => (winTypeahead = ""), 700);
+  winTypeahead += ch.toLowerCase();
+  const cycle = winTypeahead.length > 1 && [...winTypeahead].every((c) => c === winTypeahead[0]);
+  // one letter searches AFTER a highlight the operator chose (the next match), but AT a default one: opening the
+  // list highlights the first row by default, and "b" must still reach a first row that starts with b
+  const start =
+    winActive < 0 ? 0 : winTypeahead.length === 1 ? (winSeeded ? winActive : winActive + 1) : cycle ? winActive + 1 : winActive;
+  const i = windowTypeaheadMatch(start);
+  if (i >= 0) {
+    winSeeded = false;
+    setWindowActive(i);
+  }
+  // no match yet (e.g. the list is still empty while the open's refresh runs): the buffer stays, and
+  // refreshWindows applies it when the rows arrive
+}
+
+// the first selectable row from `start` (wrapping) whose caption starts with the type-ahead buffer, or -1
+function windowTypeaheadMatch(start) {
+  const n = lastWindows.length;
+  if (!n || !winTypeahead) return -1;
+  const cycle = winTypeahead.length > 1 && [...winTypeahead].every((c) => c === winTypeahead[0]);
+  const prefix = cycle ? winTypeahead[0] : winTypeahead;
+  for (let k = 0; k < n; k++) {
+    const i = (((start + k) % n) + n) % n;
+    const w = lastWindows[i];
+    if (!w.iconic && String(w.title).toLowerCase().startsWith(prefix)) return i;
+  }
+  return -1;
+}
+
+function onWindowKey(e) {
+  const k = e.key;
+  // a HELD Enter/Space must not open the list and then pick its default row on the first auto-repeat
+  if (e.repeat && (k === "Enter" || k === " ")) {
+    e.preventDefault();
+    return;
+  }
+  // AltGr arrives as Ctrl+Alt on Windows (the Spanish layout's @ # [ { \ | ~): a character, not a shortcut
+  const altGr = !!(e.getModifierState && e.getModifierState("AltGraph"));
+  const printable =
+    k.length === 1 && !e.metaKey && (altGr || (!e.ctrlKey && !e.altKey)) && (k !== " " || winTypeahead !== "");
+  if (!winOpen) {
+    if (k === "ArrowDown" || k === "ArrowUp" || k === "Enter" || k === " ") {
+      e.preventDefault();
+      openWindowList();
+    } else if (printable) {
+      e.preventDefault();
+      openWindowList();
+      windowTypeahead(k);
+    }
+    return;
+  }
+  if (k === "ArrowDown" || k === "ArrowUp" || k === "Home" || k === "End") winSeeded = false;
+  if (k === "ArrowDown") { e.preventDefault(); setWindowActive(windowStep(winActive, +1)); }
+  else if (k === "ArrowUp") { e.preventDefault(); setWindowActive(windowStep(winActive < 0 ? lastWindows.length : winActive, -1)); }
+  else if (k === "Home") { e.preventDefault(); setWindowActive(windowStep(-1, +1)); }
+  else if (k === "End") { e.preventDefault(); setWindowActive(windowStep(lastWindows.length, -1)); }
+  else if (printable) { e.preventDefault(); windowTypeahead(k); }
+  else if (k === "Enter" || k === " ") { e.preventDefault(); if (winActive >= 0) pickWindow(winActive); else closeWindowList(); }
+  else if (k === "Escape") { e.preventDefault(); e.stopPropagation(); closeWindowList(); }
+  else if (k === "Tab") { closeWindowList(); }
 }
 
 function updateTarget(title, exe) {
@@ -892,62 +1198,24 @@ function updateTarget(title, exe) {
   }
 }
 
-// L-5 — now also called from the dropdown's mousedown/focus, so it can fire repeatedly and
-// re-entrantly; the latch keeps a second call from resetting the select out from under the
-// first call's append loop.
+// L-5 — called on every open of the list, on Refresh and at startup, so it can fire repeatedly; the latch keeps
+// a second call from racing the first one's replacement of lastWindows.
 let winRefreshInFlight = false;
 
 async function refreshWindows() {
   if (!invoke || winRefreshInFlight) return;
   winRefreshInFlight = true;
-  const sel = document.getElementById("window-select");
-  resetWindowSelect("loading...");
+  winStatus = "loading";
+  renderWindowList();
   try {
     const wins = await invoke("list_windows");
+    // The row highlighted NOW (read after the await, while winActive still indexes the old array), by identity,
+    // so it survives the replacement -- including a move the keyboard or the pointer made during the refresh.
+    const activeWin = winOpen && winActive >= 0 ? lastWindows[winActive] || null : null;
+    // L-4 — the backend no longer de-duplicates by caption: two windows sharing a title are two REAL rows, told
+    // apart by the pid on each row's second line. B-3 — `iconic` rows are shown and not selectable.
     lastWindows = Array.isArray(wins) ? wins : [];
-    resetWindowSelect(
-      lastWindows.length
-        ? `- select window (${lastWindows.length}) -`
-        : "- no titled windows -"
-    );
-    for (let i = 0; i < lastWindows.length; i++) {
-      const w = lastWindows[i];
-      const opt = document.createElement("option");
-      opt.value = w.title;
-      opt.dataset.exe = w.exe || "";
-      // L-1 / E-1 / E-3 — index back into lastWindows so the change handler can keep the whole
-      // WindowInfo (pid, and hwnd when the backend reports one), not just this caption string.
-      opt.dataset.idx = String(i);
-      // L-4 — the backend no longer de-duplicates the list by caption, so two windows that share
-      // a title now arrive as two REAL rows. The pid therefore goes in the LABEL: without it those
-      // two rows are visually IDENTICAL and the dropdown is worse than the de-duplicated one it
-      // replaced. This is exactly the label format lib.rs declares for the row.
-      let label = w.exe
-        ? `${w.title} — ${w.exe} (pid ${w.pid})`
-        : `${w.title} (pid ${w.pid})`;
-      // B-3 — the backend REPORTS `iconic` per row and leaves the presentation decision here. A
-      // minimized window has a degenerate client rect and capture_init now REFUSES to start on one
-      // (SOURCE_MINIMIZED), so name it and take it out of the selectable set instead of letting the
-      // run fail seconds after the click. UX only: correctness is already covered FG-side.
-      if (w.iconic) {
-        label += " (minimized)";
-        opt.disabled = true;
-      }
-      opt.textContent = label;
-      sel.appendChild(opt);
-    }
-    // Reflect the current --window field selection if it matches an enumerated window.
-    // KNOWN, PRE-EXISTING AMBIGUITY, not a regression: `sel.value = cur` selects by option VALUE,
-    // which is the TITLE, so now that the backend no longer de-duplicates captions it lands on the
-    // FIRST row carrying that title. Only this reflect-the-typed-text path is ambiguous — a user
-    // PICK goes through dataset.idx and carries that exact WindowInfo (pid / hwnd).
-    const wi = windowInput();
-    const cur = wi ? wi.value.trim() : "";
-    if (cur) {
-      const match = lastWindows.find((w) => w.title === cur);
-      if (match) sel.value = cur;
-      updateTarget(cur, match ? match.exe : "");
-    }
+    winStatus = "idle";
     // Re-validate the picked identity by HANDLE, then by PID -- NEVER by title.
     //
     // This block used to require the title to match too, and that was the whole bug: --window-pid
@@ -973,11 +1241,48 @@ async function refreshWindows() {
         selectedWindow = null;
       }
     }
+    // Reflect the current --window text on the Target line (after a followed rename, so it shows the new
+    // caption). KNOWN, PRE-EXISTING AMBIGUITY, not a regression: a TYPED caption shared by two windows marks the
+    // FIRST of them; a PICK carries that exact WindowInfo.
+    const wi = windowInput();
+    const cur = wi ? wi.value.trim() : "";
+    if (cur) {
+      const match =
+        (selectedWindow && selectedWindow.title === cur ? selectedWindow : null) ||
+        lastWindows.find((w) => w.title === cur);
+      updateTarget(cur, match ? match.exe : "");
+    }
+    // keep the highlight on the same window (sameWindow: by handle, else pid) across the replacement
+    if (winOpen) {
+      let a = activeWin && !winSeeded ? lastWindows.findIndex((w) => sameWindow(activeWin, w)) : -1;
+      // a type-ahead typed while there was nothing to match (the list opened empty) lands now
+      if (a < 0 && winTypeahead) {
+        a = windowTypeaheadMatch(0);
+        if (a >= 0) winSeeded = false;
+      }
+      if (a < 0 || lastWindows[a].iconic) {
+        const c = windowCurrentIndex();
+        const onPick = c >= 0 && !lastWindows[c].iconic;
+        a = onPick ? c : windowStep(-1, +1);
+        winSeeded = !onPick;
+      }
+      winActive = a;
+    }
   } catch (e) {
-    resetWindowSelect("error listing windows");
+    // Nothing stale may stay pickable (the old picker emptied its options here): a row from the previous
+    // enumeration could name a window that has since closed, or a recycled pid.
+    winStatus = "error";
+    lastWindows = [];
+    winActive = -1;
     logLine("[ui] error list_windows: " + e, "exit");
   } finally {
     winRefreshInFlight = false;
+    renderWindowList();
+    // no scroll here: the view stays where the operator left it unless the keyboard moves the highlight
+    if (winOpen && winActive >= 0) setWindowActive(winActive, false);
+    // a followed rename rewrites --window: the preview must say so (no restart: the identity is unchanged, and
+    // renderPreview's C-4 comparison ignores a caption-only change under the same --hwnd)
+    renderPreview();
   }
 }
 
@@ -1109,9 +1414,26 @@ function renderPreview() {
   const pending =
     running &&
     launchedArgs !== null &&
-    args.join("\u0000") !== launchedArgs.join("\u0000"); // NUL: no argv token can contain it
+    argvKeyC4(args, launchedArgs) !== argvKeyC4(launchedArgs, args);
   if (cmdPending) cmdPending.hidden = !pending;
   return args;
+}
+
+// C-4's comparison key for `a` against `other`. With the SAME --hwnd on both sides the --window caption is not a
+// pending change. capture.cpp find_window_by_substr enumerates the --window-pid's visible windows and returns the
+// --hwnd outright when it is one of them; the caption is only the tie-break when it is not. refreshWindows keeps
+// an --hwnd only while the enumeration (visible windows) still lists it, so a caption it followed through a rename
+// binds the same window and a restart would change nothing. Any other difference, the identity included, still
+// marks the card.
+function argvKeyC4(a, other) {
+  const at = (v, f) => { const i = v.indexOf(f); return i >= 0 && i + 1 < v.length ? v[i + 1] : null; };
+  const h = at(a, "--hwnd");
+  let b = a;
+  if (h !== null && h === at(other, "--hwnd")) {
+    const i = a.indexOf("--window");
+    if (i >= 0 && i + 1 < a.length) { b = a.slice(); b[i + 1] = ""; }
+  }
+  return b.join("\u0000"); // NUL: no argv token can contain it
 }
 
 // Preview + the common path of EVERY flag change: if auto-restart is on and the FG is live,
