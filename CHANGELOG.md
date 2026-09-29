@@ -11,6 +11,7 @@ says they were not measured.
 ### Changed
 
 - **The default path.** No flag default changed, and no default layer changed. The layer contract hash, printed in the log and in the launcher, moves from `0xBF27BBBA9109A3E3` to `0x0291FB5481748A07`. The hash covers every row of the layer table, and one row was appended (`eco_anchor`, off by default, see Added). A row that is off is folded out of the kernel at pipeline creation. This was measured on the GPU in one 30 s run at 2x on a 640x360 synthetic test window, with a non-shipping comparison build (FMA contraction disabled so the two kernels can be byte-compared). With the row compiled in but off, the default configuration matched the unchanged legacy kernel on the same tick with 0 differing pixels over 7190 ticks. Both kernels had the hold ramp set by flag to the legacy value, the only way the two can be compared since 0.5.3. `--eco` with the same two flags gave 0 differing pixels over 7187 ticks.
+- **Which binaries the figures come from.** Every figure in this entry was measured on the development build that introduced or measured its feature, not on the release binary. The last of those builds, the one that added `--eco-anchor`, differs from the release binary only in string literals: help text, log lines and two compile-time messages (11 source files, 57 lines added and 55 removed). The Delivery build is older still (below).
 - **Delivery against a 0.5.3 build, default flags.** The test used a synthetic 120 fps source whose captured area is 1920x1061, 2x at 240 Hz, single GPU, with the FG's log redirected to a file. Two draws each:
   - displayed frames per second went from 204.8 to 233.7, and from 206.3 to 233.6;
   - the 99th-percentile display interval went from 25.02 to 8.34 ms;
@@ -141,7 +142,7 @@ says they were not measured.
 
 ### Requirements
 
-To run the release build you need Windows 10 or 11 (x64), the Microsoft Visual C++ Redistributable 2015 or later (x64), and a GPU driver with Vulkan support. The launcher also needs the Microsoft Edge WebView2 runtime, which ships with Windows 11. Keep `phyriad_fg.exe` and `ui.exe` in the same folder.
+To run the release build you need Windows 10 or 11 (x64), the Microsoft Visual C++ Redistributable 2015 or later (x64), and a GPU driver with Vulkan support. The launcher also needs the Microsoft Edge WebView2 runtime, which ships with Windows 11. The launcher carries the frame generator inside it and runs on its own; a `phyriad_fg.exe` placed in the same folder takes precedence over the embedded one.
 
 ## [0.5.3-experimental] - 2026-09-13
 
