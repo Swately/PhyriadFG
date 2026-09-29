@@ -72,8 +72,8 @@ bilateral candidate re-selection, the mode the offline validation selected.
 - **Refusal.** A parse error with bidir on (the shipping anchor already runs there), `--legacy-warp` (no row in
   `wap_warp.comp`) or `--fg-core-ab`.
 - **Slot 0.** At t ≤ 0.35 the row returns its input before any texture read, so `--eco`'s t≈0.25 frame is unchanged.
-- **Offline quality** (CPU replay of `--eco` captures, 640x360, one scene at two speeds; GPU cost, power and 1080p not
-  measured). Mode 2 against `--eco` at t≈0.75:
+- **Offline quality** (CPU replay of `--eco` captures, 640x360, one scene at two speeds; 1080p quality not measured).
+  Mode 2 against `--eco` at t≈0.75:
   - sphere hallucination −57 %, shape error −50 %;
   - box hallucination −28 %, box missing −7 %;
   - sphere missing **+70 %**, at the loop seam and where the sphere exits the frame, through the row's fallback to the
@@ -83,6 +83,9 @@ bilateral candidate re-selection, the mode the offline validation selected.
   range on every term, but by the noise rule that holds for 5 of 7 terms.
 - **Its instrument.** `--eco-anchor-ab` runs the row OFF (the product) and ON (beside it) from the same inputs and
   counts the differing pixels per phase slot.
+- **Cost of mode 2 over `--eco`** (C3P): +2.3 GPU-ms/s of warp time, about +0.7 W on the board, and `--eco`'s
+  2610 MHz regime kept.
+- **Validated at x2 only.** At x3 a third of the generated frames sit mid-ramp (w = 0.5), which is untested.
 
 Basis: `docs/planning/records/ECO_ANCHOR_VALIDATION.md`.
 

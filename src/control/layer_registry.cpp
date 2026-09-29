@@ -446,7 +446,9 @@ void print_layer_help() {
     }
     std::printf("  R3 (stage 5, shaders/fg_core.comp — the rows above as ONE generated kernel; opt-in until its M4 gate passes):\n"
                 "    --fg-core            pin fg_core.comp as the product path -- THE DEFAULT since 2026-09-06 (R7a); this flag now only makes it explicit\n"
-                "    --fg-core-ab         run BOTH kernels every tick from the same inputs and count differing pixels (the M4 instrument)\n"
+                "    --fg-core-ab         run BOTH kernels every tick from the same inputs and count differing pixels (the M4 instrument).\n"
+                "                         Since 90c9ee8 (2026-09-11) the kernels differ BY DESIGN in single_track's hold ramp (fg_core 1.0/1.6,\n"
+                "                         wap_warp 1.2/3.0): add --st-hold-lo 1.2 --st-hold-hi 3.0 for a parity run (LEARNING_LOG P-066)\n"
                 "    --fg-core-clean-sim  mv_guided.sim = the exact --mv-sim (default: the legacy's packed (1+sim)-1, XR1)\n"
                 "    --legacy-warp        select shaders/wap_warp.comp instead -- THE REVERT for the R7a default; the legacy shader stays in the tree\n"
                 "    --eco-anchor-ab      with --eco-anchor N: the product runs with the eco row OFF, a second fg_core with it ON runs beside it\n"
