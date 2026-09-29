@@ -478,14 +478,6 @@ select {
   margin-bottom: 8px;
 }
 
-/* Nota del operador: ocupa el hueco entre el título y los botones (override del width:100%
-   genérico de .text-input para convivir en la fila flex del log-head). */
-.note-input {
-  flex: 1;
-  width: auto;
-  min-width: 120px;
-}
-
 .log {
   flex: 1;
   background: var(--bg-2);
@@ -597,6 +589,109 @@ h1 {
   font-family: var(--phy-font-prose);
   font-size: var(--phy-text-xs);
   line-height: var(--phy-leading-prose);
+}
+
+/* ── Essentials first, everything else folded (2026-09-29, the operator's layout) ──────────
+ * The left column is now a stack: the Essentials card, then ONE <details> holding the old grid of groups plus
+ * the executable path and the raw flags. Same substrate rules: no radius beyond the token, no shadow, the rule
+ * and the accent carry the structure. */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* the Essentials rows flow in two columns when there is room; one below ~720 px */
+.essentials .rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  column-gap: 28px;
+}
+.essentials .rows .row:nth-child(2) {
+  border-top: none;
+}
+.essentials .winsel {
+  margin: 0 0 10px;
+}
+
+.advanced {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.advanced-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.advanced-summary::-webkit-details-marker {
+  display: none;
+}
+.advanced-summary::before {
+  content: "\25B8"; /* a right-pointing triangle; turned down when open */
+  color: var(--accent);
+  display: inline-block;
+  transition: transform 0.12s;
+}
+.advanced[open] > .advanced-summary::before {
+  transform: rotate(90deg);
+}
+.advanced-title {
+  font-size: var(--phy-text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent);
+}
+.advanced-hint {
+  font-family: var(--phy-font-prose);
+  font-size: var(--phy-text-xs);
+  color: var(--text-dim);
+}
+.advanced[open] > .advanced-summary {
+  border-bottom: 1px solid var(--border-soft);
+}
+.advanced > .panel {
+  padding: 14px;
+}
+.advanced-extra {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  padding: 0 14px 14px;
+}
+
+/* EXPERIMENTAL marker: the error colour as an outline, no fill (the substrate has no warning role) */
+.badge-exp {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 5px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+/* an input with a small button beside it (Monitor + Detect) */
+.row-control-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.row-control-pair input {
+  width: 72px;
+}
+.btn-inline {
+  padding: 5px 10px;
 }
 
 /* Made with my soul - Swately <3 */

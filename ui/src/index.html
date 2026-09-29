@@ -48,8 +48,47 @@
     </header>
 
     <main class="layout">
-      <section class="panel" id="controls">
-        <!-- option groups are rendered here by main.js -->
+      <!-- 2026-09-29 (the operator's layout): the common options FIRST, in one "Essentials" card; every
+           other control, the layer-registry groups, the raw flags and the executable path in ONE
+           "Advanced options" section, folded by default. main.js renders both from the same GROUPS
+           model, so a flag still has exactly one control and buildArgs() is unchanged. -->
+      <section class="controls" id="controls">
+        <div id="essentials"><!-- the Essentials card is rendered here by main.js --></div>
+
+        <details class="advanced" id="advanced">
+          <summary class="advanced-summary">
+            <span class="advanced-title">Advanced options</span>
+            <span class="advanced-hint">every other flag, the layer registry, raw flags and the executable path</span>
+          </summary>
+
+          <div class="panel" id="advanced-groups"><!-- option groups are rendered here by main.js --></div>
+
+          <div class="advanced-extra">
+            <div class="card">
+              <label class="field-label" for="exe-path">Executable path</label>
+              <input
+                type="text"
+                id="exe-path"
+                class="text-input"
+                value=""
+                placeholder="auto: phyriad_fg.exe next to ui.exe"
+                spellcheck="false"
+              />
+            </div>
+
+            <div class="card">
+              <label class="field-label" for="raw-flags">Raw flags</label>
+              <textarea
+                id="raw-flags"
+                class="text-input raw"
+                rows="3"
+                spellcheck="false"
+                placeholder="--wsub --csv output.csv ..."
+              ></textarea>
+              <p class="hint">Appended to the end of the command. Almost all flags are already exposed above; use this box for overrides, aliases (--exit-after, --present-fp16), the two-argument --qdump DIR N, multipliers above 4x (--fg-factor 6), or new flags.</p>
+            </div>
+          </div>
+        </details>
       </section>
 
       <aside class="sidebar">
@@ -67,30 +106,6 @@
             <input type="checkbox" id="auto-restart" />
             <span>Auto-restart on config change</span>
           </label>
-        </div>
-
-        <div class="card">
-          <label class="field-label" for="exe-path">Executable path</label>
-          <input
-            type="text"
-            id="exe-path"
-            class="text-input"
-            value=""
-            placeholder="auto: phyriad_fg.exe next to ui.exe"
-            spellcheck="false"
-          />
-        </div>
-
-        <div class="card">
-          <label class="field-label" for="raw-flags">Raw flags (advanced)</label>
-          <textarea
-            id="raw-flags"
-            class="text-input raw"
-            rows="3"
-            spellcheck="false"
-            placeholder="--wsub --csv output.csv ..."
-          ></textarea>
-          <p class="hint">Appended to the end of the command. Almost all flags are already exposed above; use this box for overrides, aliases (--exit-after, --present-fp16), the two-argument --qdump DIR N, or new flags.</p>
         </div>
 
         <div class="card cmd-card">
@@ -116,16 +131,7 @@
     <section class="logwrap card">
       <div class="log-head">
         <span class="field-label">Live output</span>
-        <!-- Canal ojo→intérprete: la nota se timestampea en el observer log (junto a ui.exe),
-             en el MISMO stream que la telemetría del FG, para correlar lo visto con lo medido. -->
-        <input
-          type="text"
-          id="note-input"
-          class="text-input note-input"
-          placeholder="nota del operador (p.ej. 'aquí vibra') — Enter para marcar"
-          spellcheck="false"
-        />
-        <button id="btn-note" class="btn btn-ghost">Mark</button>
+        <!-- 2026-09-29: the operator-note field and its Mark button were removed (the operator: no longer needed) -->
         <button id="btn-clear" class="btn btn-ghost">Clear</button>
       </div>
       <div id="log" class="log"></div>

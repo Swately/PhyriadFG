@@ -116,8 +116,7 @@ const GROUPS = [
         desc: "Prints a capability-based routing decision (has_fp16/dp4a) over the FG's VDevs. MEASUREMENT-ONLY, inert (A/B/G roles fixed).",
       },
     ],
-    windowSelector: true,
-    extra: "monitors",
+    // the target-window picker and "Detect monitors" moved to the Essentials card with --window / --monitor
   },
   {
     title: "GPU",
@@ -164,16 +163,15 @@ const GROUPS = [
       {
         flag: "--fg-factor", type: "select", default: "2",
         name: "FG factor",
+        // 2026-09-29 (the operator's choice for the Essentials card): the common multipliers only. 5x/6x/8x are
+        // still accepted by the FG; type them in Raw flags (--fg-factor 6).
         options: [
           { value: "2", label: "2x (default)" },
           { value: "3", label: "3x" },
           { value: "4", label: "4x" },
-          { value: "5", label: "5x" },
-          { value: "6", label: "6x" },
-          { value: "8", label: "8x" },
           { value: "auto", label: "auto (measured)" },
         ],
-        desc: "Output multiplier: 2=2x (default), 3=3x, ... auto=measured.",
+        desc: "Output multiplier: 2=2x (default), 3=3x, 4=4x, auto=measured. 5x/6x/8x: Raw flags (--fg-factor 6).",
       },
       {
         flag: "--flow-scale", type: "select", default: "1",
@@ -211,6 +209,18 @@ const GROUPS = [
         name: "Flow-scale auto target (MP)",
         desc: "Flow-work megapixel target for --flow-scale auto (1080p ~div=1; 1440p/4K drop lower). The quality<->latency slider.",
       },
+    ],
+  },
+  {
+    // 2026-09-29: --eco was not in the UI at all. It stays in Advanced (the operator did not pick it for the
+    // Essentials card). The eco phase anchor is a layer-registry row: its control is moved into this group
+    // from the binary's own model when that loads (see the registry block), marked EXPERIMENTAL.
+    title: "Eco (power)",
+    ecoSlot: true,
+    note: "--eco = --frame-vram --no-bidir, measured at 1920x1061 x2: about -43 W board, 2610 MHz. Single-GPU route only.",
+    controls: [
+      { flag: "--eco", type: "switch", default: false, name: "Eco mode (power preset)",
+        desc: "Exactly --frame-vram --no-bidir (the no-bidir cascade applies). About -43 W board against the default at 1920x1061 x2 (C1), with the GPU at 2610 MHz; median latency unchanged. Single-GPU route only; a refused arm is fatal (iGPU convert, --upscale, --upload-xfer, --rfp, --motion-fallback, --dump). Quality: the t~0.75 frame regresses (Q1). DEFAULT OFF." },
     ],
   },
   {
@@ -565,8 +575,12 @@ const GROUPS = [
   {
     title: "Overlay / Diagnostics",
     controls: [
+      // 2026-09-29: the old text said "sync path; the async path skips it". Stale since the 2026-07 re-home:
+      // present.cpp:1324 draws it onto wapOutA before the blit on the WAP/async DEFAULT path too (cli.cpp's
+      // own --fps-overlay print says so). It is not drawn on dropped (fdrop/async-drop) ticks, and --gdump
+      // refuses it.
       { flag: "--fps-overlay", type: "switch", default: false, name: "FPS overlay",
-        desc: "LSFG-style 'in->out' overlay drawn top-left on the presented frame (sync path; the async path skips it)." },
+        desc: "LSFG-style 'in -> out' fps counter drawn top-left on the presented frame, on the default path. The re-shown frame of a dropped tick keeps the last counter." },
       { flag: "--csv", type: "text", default: "", name: "Telemetry CSV", placeholder: "output.csv",
         desc: "Exports per-present telemetry to this CSV." },
       { flag: "--latency-trace", type: "switch", default: false, name: "Latency trace",
@@ -594,8 +608,34 @@ const GROUPS = [
 ];
 
 // ── Render ───────────────────────────────────────────────────────────────────
-const controlsEl = document.getElementById("controls");
-const els = []; // {ctrl, input}
+// 2026-09-29 (the operator's layout): an "Essentials" card first, then ONE "Advanced options" section, folded by
+// default, holding every other group, the layer-registry groups, the raw flags and the executable path.
+const essentialsEl = document.getElementById("essentials");
+const advancedEl = document.getElementById("advanced-groups");
+const els = []; // {ctrl, input} -- EVERY rendered control, whichever section holds it; buildArgs iterates this
+
+// The Essentials card: these flags are TAKEN out of their GROUPS entry (spliced, so each flag still has exactly one
+// control and one row in `els`), in this order, with a plainer name. Everything they leave behind stays in Advanced.
+const ESSENTIALS = [
+  ["--window", "Window title (substring)"],
+  ["--monitor", "Monitor"],
+  ["--fg-factor", "Multiplier"],
+  ["--fg-gpu", "Frame-gen GPU"],
+  ["--force-single-gpu", "Single GPU"],
+  ["--fps-overlay", "FPS overlay"],
+  ["--hdr", "HDR"],
+  ["--refresh-hz", "Refresh (Hz)"],
+  ["--target-output-fps", "FPS cap (output)"],
+];
+function takeControl(flag) {
+  for (const g of GROUPS) {
+    const i = g.controls.findIndex((c) => c.flag === flag);
+    if (i >= 0) return g.controls.splice(i, 1)[0];
+  }
+  console.warn("[ui] Essentials: no control for " + flag);
+  return null;
+}
+let ecoGroupEl = null; // the "Eco (power)" group: the registry's --eco-anchor row is moved into it
 
 function makeSwitch(checked) {
   const label = document.createElement("label");
@@ -610,23 +650,8 @@ function makeSwitch(checked) {
   return { label, input };
 }
 
-function renderGroup(group) {
-  const g = document.createElement("div");
-  g.className = "group";
-  const h = document.createElement("h2");
-  h.textContent = group.title;
-  g.appendChild(h);
-
-  if (group.note) {
-    const n = document.createElement("p");
-    n.className = "hint";
-    n.style.marginTop = "-6px";
-    n.style.marginBottom = "8px";
-    n.textContent = group.note;
-    g.appendChild(n);
-  }
-
-  for (const ctrl of group.controls) {
+// One control row, appended to the group element `g`. Returns false when the flag already has a control.
+function renderControl(ctrl, g) {
     // C-6 guard — one flag, one control. Both the hand-written GROUPS block and the binary's
     // layer registry render through here into the SAME `els` array, and buildArgs iterates
     // `els`: a flag rendered twice gets two switches that can silently disagree in the argv.
@@ -636,7 +661,7 @@ function renderGroup(group) {
     // logEl` binding exists, so logLine() here would throw a TDZ ReferenceError.
     if (els.some((e) => e.ctrl.flag === ctrl.flag)) {
       console.warn("[ui] duplicate control skipped for flag " + ctrl.flag);
-      continue;
+      return false;
     }
     const row = document.createElement("div");
     row.className = "row";
@@ -647,6 +672,12 @@ function renderGroup(group) {
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = ctrl.name;
+    if (ctrl.experimental) {
+      const b = document.createElement("span");
+      b.className = "badge-exp";
+      b.textContent = "experimental";
+      name.appendChild(b);
+    }
     const fn = document.createElement("span");
     fn.className = "flagname";
     fn.textContent =
@@ -705,26 +736,55 @@ function renderGroup(group) {
     }
     input.addEventListener("change", updatePreview);
 
+    // Essentials: "Detect monitors" sits in the Monitor row instead of at the bottom of the card
+    if (ctrl.detectMonitors) {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-ghost btn-inline";
+      btn.textContent = "Detect";
+      btn.title = "List the monitors (phyriad_fg --list-monitors) into the live output";
+      btn.addEventListener("click", detectMonitors);
+      ctl.classList.add("row-control-pair");
+      ctl.appendChild(btn);
+    }
+
     row.appendChild(lab);
     row.appendChild(ctl);
     g.appendChild(row);
     els.push({ ctrl, input });
+    return true;
+}
+
+// A group card appended to `parent` (Advanced by default). windowSelector puts the target-window picker at the TOP
+// of the card; it is wired after the rows, because it hooks the --window row's input (windowInput()).
+function renderGroup(group, parent = advancedEl) {
+  const g = document.createElement("div");
+  g.className = "group" + (group.cls ? " " + group.cls : "");
+  const h = document.createElement("h2");
+  h.textContent = group.title;
+  g.appendChild(h);
+
+  if (group.note) {
+    const n = document.createElement("p");
+    n.className = "hint";
+    n.style.marginTop = "-6px";
+    n.style.marginBottom = "8px";
+    n.textContent = group.note;
+    g.appendChild(n);
   }
 
-  if (group.windowSelector) {
-    renderWindowSelector(g);
-  }
+  const selSlot = group.windowSelector ? document.createElement("div") : null;
+  if (selSlot) g.appendChild(selSlot);
+  const rows = document.createElement("div");
+  rows.className = "rows";
+  g.appendChild(rows);
 
-  if (group.extra === "monitors") {
-    const btn = document.createElement("button");
-    btn.className = "btn btn-ghost";
-    btn.style.marginTop = "10px";
-    btn.textContent = "Detect monitors";
-    btn.addEventListener("click", detectMonitors);
-    g.appendChild(btn);
-  }
+  for (const ctrl of group.controls) renderControl(ctrl, rows);
 
-  controlsEl.appendChild(g);
+  // in the document BEFORE the selector is wired: resetWindowSelect() finds the <select> by id
+  parent.appendChild(g);
+  if (selSlot) renderWindowSelector(selSlot);
+  if (group.ecoSlot) ecoGroupEl = rows;
+  return g;
 }
 
 // ── Target-window selector ─────────────────────────────────────────────────────
@@ -921,7 +981,20 @@ async function refreshWindows() {
   }
 }
 
-GROUPS.forEach(renderGroup);
+// Essentials first (their controls leave their GROUPS entries), then every group into Advanced. Explicit arrow:
+// forEach would pass the index as renderGroup's second argument, the parent element.
+{
+  const ess = [];
+  for (const [flag, label] of ESSENTIALS) {
+    const c = takeControl(flag);
+    if (!c) continue;
+    c.name = label;
+    if (flag === "--monitor") c.detectMonitors = true;
+    ess.push(c);
+  }
+  renderGroup({ title: "Essentials", cls: "essentials", windowSelector: true, controls: ess }, essentialsEl);
+}
+GROUPS.forEach((g) => renderGroup(g, advancedEl));
 
 // ── Args assembly ────────────────────────────────────────────────────────────
 function buildArgs() {
@@ -1064,17 +1137,35 @@ document.getElementById("raw-flags").addEventListener("change", updatePreview);
     const line = raw.split("\n").find((l) => l.trim().startsWith("{"));   // the FG prints [ra] lines before the JSON
     const model = JSON.parse(line);
     const byGroup = new Map();
+    const eco = []; // 2026-09-29: the eco phase anchor's row goes to the "Eco (power)" group, marked EXPERIMENTAL
     for (const c of model.controls) {
+      if (c.flag === "--eco-anchor") { eco.push(c); continue; }
       const k = c.group || "Layers";
       if (!byGroup.has(k)) byGroup.set(k, []);
       byGroup.get(k).push(c);
     }
     for (const [g, controls] of byGroup) {
-      renderGroup({ title: `Layers · ${g}`, note: `From the binary's registry (contract ${model.contract}).`, controls });
+      renderGroup({ title: `Layers · ${g}`, note: `From the binary's registry (contract ${model.contract}).`, controls }, advancedEl);
+    }
+    // The binary's row is a number (0 = off, 1..2). Shown as a select with the modes named; the argv is unchanged:
+    // nothing when off, "--eco-anchor N" otherwise. Its desc keeps the binary's own help after the caveat.
+    for (const c of eco) {
+      const x = Object.assign({}, c, {
+        type: "select", default: "0", experimental: true, name: "Eco anchor",
+        options: [
+          { value: "0", label: "off (default)" },
+          { value: "2", label: "2 · lean BCR (the validated mode)" },
+          { value: "1", label: "1 · FP1" },
+        ],
+        desc: "EXPERIMENTAL until its quality tests finish (the live A/B and x3/x4). Needs Eco mode (--eco): refused with bidir on. " +
+              "Mode 2 costs about +2.3 GPU-ms/s and +0.7 W over --eco and keeps its 2610 MHz; validated at x2 only. " + (c.desc || ""),
+      });
+      if (ecoGroupEl) renderControl(x, ecoGroupEl);
+      else renderGroup({ title: "Eco anchor", controls: [x] }, advancedEl);
     }
     updatePreview();
   } catch (e) {
-    renderGroup({ title: "Layers (registry)", note: `Could not load the layer model from the binary: ${e}`, controls: [] });
+    renderGroup({ title: "Layers (registry)", note: `Could not load the layer model from the binary: ${e}`, controls: [] }, advancedEl);
   }
 })();
 // C-10 — the executable path is free text: typing into it used to kill the live FG one second
@@ -1134,30 +1225,8 @@ document.getElementById("btn-clear").addEventListener("click", () => {
   logEl.innerHTML = "";
 });
 
-// ── Observer: canal ojo→intérprete ───────────────────────────────────────────
-// La nota viaja al backend (observer_note), que la timestampea en el observer log de disco
-// (el mismo stream que la telemetría del FG) y la re-emite como fg-log — el eco visible en
-// este console llega por el listener normal, así que aquí no se duplica localmente.
-const noteInput = document.getElementById("note-input");
-const btnNote = document.getElementById("btn-note");
-
-async function sendNote() {
-  if (!invoke || !noteInput) return;
-  const text = noteInput.value.trim();
-  if (!text) return;
-  noteInput.value = "";
-  try {
-    await invoke("observer_note", { note: text });
-  } catch (e) {
-    logLine("[ui] note error: " + e, "exit");
-  }
-}
-
-if (btnNote) btnNote.addEventListener("click", sendNote);
-if (noteInput)
-  noteInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") sendNote();
-  });
+// 2026-09-29: the operator-note field and its Mark button were removed from the Live output (the operator:
+// "ya no es necesario"). The backend's observer_note command stays in lib.rs, unused by this page.
 
 // ── State / buttons ──────────────────────────────────────────────────────────
 const btnStart = document.getElementById("btn-start");
